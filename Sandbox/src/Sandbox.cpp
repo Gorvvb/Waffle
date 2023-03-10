@@ -1,3 +1,4 @@
+#include "wfpch.h"
 #include <Waffle.h>
 
 class Sandbox : public Waffle::Application

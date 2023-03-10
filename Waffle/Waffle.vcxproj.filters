@@ -1,36 +1,48 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup>
-    <Filter Include="Source Files">
-      <UniqueIdentifier>{4FC737F1-C7A5-4376-A066-2A32D752A2FF}</UniqueIdentifier>
-      <Extensions>cpp;c;cc;cxx;c++;cppm;ixx;def;odl;idl;hpj;bat;asm;asmx</Extensions>
+    <Filter Include="Waffle">
+      <UniqueIdentifier>{3ACBE4D9-266D-0FB0-0F28-2304FB689600}</UniqueIdentifier>
     </Filter>
-    <Filter Include="Header Files">
-      <UniqueIdentifier>{93995380-89BD-4b04-88EB-625FBE52EBFB}</UniqueIdentifier>
-      <Extensions>h;hh;hpp;hxx;h++;hm;inl;inc;ipp;xsd</Extensions>
-    </Filter>
-    <Filter Include="Resource Files">
-      <UniqueIdentifier>{67DA6AB6-F800-4c08-8B7A-83BB121AAD01}</UniqueIdentifier>
-      <Extensions>rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe;resx;tiff;tif;png;wav;mfcribbon-ms</Extensions>
+    <Filter Include="Waffle\Events">
+      <UniqueIdentifier>{DE5192D7-4A12-0E0E-134D-578B7FCC52EA}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="src\Waffle\Core.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
+    <ClInclude Include="src\Waffle.h" />
     <ClInclude Include="src\Waffle\Application.h">
-      <Filter>Header Files</Filter>
+      <Filter>Waffle</Filter>
     </ClInclude>
-    <ClInclude Include="src\Waffle.h">
-      <Filter>Header Files</Filter>
+    <ClInclude Include="src\Waffle\Core.h">
+      <Filter>Waffle</Filter>
     </ClInclude>
     <ClInclude Include="src\Waffle\EntryPoint.h">
-      <Filter>Header Files</Filter>
+      <Filter>Waffle</Filter>
     </ClInclude>
+    <ClInclude Include="src\Waffle\Events\ApplicationEvent.h">
+      <Filter>Waffle\Events</Filter>
+    </ClInclude>
+    <ClInclude Include="src\Waffle\Events\Event.h">
+      <Filter>Waffle\Events</Filter>
+    </ClInclude>
+    <ClInclude Include="src\Waffle\Events\KeyEvent.h">
+      <Filter>Waffle\Events</Filter>
+    </ClInclude>
+    <ClInclude Include="src\Waffle\Events\MouseEvent.h">
+      <Filter>Waffle\Events</Filter>
+    </ClInclude>
+    <ClInclude Include="src\Waffle\Log.h">
+      <Filter>Waffle</Filter>
+    </ClInclude>
+    <ClInclude Include="src\wfpch.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\Waffle\Application.cpp">
-      <Filter>Source Files</Filter>
+      <Filter>Waffle</Filter>
     </ClCompile>
+    <ClCompile Include="src\Waffle\Log.cpp">
+      <Filter>Waffle</Filter>
+    </ClCompile>
+    <ClCompile Include="src\wfpch.cpp" />
   </ItemGroup>
 </Project>
