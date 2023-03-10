@@ -1,6 +1,8 @@
 #pragma once
 
+#include "wfpch.h"
 #include "Core.h"
+#include "Events/Event.h"
 
 namespace Waffle {
 
