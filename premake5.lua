@@ -11,6 +11,11 @@ workspace "Waffle"
 
 outputdir = "%{cfg.buildcfg}-%{cfg.system}-%{cfg.architecture}"
 
+Includedir = {}
+Includedir["GLFW"] = "Waffle/vendor/GLFW/include"
+
+include "Waffle/vendor/GLFW"
+
 project "Waffle"
     location "Waffle"
     kind "SharedLib"
@@ -31,7 +36,14 @@ project "Waffle"
     includedirs
     {
         "%{prj.name}/vendor/spdlog/include",
-        "%{prj.name}/src"
+        "%{prj.name}/src",
+        "%{Includedir.GLFW}"
+    }
+
+    links
+    {
+        "GLFW",
+        "opengl32.lib"
     }
 
     filter "system:windows"

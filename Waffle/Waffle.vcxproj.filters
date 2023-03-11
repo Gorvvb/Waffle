@@ -1,6 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup>
+    <Filter Include="Platform">
+      <UniqueIdentifier>{2AC788B4-1694-E3BF-3FAD-D1672BD9184E}</UniqueIdentifier>
+    </Filter>
     <Filter Include="Waffle">
       <UniqueIdentifier>{3ACBE4D9-266D-0FB0-0F28-2304FB689600}</UniqueIdentifier>
     </Filter>
@@ -9,6 +12,9 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="src\Platform\WindowsWindow.h">
+      <Filter>Platform</Filter>
+    </ClInclude>
     <ClInclude Include="src\Waffle.h" />
     <ClInclude Include="src\Waffle\Application.h">
       <Filter>Waffle</Filter>
@@ -34,9 +40,15 @@
     <ClInclude Include="src\Waffle\Log.h">
       <Filter>Waffle</Filter>
     </ClInclude>
+    <ClInclude Include="src\Waffle\Window.h">
+      <Filter>Waffle</Filter>
+    </ClInclude>
     <ClInclude Include="src\wfpch.h" />
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="src\Platform\WindowsWindow.cpp">
+      <Filter>Platform</Filter>
+    </ClCompile>
     <ClCompile Include="src\Waffle\Application.cpp">
       <Filter>Waffle</Filter>
     </ClCompile>
