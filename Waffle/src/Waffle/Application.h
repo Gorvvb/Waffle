@@ -1,10 +1,10 @@
 #pragma once
 
-//#include "wfpch.h"
 #include "Core.h"
-#include "Events/Event.h"
-#include "Window.h"
 
+#include "Window.h"
+#include "Waffle/LayerStack.h"
+#include "Waffle/Events/Event.h"
 #include "Waffle/Events/ApplicationEvent.h"
 
 
@@ -19,13 +19,17 @@ namespace Waffle {
 		void Run();
 
 		void OnEvent(Event& e);
+
+		void PushLayer(Layer* layer);
+		void PushOverlay(Layer* layer);
 	private:
 		bool OnWindowClose(WindowCloseEvent& e);
 
 		std::unique_ptr<Window> m_Window;
 		bool m_Running = true;
+		LayerStack m_LayerStack;
 	};
 
-	// Define in client
+	// Remember to define in client
 	Application* CreateApplication();
 }

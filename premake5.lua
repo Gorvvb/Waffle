@@ -63,15 +63,18 @@ project "Waffle"
         }
     
     filter "configurations:Debug"
-    defines "WF_DEBUG"
+        defines "WF_DEBUG"
+        buildoptions "/MDd"
         symbols "On"
     
     filter "configurations:Release"
         defines "WF_RELEASE"
+        buildoptions "/MD"
         optimize "On"
     
     filter "configurations:Dist"
         defines "WF_DIST"
+        buildoptions "/MD"
         optimize "On"
 
 project "Sandbox"
@@ -111,13 +114,15 @@ project "Sandbox"
         
         filter "configurations:Debug"
         defines "WF_DEBUG"
+        buildoptions "/MDd"
             symbols "On"
         
         filter "configurations:Release"
             defines "WF_RELEASE"
+            buildoptions "/MD"
             optimize "On"
         
         filter "configurations:Dist"
             defines "WF_DIST"
+            buildoptions "/MD"
             optimize "On"
-
