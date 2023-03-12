@@ -84,6 +84,7 @@
       <DebugInformationFormat>EditAndContinue</DebugInformationFormat>
       <Optimization>Disabled</Optimization>
       <RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
+      <AdditionalOptions>/MDd %(AdditionalOptions)</AdditionalOptions>
       <LanguageStandard>stdcpp20</LanguageStandard>
       <ExternalWarningLevel>Level3</ExternalWarningLevel>
     </ClCompile>
@@ -110,6 +111,7 @@
       <MinimalRebuild>false</MinimalRebuild>
       <StringPooling>true</StringPooling>
       <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
+      <AdditionalOptions>/MD %(AdditionalOptions)</AdditionalOptions>
       <LanguageStandard>stdcpp20</LanguageStandard>
       <ExternalWarningLevel>Level3</ExternalWarningLevel>
     </ClCompile>
@@ -137,6 +139,7 @@
       <MinimalRebuild>false</MinimalRebuild>
       <StringPooling>true</StringPooling>
       <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
+      <AdditionalOptions>/MD %(AdditionalOptions)</AdditionalOptions>
       <LanguageStandard>stdcpp20</LanguageStandard>
       <ExternalWarningLevel>Level3</ExternalWarningLevel>
     </ClCompile>
@@ -161,6 +164,8 @@
     <ClInclude Include="src\Waffle\Events\Event.h" />
     <ClInclude Include="src\Waffle\Events\KeyEvent.h" />
     <ClInclude Include="src\Waffle\Events\MouseEvent.h" />
+    <ClInclude Include="src\Waffle\Layer.h" />
+    <ClInclude Include="src\Waffle\LayerStack.h" />
     <ClInclude Include="src\Waffle\Log.h" />
     <ClInclude Include="src\Waffle\Window.h" />
     <ClInclude Include="src\wfpch.h" />
@@ -168,6 +173,8 @@
   <ItemGroup>
     <ClCompile Include="src\Platform\WindowsWindow.cpp" />
     <ClCompile Include="src\Waffle\Application.cpp" />
+    <ClCompile Include="src\Waffle\Layer.cpp" />
+    <ClCompile Include="src\Waffle\LayerStack.cpp" />
     <ClCompile Include="src\Waffle\Log.cpp" />
     <ClCompile Include="src\wfpch.cpp">
       <PrecompiledHeader>Create</PrecompiledHeader>

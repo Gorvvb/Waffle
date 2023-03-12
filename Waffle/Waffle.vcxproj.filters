@@ -37,6 +37,12 @@
     <ClInclude Include="src\Waffle\Events\MouseEvent.h">
       <Filter>Waffle\Events</Filter>
     </ClInclude>
+    <ClInclude Include="src\Waffle\Layer.h">
+      <Filter>Waffle</Filter>
+    </ClInclude>
+    <ClInclude Include="src\Waffle\LayerStack.h">
+      <Filter>Waffle</Filter>
+    </ClInclude>
     <ClInclude Include="src\Waffle\Log.h">
       <Filter>Waffle</Filter>
     </ClInclude>
@@ -50,6 +56,12 @@
       <Filter>Platform</Filter>
     </ClCompile>
     <ClCompile Include="src\Waffle\Application.cpp">
+      <Filter>Waffle</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Waffle\Layer.cpp">
+      <Filter>Waffle</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Waffle\LayerStack.cpp">
       <Filter>Waffle</Filter>
     </ClCompile>
     <ClCompile Include="src\Waffle\Log.cpp">
