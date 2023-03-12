@@ -5,6 +5,9 @@
 #include "Events/Event.h"
 #include "Window.h"
 
+#include "Waffle/Events/ApplicationEvent.h"
+
+
 namespace Waffle {
 
 	class WAFFLE_API Application
@@ -14,7 +17,11 @@ namespace Waffle {
 		virtual ~Application();
 
 		void Run();
+
+		void OnEvent(Event& e);
 	private:
+		bool OnWindowClose(WindowCloseEvent& e);
+
 		std::unique_ptr<Window> m_Window;
 		bool m_Running = true;
 	};
