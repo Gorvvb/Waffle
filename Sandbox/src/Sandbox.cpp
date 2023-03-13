@@ -15,7 +15,7 @@ public:
 
 	void OnEvent(Waffle::Event& event) override
 	{
-		WF_TRACE("{0}", event);
+		//WF_TRACE("{0}", event);
 	}
 };
 
