@@ -13,8 +13,10 @@ outputdir = "%{cfg.buildcfg}-%{cfg.system}-%{cfg.architecture}"
 
 Includedir = {}
 Includedir["GLFW"] = "Waffle/vendor/GLFW/include"
+Includedir["GLAD"] = "Waffle/vendor/GLAD/include"
 
 include "Waffle/vendor/GLFW"
+include "Waffle/vendor/GLAD"
 
 project "Waffle"
     location "Waffle"
@@ -37,12 +39,14 @@ project "Waffle"
     {
         "%{prj.name}/vendor/spdlog/include",
         "%{prj.name}/src",
-        "%{Includedir.GLFW}"
+        "%{Includedir.GLFW}",
+        "%{Includedir.GLAD}"
     }
 
     links
     {
         "GLFW",
+        "GLAD",
         "opengl32.lib"
     }
 
@@ -54,7 +58,8 @@ project "Waffle"
         defines
         {
             "WF_PLATFORM_WINDOWS",
-            "WF_BUILD_DLL"
+            "WF_BUILD_DLL",
+            "GLFW_INCLUDE_NONE"
         }
 
         postbuildcommands
