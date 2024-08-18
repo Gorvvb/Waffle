@@ -1,5 +1,7 @@
 # Directories
 .vs/
+x64/
+Entropy/x64/
 bin/
 bin-int/
 

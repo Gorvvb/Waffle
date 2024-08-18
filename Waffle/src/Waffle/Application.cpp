@@ -6,12 +6,17 @@
 #include <glad/glad.h>
 
 
-#define BIND_EVENT_FN(x) std::bind(&x, this, std::placeholders::_1)
-
 namespace Waffle {
+
+#define BIND_EVENT_FN(x) std::bind(&x, this, std::placeholders::_1) // place outsideo of namespace if it doesn't work
+
+	Application* Application::s_Instance = nullptr;
 
 	Application::Application()
 	{
+		WF_CORE_ASSERT(!s_Instance, "Application already exists!");
+		s_Instance = this;
+
 		m_Window = std::unique_ptr<Window>(Window::Create());
 		m_Window->SetEventCallback(BIND_EVENT_FN(Application::OnEvent));
 	}
@@ -23,11 +28,13 @@ namespace Waffle {
 	void Application::PushLayer(Layer* layer)
 	{
 		m_LayerStack.PushLayer(layer);
+		layer->OnAttach();
 	}
 
 	void Application::PushOverlay(Layer* layer)
 	{
 		m_LayerStack.PushOverlay(layer);
+		layer->OnAttach();
 	}
 
 	void Application::OnEvent(Event& e)
@@ -47,7 +54,7 @@ namespace Waffle {
 	{
 		while (m_Running)
 		{
-			glClearColor(0.2f, 0.3f, 0.3f, 1.0f); // glClearColor(1, 0, 1, 1);
+			glClearColor(1, 0, 1, 1);
 			glClear(GL_COLOR_BUFFER_BIT);
 
 			for (Layer* layer : m_LayerStack)

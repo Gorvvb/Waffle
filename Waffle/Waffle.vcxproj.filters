@@ -4,16 +4,31 @@
     <Filter Include="Platform">
       <UniqueIdentifier>{2AC788B4-1694-E3BF-3FAD-D1672BD9184E}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Platform\OpenGL">
+      <UniqueIdentifier>{1E7D2C1D-8A08-9AE1-9319-1DD6FF23F6E1}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Platform\Windows">
+      <UniqueIdentifier>{64FBD71A-50F4-F66C-7926-DCF1657ED678}</UniqueIdentifier>
+    </Filter>
     <Filter Include="Waffle">
       <UniqueIdentifier>{3ACBE4D9-266D-0FB0-0F28-2304FB689600}</UniqueIdentifier>
     </Filter>
     <Filter Include="Waffle\Events">
       <UniqueIdentifier>{DE5192D7-4A12-0E0E-134D-578B7FCC52EA}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Waffle\ImGui">
+      <UniqueIdentifier>{E443CB06-D0A6-5AAB-792C-9361656E262E}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="src\Platform\WindowsWindow.h">
-      <Filter>Platform</Filter>
+    <ClInclude Include="src\Platform\OpenGL\ImGuiOpenGLRenderer.h">
+      <Filter>Platform\OpenGL</Filter>
+    </ClInclude>
+    <ClInclude Include="src\Platform\OpenGL\imgui_impl_opengl3_loader.h">
+      <Filter>Platform\OpenGL</Filter>
+    </ClInclude>
+    <ClInclude Include="src\Platform\Windows\WindowsWindow.h">
+      <Filter>Platform\Windows</Filter>
     </ClInclude>
     <ClInclude Include="src\Waffle.h" />
     <ClInclude Include="src\Waffle\Application.h">
@@ -37,6 +52,9 @@
     <ClInclude Include="src\Waffle\Events\MouseEvent.h">
       <Filter>Waffle\Events</Filter>
     </ClInclude>
+    <ClInclude Include="src\Waffle\ImGui\ImGuiLayer.h">
+      <Filter>Waffle\ImGui</Filter>
+    </ClInclude>
     <ClInclude Include="src\Waffle\Layer.h">
       <Filter>Waffle</Filter>
     </ClInclude>
@@ -52,11 +70,17 @@
     <ClInclude Include="src\wfpch.h" />
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="src\Platform\WindowsWindow.cpp">
-      <Filter>Platform</Filter>
+    <ClCompile Include="src\Platform\OpenGL\ImGuiOpenGLRenderer.cpp">
+      <Filter>Platform\OpenGL</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Platform\Windows\WindowsWindow.cpp">
+      <Filter>Platform\Windows</Filter>
     </ClCompile>
     <ClCompile Include="src\Waffle\Application.cpp">
       <Filter>Waffle</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Waffle\ImGui\ImGuiLayer.cpp">
+      <Filter>Waffle\ImGui</Filter>
     </ClCompile>
     <ClCompile Include="src\Waffle\Layer.cpp">
       <Filter>Waffle</Filter>
