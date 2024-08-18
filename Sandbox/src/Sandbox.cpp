@@ -10,7 +10,7 @@ public:
 
 	void OnUpdate() override
 	{
-		WF_INFO("ExampleLayer::Update");
+		//WF_INFO("ExampleLayer::Update");
 	}
 
 	void OnEvent(Waffle::Event& event) override
@@ -25,6 +25,7 @@ public:
 	Sandbox()
 	{
 		PushLayer(new ExampleLayer());
+		PushOverlay(new Waffle::ImGuiLayer());
 	}
 	
 	~Sandbox()

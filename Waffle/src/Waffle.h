@@ -6,6 +6,8 @@
 #include "Waffle/Layer.h"
 #include "Waffle/Log.h"
 
+#include "Waffle/ImGui/ImGuiLayer.h"
+
 // ---Entry Point--------------------
 #include "Waffle/EntryPoint.h"
 // ----------------------------------
