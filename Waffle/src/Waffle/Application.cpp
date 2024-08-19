@@ -1,14 +1,12 @@
 #include "wfpch.h"
 #include "Application.h"
+#include "Input.h"
 
 #include "Waffle/Log.h"
 
 #include <glad/glad.h>
 
-
 namespace Waffle {
-
-#define BIND_EVENT_FN(x) std::bind(&x, this, std::placeholders::_1) // place outsideo of namespace if it doesn't work
 
 	Application* Application::s_Instance = nullptr;
 
@@ -18,7 +16,7 @@ namespace Waffle {
 		s_Instance = this;
 
 		m_Window = std::unique_ptr<Window>(Window::Create());
-		m_Window->SetEventCallback(BIND_EVENT_FN(Application::OnEvent));
+		m_Window->SetEventCallback(WF_BIND_EVENT_FN(Application::OnEvent));
 	}
 
 	Application::~Application()
@@ -40,7 +38,7 @@ namespace Waffle {
 	void Application::OnEvent(Event& e)
 	{
 		EventDispatcher dispacher(e);
-		dispacher.Dispatch<WindowCloseEvent>(BIND_EVENT_FN(Application::OnWindowClose));
+		dispacher.Dispatch<WindowCloseEvent>(WF_BIND_EVENT_FN(Application::OnWindowClose));
 
 		for (auto it = m_LayerStack.end(); it != m_LayerStack.begin();)
 		{

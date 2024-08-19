@@ -27,6 +27,9 @@
     <ClInclude Include="src\Platform\OpenGL\imgui_impl_opengl3_loader.h">
       <Filter>Platform\OpenGL</Filter>
     </ClInclude>
+    <ClInclude Include="src\Platform\Windows\WindowsInput.h">
+      <Filter>Platform\Windows</Filter>
+    </ClInclude>
     <ClInclude Include="src\Platform\Windows\WindowsWindow.h">
       <Filter>Platform\Windows</Filter>
     </ClInclude>
@@ -55,6 +58,12 @@
     <ClInclude Include="src\Waffle\ImGui\ImGuiLayer.h">
       <Filter>Waffle\ImGui</Filter>
     </ClInclude>
+    <ClInclude Include="src\Waffle\Input.h">
+      <Filter>Waffle</Filter>
+    </ClInclude>
+    <ClInclude Include="src\Waffle\KeyCodes.h">
+      <Filter>Waffle</Filter>
+    </ClInclude>
     <ClInclude Include="src\Waffle\Layer.h">
       <Filter>Waffle</Filter>
     </ClInclude>
@@ -62,6 +71,9 @@
       <Filter>Waffle</Filter>
     </ClInclude>
     <ClInclude Include="src\Waffle\Log.h">
+      <Filter>Waffle</Filter>
+    </ClInclude>
+    <ClInclude Include="src\Waffle\MouseButtonCodes.h">
       <Filter>Waffle</Filter>
     </ClInclude>
     <ClInclude Include="src\Waffle\Window.h">
@@ -72,6 +84,9 @@
   <ItemGroup>
     <ClCompile Include="src\Platform\OpenGL\ImGuiOpenGLRenderer.cpp">
       <Filter>Platform\OpenGL</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Platform\Windows\WindowsInput.cpp">
+      <Filter>Platform\Windows</Filter>
     </ClCompile>
     <ClCompile Include="src\Platform\Windows\WindowsWindow.cpp">
       <Filter>Platform\Windows</Filter>
