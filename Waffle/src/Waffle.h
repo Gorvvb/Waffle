@@ -6,6 +6,10 @@
 #include "Waffle/Layer.h"
 #include "Waffle/Log.h"
 
+#include "Waffle/Input.h"
+#include "Waffle/KeyCodes.h"
+#include "Waffle/MouseButtonCodes.h"
+
 #include "Waffle/ImGui/ImGuiLayer.h"
 
 // ---Entry Point--------------------

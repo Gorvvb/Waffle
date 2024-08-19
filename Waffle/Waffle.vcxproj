@@ -157,6 +157,7 @@
   <ItemGroup>
     <ClInclude Include="src\Platform\OpenGL\ImGuiOpenGLRenderer.h" />
     <ClInclude Include="src\Platform\OpenGL\imgui_impl_opengl3_loader.h" />
+    <ClInclude Include="src\Platform\Windows\WindowsInput.h" />
     <ClInclude Include="src\Platform\Windows\WindowsWindow.h" />
     <ClInclude Include="src\Waffle.h" />
     <ClInclude Include="src\Waffle\Application.h" />
@@ -167,14 +168,18 @@
     <ClInclude Include="src\Waffle\Events\KeyEvent.h" />
     <ClInclude Include="src\Waffle\Events\MouseEvent.h" />
     <ClInclude Include="src\Waffle\ImGui\ImGuiLayer.h" />
+    <ClInclude Include="src\Waffle\Input.h" />
+    <ClInclude Include="src\Waffle\KeyCodes.h" />
     <ClInclude Include="src\Waffle\Layer.h" />
     <ClInclude Include="src\Waffle\LayerStack.h" />
     <ClInclude Include="src\Waffle\Log.h" />
+    <ClInclude Include="src\Waffle\MouseButtonCodes.h" />
     <ClInclude Include="src\Waffle\Window.h" />
     <ClInclude Include="src\wfpch.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\Platform\OpenGL\ImGuiOpenGLRenderer.cpp" />
+    <ClCompile Include="src\Platform\Windows\WindowsInput.cpp" />
     <ClCompile Include="src\Platform\Windows\WindowsWindow.cpp" />
     <ClCompile Include="src\Waffle\Application.cpp" />
     <ClCompile Include="src\Waffle\ImGui\ImGuiLayer.cpp" />
