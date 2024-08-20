@@ -23,8 +23,10 @@ include "Waffle/vendor/imgui"
 
 project "Waffle"
     location "Waffle"
-    kind "SharedLib"
+    kind "StaticLib"
     language "C++"
+    cppdialect "C++20"
+    staticruntime "on"
 
     targetdir ("bin/" .. outputdir .. "/%{prj.name}")
     objdir ("bin-int/" .. outputdir .. "/%{prj.name}")
@@ -38,6 +40,11 @@ project "Waffle"
         "%{prj.name}/src/**.cpp",
         "%{prj.name}/vendor/glm/glm/**.hpp",
         "%{prj.name}/vendor/glm/glm/**.inl"
+    }
+
+    defines
+    {
+        "_CRT_SECURE_NO_WARNINGS"
     }
 
     includedirs
@@ -59,8 +66,6 @@ project "Waffle"
     }
 
     filter "system:windows"
-        cppdialect "C++20"
-        staticruntime "On"
         systemversion "latest"
 
         defines
@@ -69,31 +74,25 @@ project "Waffle"
             "WF_BUILD_DLL",
             "GLFW_INCLUDE_NONE"
         }
-
-        postbuildcommands
-        {
-            ("{COPY} %{cfg.buildtarget.relpath} \"../bin/" .. outputdir .. "/Sandbox/\"")
-        }
     
     filter "configurations:Debug"
         defines "WF_DEBUG"
-        buildoptions "/MDd"
-        symbols "On"
+        symbols "on"
     
     filter "configurations:Release"
         defines "WF_RELEASE"
-        buildoptions "/MD"
-        optimize "On"
+        optimize "on"
     
     filter "configurations:Dist"
         defines "WF_DIST"
-        buildoptions "/MD"
-        optimize "On"
+        optimize "on"
 
 project "Sandbox"
         location "Sandbox"
         kind "ConsoleApp"
         language "C++"
+        cppdialect "C++20"
+        staticruntime "on"
 
         targetdir ("bin/" .. outputdir .. "/%{prj.name}")
         objdir ("bin-int/" .. outputdir .. "/%{prj.name}")
@@ -108,7 +107,7 @@ project "Sandbox"
         {
             "Waffle/vendor/spdlog/include",
             "Waffle/src",
-			"Waffle/vendor",
+            "Waffle/vendor",
             "%{Includedir.glm}"
         }
 
@@ -118,8 +117,6 @@ project "Sandbox"
         }
 
         filter "system:windows"
-            cppdialect "C++20"
-            staticruntime "On"
             systemversion "latest"
 
             defines
@@ -129,15 +126,12 @@ project "Sandbox"
         
         filter "configurations:Debug"
         defines "WF_DEBUG"
-        buildoptions "/MDd"
-            symbols "On"
+            symbols "on"
         
         filter "configurations:Release"
             defines "WF_RELEASE"
-            buildoptions "/MD"
-            optimize "On"
+            optimize "on"
         
         filter "configurations:Dist"
             defines "WF_DIST"
-            buildoptions "/MD"
-            optimize "On"
+            optimize "on"
