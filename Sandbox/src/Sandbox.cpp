@@ -12,7 +12,6 @@ public:
 
 	void OnUpdate() override
 	{
-		//WF_INFO("ExampleLayer::Update");
 		if (Waffle::Input::IsKeyPressed(WF_KEY_TAB))
 			WF_TRACE("Tab key is pressed (POLL)!");
 	}
@@ -46,7 +45,6 @@ public:
 	
 	~Sandbox()
 	{
-
 	}
 };
 
