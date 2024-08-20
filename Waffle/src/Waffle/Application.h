@@ -7,6 +7,7 @@
 #include "Waffle/Events/Event.h"
 #include "Waffle/Events/ApplicationEvent.h"
 
+#include "Waffle/ImGui/ImGuiLayer.h"
 
 namespace Waffle {
 
@@ -23,13 +24,13 @@ namespace Waffle {
 		void PushLayer(Layer* layer);
 		void PushOverlay(Layer* layer);
 
-
 		inline Window& GetWindow() { return *m_Window; }
 		inline static Application& Get() { return *s_Instance; }
 	private:
 		bool OnWindowClose(WindowCloseEvent& e);
 
 		std::unique_ptr<Window> m_Window;
+		ImGuiLayer* m_ImGuiLayer;
 		bool m_Running = true;
 		LayerStack m_LayerStack;
 	private:

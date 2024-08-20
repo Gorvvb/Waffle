@@ -1,5 +1,7 @@
 #include <Waffle.h>
 
+#include "imgui/imgui.h"
+
 class ExampleLayer : public Waffle::Layer
 {
 public:
@@ -13,6 +15,10 @@ public:
 		//WF_INFO("ExampleLayer::Update");
 		if (Waffle::Input::IsKeyPressed(WF_KEY_TAB))
 			WF_TRACE("Tab key is pressed (POLL)!");
+	}
+
+	void OnImGuiRender() override
+	{
 	}
 
 	void OnEvent(Waffle::Event& event) override
@@ -33,7 +39,6 @@ public:
 	Sandbox()
 	{
 		PushLayer(new ExampleLayer());
-		PushOverlay(new Waffle::ImGuiLayer());
 	}
 	
 	~Sandbox()
