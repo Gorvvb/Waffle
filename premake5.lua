@@ -15,6 +15,7 @@ Includedir = {}
 Includedir["GLFW"] = "Waffle/vendor/GLFW/include"
 Includedir["GLAD"] = "Waffle/vendor/GLAD/include"
 Includedir["ImGui"] = "Waffle/vendor/imgui/"
+Includedir["glm"] = "Waffle/vendor/glm"
 
 include "Waffle/vendor/GLFW"
 include "Waffle/vendor/GLAD"
@@ -34,7 +35,9 @@ project "Waffle"
     files
     {
         "%{prj.name}/src/**.h",
-        "%{prj.name}/src/**.cpp"
+        "%{prj.name}/src/**.cpp",
+        "%{prj.name}/vendor/glm/glm/**.hpp",
+        "%{prj.name}/vendor/glm/glm/**.inl"
     }
 
     includedirs
@@ -43,14 +46,15 @@ project "Waffle"
         "%{prj.name}/src",
         "%{Includedir.GLFW}",
         "%{Includedir.GLAD}",
-		"%{Includedir.ImGui}"
+        "%{Includedir.ImGui}",
+        "%{Includedir.glm}"
     }
 
     links
     {
         "GLFW",
         "GLAD",
-		"ImGui",
+        "ImGui",
         "opengl32.lib"
     }
 
@@ -103,7 +107,9 @@ project "Sandbox"
         includedirs
         {
             "Waffle/vendor/spdlog/include",
-            "Waffle/src"
+            "Waffle/src",
+			"Waffle/vendor",
+            "%{Includedir.glm}"
         }
 
         links
