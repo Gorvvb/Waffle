@@ -162,6 +162,7 @@
     <ClInclude Include="src\Waffle\Log.h" />
     <ClInclude Include="src\Waffle\MouseButtonCodes.h" />
     <ClInclude Include="src\Waffle\Renderer\GraphicsContext.h" />
+    <ClInclude Include="src\Waffle\Renderer\Shader.h" />
     <ClInclude Include="src\Waffle\Window.h" />
     <ClInclude Include="src\wfpch.h" />
     <ClInclude Include="vendor\glm\glm\common.hpp" />
@@ -591,6 +592,7 @@
     <ClCompile Include="src\Waffle\Layer.cpp" />
     <ClCompile Include="src\Waffle\LayerStack.cpp" />
     <ClCompile Include="src\Waffle\Log.cpp" />
+    <ClCompile Include="src\Waffle\Renderer\Shader.cpp" />
     <ClCompile Include="src\wfpch.cpp">
       <PrecompiledHeader>Create</PrecompiledHeader>
     </ClCompile>
