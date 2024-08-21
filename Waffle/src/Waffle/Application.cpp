@@ -24,8 +24,6 @@ namespace Waffle {
 		glGenVertexArrays(1, &m_VertexArray);
 		glBindVertexArray(m_VertexArray);
 
-		glGenBuffers(1, &m_VertexBuffer);
-		glBindBuffer(GL_ARRAY_BUFFER, m_VertexBuffer);
 
 		float vertecies[3 * 3] = {
 			-0.5f, -0.5f, 0.0f,
@@ -33,16 +31,14 @@ namespace Waffle {
 			 0.0f,  0.5f, 0.0f,
 		};
 
-		glBufferData(GL_ARRAY_BUFFER, sizeof(vertecies), vertecies, GL_STATIC_DRAW);
+		m_VertexBuffer.reset(VertexBuffer::Create(vertecies, sizeof(vertecies)));
+		//m_VertexBuffer->Bind();
 
 		glEnableVertexAttribArray(0);
 		glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), nullptr);
 
-		glGenBuffers(1, &m_IndexBuffer);
-		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, m_IndexBuffer);
-
-		unsigned int indecies[3] = { 0, 1, 2 };
-		glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(indecies), indecies, GL_STATIC_DRAW);
+		uint32_t indecies[3] = { 0, 1, 2 };
+		m_IndexBuffer.reset(IndexBuffer::Create(indecies, sizeof(indecies) / sizeof(uint32_t)));
 
 		std::string vertexSrc = R"(
 			#version 460 core
@@ -113,7 +109,7 @@ namespace Waffle {
 			m_Shader->Bind();
 
 			glBindVertexArray(m_VertexArray);
-			glDrawElements(GL_TRIANGLES, 3, GL_UNSIGNED_INT, nullptr);
+			glDrawElements(GL_TRIANGLES, m_IndexBuffer->GetCount(), GL_UNSIGNED_INT, nullptr);
 
 			for (Layer* layer : m_LayerStack)
 				layer->OnUpdate();
