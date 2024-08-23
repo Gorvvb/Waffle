@@ -5,6 +5,8 @@
 #include "Waffle/Layer.h"
 #include "Waffle/Log.h"
 
+#include "Waffle/Core/Timestep.h"
+
 #include "Waffle/Input.h"
 #include "Waffle/KeyCodes.h"
 #include "Waffle/MouseButtonCodes.h"

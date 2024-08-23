@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Waffle/Core.h"
+#include "Waffle/Core/Timestep.h"
 #include "Waffle/Events/Event.h"
 
 namespace Waffle {
@@ -13,7 +14,7 @@ namespace Waffle {
 
 		virtual void OnAttach() {}
 		virtual void OnDetach() {}
-		virtual void OnUpdate() {}
+		virtual void OnUpdate(Timestep ts) {}
 		virtual void OnImGuiRender() {}
 		virtual void OnEvent(Event& e) {}
 

@@ -152,6 +152,7 @@
     <ClInclude Include="src\Waffle.h" />
     <ClInclude Include="src\Waffle\Application.h" />
     <ClInclude Include="src\Waffle\Core.h" />
+    <ClInclude Include="src\Waffle\Core\Timestep.h" />
     <ClInclude Include="src\Waffle\EntryPoint.h" />
     <ClInclude Include="src\Waffle\Events\ApplicationEvent.h" />
     <ClInclude Include="src\Waffle\Events\Event.h" />
