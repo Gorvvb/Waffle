@@ -7,6 +7,8 @@
 #include "Waffle/Events/Event.h"
 #include "Waffle/Events/ApplicationEvent.h"
 
+#include "Waffle/Core/Timestep.h"
+
 #include "Waffle/ImGui/ImGuiLayer.h"
 
 namespace Waffle {
@@ -18,6 +20,8 @@ namespace Waffle {
 		ImGuiLayer* m_ImGuiLayer;
 		bool m_Running = true;
 		LayerStack m_LayerStack;
+
+		float m_lastFrameTime = 0.0f;
 
 		static Application* s_Instance;
 	public:

@@ -119,21 +119,21 @@ public:
 		m_BlueShader.reset(new Waffle::Shader(blueVertextSrc, blueFragmentSrc));
 	}
 
-	void OnUpdate() override
+	void OnUpdate(Waffle::Timestep dt) override
 	{
 		if(Waffle::Input::IsKeyPressed(WF_KEY_LEFT))
-			m_CameraPosition.x -= m_CameraMoveSpeed;
+			m_CameraPosition.x -= m_CameraMoveSpeed * dt;
 		else if (Waffle::Input::IsKeyPressed(WF_KEY_RIGHT))
-			m_CameraPosition.x += m_CameraMoveSpeed;
+			m_CameraPosition.x += m_CameraMoveSpeed * dt;
 		if (Waffle::Input::IsKeyPressed(WF_KEY_UP))
-			m_CameraPosition.y += m_CameraMoveSpeed;
+			m_CameraPosition.y += m_CameraMoveSpeed * dt;
 		else if (Waffle::Input::IsKeyPressed(WF_KEY_DOWN))
-			m_CameraPosition.y -= m_CameraMoveSpeed;
+			m_CameraPosition.y -= m_CameraMoveSpeed * dt;
 
 		if (Waffle::Input::IsKeyPressed(WF_KEY_A))
-			m_CameraRotation += m_CameraRotationSpeed;
+			m_CameraRotation += m_CameraRotationSpeed * dt;
 		else if (Waffle::Input::IsKeyPressed(WF_KEY_D))
-			m_CameraRotation -= m_CameraRotationSpeed;
+			m_CameraRotation -= m_CameraRotationSpeed * dt;
 
 		Waffle::RenderCommand::SetClearColor({ 0.2f, 0.2f, 0.2f, 1.0f });
 		Waffle::RenderCommand::Clear();
@@ -166,9 +166,9 @@ private:
 
 	Waffle::OrthographicCamera m_Camera;
 	glm::vec3 m_CameraPosition;
-	float m_CameraMoveSpeed = 0.02f;
+	float m_CameraMoveSpeed = 5.0f;
 	float m_CameraRotation = 0.0f;
-	float m_CameraRotationSpeed = 0.5f;
+	float m_CameraRotationSpeed = 180.0f;
 };
 
 class Sandbox : public Waffle::Application
