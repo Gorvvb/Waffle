@@ -19,6 +19,7 @@
 
 #include "Waffle/Renderer/Buffer.h"
 #include "Waffle/Renderer/Shader.h"
+#include "Waffle/Renderer/Texture.h"
 #include "Waffle/Renderer/VertexArray.h"
 
 #include "Waffle/Renderer/OrthographicCamera.h"

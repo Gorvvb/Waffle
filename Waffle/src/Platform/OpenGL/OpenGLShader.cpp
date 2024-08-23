@@ -100,10 +100,16 @@ namespace Waffle {
 		glUseProgram(0);
 	}
 
-	void OpenGLShader::UploadUniformFloat(const std::string& name, const float value)
+	void OpenGLShader::UploadUniformInt(const std::string& name, int value)
 	{
 		GLint location = glGetUniformLocation(m_RendererID, name.c_str());
 		glUniform1i(location, value);
+	}
+
+	void OpenGLShader::UploadUniformFloat(const std::string& name, const float value)
+	{
+		GLint location = glGetUniformLocation(m_RendererID, name.c_str());
+		glUniform1f(location, value);
 	}
 
 	void OpenGLShader::UploadUniformFloat2(const std::string& name, const glm::vec2& values)

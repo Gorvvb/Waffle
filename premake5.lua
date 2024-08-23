@@ -14,8 +14,9 @@ outputdir = "%{cfg.buildcfg}-%{cfg.system}-%{cfg.architecture}"
 Includedir = {}
 Includedir["GLFW"] = "Waffle/vendor/GLFW/include"
 Includedir["GLAD"] = "Waffle/vendor/GLAD/include"
-Includedir["ImGui"] = "Waffle/vendor/imgui/"
+Includedir["ImGui"] = "Waffle/vendor/imgui"
 Includedir["glm"] = "Waffle/vendor/glm"
+Includedir["stb_image"] = "Waffle/vendor/stb_image"
 
 include "Waffle/vendor/GLFW"
 include "Waffle/vendor/GLAD"
@@ -38,6 +39,8 @@ project "Waffle"
     {
         "%{prj.name}/src/**.h",
         "%{prj.name}/src/**.cpp",
+        "%{prj.name}/vendor/stb_image/**.h",
+        "%{prj.name}/vendor/stb_image/**.cpp",
         "%{prj.name}/vendor/glm/glm/**.hpp",
         "%{prj.name}/vendor/glm/glm/**.inl"
     }
@@ -54,7 +57,8 @@ project "Waffle"
         "%{Includedir.GLFW}",
         "%{Includedir.GLAD}",
         "%{Includedir.ImGui}",
-        "%{Includedir.glm}"
+        "%{Includedir.glm}",
+        "%{Includedir.stb_image}"
     }
 
     links
