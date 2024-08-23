@@ -7,7 +7,6 @@
 #include "glm/gtc/matrix_transform.hpp"
 #include "glm/gtc/type_ptr.hpp"
 
-
 class ExampleLayer : public Waffle::Layer
 {
 public:
@@ -40,16 +39,19 @@ public:
 
 		m_SquareVA.reset(Waffle::VertexArray::Create());
 
-		float squareVertecies[4 * 3] = {
-			-0.5f, -0.5f, 0.0f,
-			 0.5f, -0.5f, 0.0f,
-			 0.5f,  0.5f, 0.0f,
-			-0.5f,  0.5f, 0.0f,
+		float squareVertecies[4 * 5] = {
+			-0.5f, -0.5f, 0.0f, 0.0f, 0.0f,
+			 0.5f, -0.5f, 0.0f, 1.0f, 0.0f,
+			 0.5f,  0.5f, 0.0f, 1.0f, 1.0f,
+			-0.5f,  0.5f, 0.0f, 0.0f, 1.0f
 		};
 
 		Waffle::Ref<Waffle::VertexBuffer> squareVB;
 		squareVB.reset(Waffle::VertexBuffer::Create(squareVertecies, sizeof(squareVertecies)));
-		squareVB->SetLayout({ {Waffle::ShaderDataType::Float3, "a_Position"} });
+		squareVB->SetLayout({ 
+			{ Waffle::ShaderDataType::Float3, "a_Position" },
+			{ Waffle::ShaderDataType::Float2, "a_TexCoord" }
+			});
 		m_SquareVA->AddVertexBuffer(squareVB);
 
 		uint32_t squareIndecies[6] = { 0, 1, 2, 2, 3, 0 };
@@ -127,6 +129,47 @@ public:
 			)";
 
 		m_FlatColorShader.reset(Waffle::Shader::Create(flatColorVertextSrc, flatColorFragmentSrc));
+
+		std::string textureShaderVertextSrc = R"(
+			#version 460 core
+			
+			layout(location = 0) in vec3 a_Position;
+			layout(location = 1) in vec2 a_TexCoord;
+
+			uniform mat4 u_ViewProjection;
+			uniform mat4 u_Transform;
+
+			out vec2 v_TexCoord;
+
+			void main()
+			{
+				v_TexCoord = a_TexCoord;
+				gl_Position = u_ViewProjection * u_Transform * vec4(a_Position, 1.0);
+			}
+			)";
+
+		std::string textureShaderFragmentSrc = R"(
+			#version 460 core
+			
+			layout(location = 0) out vec4 color;
+
+			in vec2 v_TexCoord;
+
+			uniform sampler2D u_Texture;
+
+			void main()
+			{
+				color = texture(u_Texture, v_TexCoord);
+			}
+			)";
+
+		m_TextureShader.reset(Waffle::Shader::Create(textureShaderVertextSrc, textureShaderFragmentSrc));
+		m_Texture = Waffle::Texture2D::Create("assets/textures/Checkerboard.png");
+
+		m_GorvLogo = Waffle::Texture2D::Create("assets/textures/logo.png");
+
+		std::dynamic_pointer_cast<Waffle::OpenGLShader>(m_TextureShader)->Bind();
+		std::dynamic_pointer_cast<Waffle::OpenGLShader>(m_TextureShader)->UploadUniformInt("u_Texture", 0);
 	}
 
 	void OnUpdate(Waffle::Timestep dt) override
@@ -165,7 +208,15 @@ public:
 				Waffle::Renderer::Submit(m_FlatColorShader, m_SquareVA, transform);
 			}
 		}
-		Waffle::Renderer::Submit(m_Shader, m_VertexArray);
+
+		m_Texture->Bind();
+		Waffle::Renderer::Submit(m_TextureShader, m_SquareVA, glm::scale(glm::mat4(1.0f), glm::vec3(1.5f)));
+
+		m_GorvLogo->Bind();
+		Waffle::Renderer::Submit(m_TextureShader, m_SquareVA, glm::scale(glm::mat4(1.0f), glm::vec3(1.5f)));
+		
+		// Triangle
+		//Waffle::Renderer::Submit(m_Shader, m_VertexArray);
 
 		Waffle::Renderer::EndScene();
 	}
@@ -183,8 +234,10 @@ private:
 	Waffle::Ref<Waffle::Shader> m_Shader;
 	Waffle::Ref<Waffle::VertexArray> m_VertexArray;
 
-	Waffle::Ref<Waffle::Shader> m_FlatColorShader;
+	Waffle::Ref<Waffle::Shader> m_FlatColorShader, m_TextureShader;
 	Waffle::Ref<Waffle::VertexArray> m_SquareVA;
+
+	Waffle::Ref<Waffle::Texture2D> m_Texture, m_GorvLogo;
 
 	Waffle::OrthographicCamera m_Camera;
 	glm::vec3 m_CameraPosition;

@@ -18,6 +18,8 @@ namespace Waffle {
 
 		static SceneData* m_SceneData;
 	public:
+		static void Init();
+
 		static void BeginScene(OrthographicCamera& camera);
 		static void EndScene();
 
