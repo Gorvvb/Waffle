@@ -1360,6 +1360,7 @@
     <ClInclude Include="src\Platform\OpenGL\OpenGlRendererAPI.h" />
     <ClInclude Include="src\Waffle\Renderer\OrthographicCamera.h" />
     <ClInclude Include="src\Waffle\Core\Timestep.h" />
+    <ClInclude Include="src\Platform\OpenGL\OpenGLShader.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\Platform\Windows\WindowsInput.cpp">
@@ -1400,5 +1401,6 @@
     <ClCompile Include="src\Waffle\Renderer\RenderCommand.cpp" />
     <ClCompile Include="src\Platform\OpenGL\OpenGlRendererAPI.cpp" />
     <ClCompile Include="src\Waffle\Renderer\OrthographicCamera.cpp" />
+    <ClCompile Include="src\Platform\OpenGL\OpenGLShader.cpp" />
   </ItemGroup>
 </Project>
