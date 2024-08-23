@@ -13,6 +13,8 @@
 #include "Waffle/Renderer/Buffer.h"
 #include "Waffle/Renderer/VertexArray.h"
 
+#include "Waffle/Renderer/OrthographicCamera.h"
+
 namespace Waffle {
 
 	class WAFFLE_API Application
@@ -43,6 +45,8 @@ namespace Waffle {
 
 		std::shared_ptr<Shader> m_BlueShader;
 		std::shared_ptr<VertexArray> m_SquareVA;
+
+		OrthographicCamera m_Camera;
 	private:
 		static Application* s_Instance;
 	};
