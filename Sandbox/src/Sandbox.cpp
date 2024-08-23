@@ -22,7 +22,7 @@ public:
 			 0.0f,  0.5f, 0.0f, 0.8f, 0.8f, 0.2f, 1.0f,
 		};
 
-		std::shared_ptr<Waffle::VertexBuffer> vertexBuffer;
+		Waffle::Ref<Waffle::VertexBuffer> vertexBuffer;
 		vertexBuffer.reset(Waffle::VertexBuffer::Create(vertecies, sizeof(vertecies)));
 
 		Waffle::BufferLayout layout = {
@@ -34,7 +34,7 @@ public:
 		m_VertexArray->AddVertexBuffer(vertexBuffer);
 
 		uint32_t indecies[3] = { 0, 1, 2 };
-		std::shared_ptr<Waffle::IndexBuffer> indexBuffer;
+		Waffle::Ref<Waffle::IndexBuffer> indexBuffer;
 		indexBuffer.reset(Waffle::IndexBuffer::Create(indecies, sizeof(indecies) / sizeof(uint32_t)));
 		m_VertexArray->SetIndexBuffer(indexBuffer);
 
@@ -47,13 +47,13 @@ public:
 			-0.5f,  0.5f, 0.0f,
 		};
 
-		std::shared_ptr<Waffle::VertexBuffer> squareVB;
+		Waffle::Ref<Waffle::VertexBuffer> squareVB;
 		squareVB.reset(Waffle::VertexBuffer::Create(squareVertecies, sizeof(squareVertecies)));
 		squareVB->SetLayout({ {Waffle::ShaderDataType::Float3, "a_Position"} });
 		m_SquareVA->AddVertexBuffer(squareVB);
 
 		uint32_t squareIndecies[6] = { 0, 1, 2, 2, 3, 0 };
-		std::shared_ptr<Waffle::IndexBuffer> squareIB;
+		Waffle::Ref<Waffle::IndexBuffer> squareIB;
 		squareIB.reset(Waffle::IndexBuffer::Create(squareIndecies, sizeof(squareIndecies) / sizeof(uint32_t)));
 		m_SquareVA->SetIndexBuffer(squareIB);
 
@@ -180,11 +180,11 @@ public:
 	void OnEvent(Waffle::Event& event) override { }
 
 private:
-	std::shared_ptr<Waffle::Shader> m_Shader;
-	std::shared_ptr<Waffle::VertexArray> m_VertexArray;
+	Waffle::Ref<Waffle::Shader> m_Shader;
+	Waffle::Ref<Waffle::VertexArray> m_VertexArray;
 
-	std::shared_ptr<Waffle::Shader> m_FlatColorShader;
-	std::shared_ptr<Waffle::VertexArray> m_SquareVA;
+	Waffle::Ref<Waffle::Shader> m_FlatColorShader;
+	Waffle::Ref<Waffle::VertexArray> m_SquareVA;
 
 	Waffle::OrthographicCamera m_Camera;
 	glm::vec3 m_CameraPosition;
