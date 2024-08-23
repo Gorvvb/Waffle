@@ -9,16 +9,17 @@
 
 #include "Waffle/ImGui/ImGuiLayer.h"
 
-#include "Waffle/Renderer/Shader.h"
-#include "Waffle/Renderer/Buffer.h"
-#include "Waffle/Renderer/VertexArray.h"
-
-#include "Waffle/Renderer/OrthographicCamera.h"
-
 namespace Waffle {
 
-	class WAFFLE_API Application
+	class Application
 	{
+	private:
+		std::unique_ptr<Window> m_Window;
+		ImGuiLayer* m_ImGuiLayer;
+		bool m_Running = true;
+		LayerStack m_LayerStack;
+
+		static Application* s_Instance;
 	public:
 		Application();
 		virtual ~Application();
@@ -34,21 +35,6 @@ namespace Waffle {
 		inline static Application& Get() { return *s_Instance; }
 	private:
 		bool OnWindowClose(WindowCloseEvent& e);
-
-		std::unique_ptr<Window> m_Window;
-		ImGuiLayer* m_ImGuiLayer;
-		bool m_Running = true;
-		LayerStack m_LayerStack;
-
-		std::shared_ptr<Shader> m_Shader;
-		std::shared_ptr<VertexArray> m_VertexArray;
-
-		std::shared_ptr<Shader> m_BlueShader;
-		std::shared_ptr<VertexArray> m_SquareVA;
-
-		OrthographicCamera m_Camera;
-	private:
-		static Application* s_Instance;
 	};
 
 	// Remember to define in client
