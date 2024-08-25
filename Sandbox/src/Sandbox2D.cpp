@@ -36,9 +36,6 @@ void Sandbox2D::OnUpdate(Waffle::Timestep dt)
 	Waffle::Renderer2D::DrawQuad({ 0.0f, 0.0f, -0.1f }, { 10.0f, 10.0f }, m_CheckerboardTexture);
 
 	Waffle::Renderer2D::EndScene();
-
-	//std::dynamic_pointer_cast<Waffle::OpenGLShader>(m_FlatColorShader)->Bind();
-	//std::dynamic_pointer_cast<Waffle::OpenGLShader>(m_FlatColorShader)->UploadUniformFloat4("u_Color", m_SquareColor);
 }
 
 void Sandbox2D::OnImGuiRender()
