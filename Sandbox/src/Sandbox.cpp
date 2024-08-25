@@ -11,7 +11,7 @@ class ExampleLayer : public Waffle::Layer
 {
 public:
 	ExampleLayer()
-		: Layer("Example"), m_Camera(-1.6f, 1.6f, -0.9f, 0.9f), m_CameraPosition(0.0f)
+		: Layer("Example"), m_CameraController(1280.0f / 720.0f)
 	{
 		m_VertexArray.reset(Waffle::VertexArray::Create());
 
@@ -94,7 +94,7 @@ public:
 			}
 			)";
 
-		m_Shader.reset(Waffle::Shader::Create(vertexSrc, fragmentSrc));
+		m_Shader = Waffle::Shader::Create("VertexPosColor", vertexSrc, fragmentSrc);
 
 		std::string flatColorVertextSrc = R"(
 			#version 460 core
@@ -128,40 +128,28 @@ public:
 			}
 			)";
 
-		m_FlatColorShader.reset(Waffle::Shader::Create(flatColorVertextSrc, flatColorFragmentSrc));
+		m_FlatColorShader = Waffle::Shader::Create("FlatColor", flatColorVertextSrc, flatColorFragmentSrc);
 
-		m_TextureShader.reset(Waffle::Shader::Create("assets/shaders/Texture.glsl"));
+
+		auto textureShader = m_ShaderLibrary.Load("assets/shaders/Texture.glsl");
 		m_Texture = Waffle::Texture2D::Create("assets/textures/Checkerboard.png");
 
 		m_GorvLogo = Waffle::Texture2D::Create("assets/textures/logo.png");
 
-		std::dynamic_pointer_cast<Waffle::OpenGLShader>(m_TextureShader)->Bind();
-		std::dynamic_pointer_cast<Waffle::OpenGLShader>(m_TextureShader)->UploadUniformInt("u_Texture", 0);
+		std::dynamic_pointer_cast<Waffle::OpenGLShader>(textureShader)->Bind();
+		std::dynamic_pointer_cast<Waffle::OpenGLShader>(textureShader)->UploadUniformInt("u_Texture", 0);
 	}
 
 	void OnUpdate(Waffle::Timestep dt) override
 	{
-		if(Waffle::Input::IsKeyPressed(WF_KEY_LEFT))
-			m_CameraPosition.x -= m_CameraMoveSpeed * dt;
-		else if (Waffle::Input::IsKeyPressed(WF_KEY_RIGHT))
-			m_CameraPosition.x += m_CameraMoveSpeed * dt;
-		if (Waffle::Input::IsKeyPressed(WF_KEY_UP))
-			m_CameraPosition.y += m_CameraMoveSpeed * dt;
-		else if (Waffle::Input::IsKeyPressed(WF_KEY_DOWN))
-			m_CameraPosition.y -= m_CameraMoveSpeed * dt;
+		// Update
+		m_CameraController.OnUpdate(dt);
 
-		if (Waffle::Input::IsKeyPressed(WF_KEY_A))
-			m_CameraRotation += m_CameraRotationSpeed * dt;
-		else if (Waffle::Input::IsKeyPressed(WF_KEY_D))
-			m_CameraRotation -= m_CameraRotationSpeed * dt;
-
+		// Render
 		Waffle::RenderCommand::SetClearColor({ 0.2f, 0.2f, 0.2f, 1.0f });
 		Waffle::RenderCommand::Clear();
 
-		m_Camera.SetPosition(m_CameraPosition);
-		m_Camera.SetRotation(m_CameraRotation);
-
-		Waffle::Renderer::BeginScene(m_Camera);
+		Waffle::Renderer::BeginScene(m_CameraController.GetCamera());
 
 		static glm::mat4 scale = glm::scale(glm::mat4(1.0f), glm::vec3(0.1f));
 
@@ -176,11 +164,13 @@ public:
 			}
 		}
 
+		auto textureShader = m_ShaderLibrary.Get("Texture");
+
 		m_Texture->Bind();
-		Waffle::Renderer::Submit(m_TextureShader, m_SquareVA, glm::scale(glm::mat4(1.0f), glm::vec3(1.5f)));
+		Waffle::Renderer::Submit(textureShader, m_SquareVA, glm::scale(glm::mat4(1.0f), glm::vec3(1.5f)));
 
 		m_GorvLogo->Bind();
-		Waffle::Renderer::Submit(m_TextureShader, m_SquareVA, glm::scale(glm::mat4(1.0f), glm::vec3(1.5f)));
+		Waffle::Renderer::Submit(textureShader, m_SquareVA, glm::scale(glm::mat4(1.0f), glm::vec3(1.5f)));
 		
 		// Triangle
 		//Waffle::Renderer::Submit(m_Shader, m_VertexArray);
@@ -195,9 +185,13 @@ public:
 		ImGui::End();
 	}
 
-	void OnEvent(Waffle::Event& event) override { }
+	void OnEvent(Waffle::Event& e) override
+	{
+		m_CameraController.OnEvent(e);
+	}
 
 private:
+	Waffle::ShaderLibrary m_ShaderLibrary;
 	Waffle::Ref<Waffle::Shader> m_Shader;
 	Waffle::Ref<Waffle::VertexArray> m_VertexArray;
 
@@ -206,12 +200,7 @@ private:
 
 	Waffle::Ref<Waffle::Texture2D> m_Texture, m_GorvLogo;
 
-	Waffle::OrthographicCamera m_Camera;
-	glm::vec3 m_CameraPosition;
-	float m_CameraMoveSpeed = 5.0f;
-
-	float m_CameraRotation = 0.0f;
-	float m_CameraRotationSpeed = 180.0f;
+	Waffle::OrthographicCameraController m_CameraController;
 
 	glm::vec3 m_SquareColor = { 0.2f, 0.3f, 0.8f };
 };

@@ -10,6 +10,7 @@
 #include "Waffle/Input.h"
 #include "Waffle/KeyCodes.h"
 #include "Waffle/MouseButtonCodes.h"
+#include "Waffle/OrthographicCameraController.h"
 
 #include "Waffle/ImGui/ImGuiLayer.h"
 

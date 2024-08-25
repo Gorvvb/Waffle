@@ -167,6 +167,7 @@
     <ClInclude Include="src\Waffle\LayerStack.h" />
     <ClInclude Include="src\Waffle\Log.h" />
     <ClInclude Include="src\Waffle\MouseButtonCodes.h" />
+    <ClInclude Include="src\Waffle\OrthographicCameraController.h" />
     <ClInclude Include="src\Waffle\Renderer\Buffer.h" />
     <ClInclude Include="src\Waffle\Renderer\GraphicsContext.h" />
     <ClInclude Include="src\Waffle\Renderer\OrthographicCamera.h" />
@@ -611,6 +612,7 @@
     <ClCompile Include="src\Waffle\Layer.cpp" />
     <ClCompile Include="src\Waffle\LayerStack.cpp" />
     <ClCompile Include="src\Waffle\Log.cpp" />
+    <ClCompile Include="src\Waffle\OrthographicCameraController.cpp" />
     <ClCompile Include="src\Waffle\Renderer\Buffer.cpp" />
     <ClCompile Include="src\Waffle\Renderer\OrthographicCamera.cpp" />
     <ClCompile Include="src\Waffle\Renderer\RenderCommand.cpp" />
