@@ -19,6 +19,9 @@
     <Filter Include="src\Waffle\Core">
       <UniqueIdentifier>{69373AD2-D5C2-A796-DED3-2A8B4ADE0397}</UniqueIdentifier>
     </Filter>
+    <Filter Include="src\Waffle\Debug">
+      <UniqueIdentifier>{A77F8D19-9378-AC6B-BCAA-91F0A8028C77}</UniqueIdentifier>
+    </Filter>
     <Filter Include="src\Waffle\Events">
       <UniqueIdentifier>{35C7C74E-A1DD-C5E4-EA54-510656AA966C}</UniqueIdentifier>
     </Filter>
@@ -117,6 +120,9 @@
     <ClInclude Include="src\Waffle\Core\Window.h">
       <Filter>src\Waffle\Core</Filter>
     </ClInclude>
+    <ClInclude Include="src\Waffle\Debug\Instrumentor.h">
+      <Filter>src\Waffle\Debug</Filter>
+    </ClInclude>
     <ClInclude Include="src\Waffle\Events\ApplicationEvent.h">
       <Filter>src\Waffle\Events</Filter>
     </ClInclude>
@@ -148,6 +154,9 @@
       <Filter>src\Waffle\Renderer</Filter>
     </ClInclude>
     <ClInclude Include="src\Waffle\Renderer\Renderer.h">
+      <Filter>src\Waffle\Renderer</Filter>
+    </ClInclude>
+    <ClInclude Include="src\Waffle\Renderer\Renderer2D.h">
       <Filter>src\Waffle\Renderer</Filter>
     </ClInclude>
     <ClInclude Include="src\Waffle\Renderer\RendererAPI.h">
@@ -1416,7 +1425,6 @@
     <ClInclude Include="vendor\stb_image\stb_image.h">
       <Filter>vendor\stb_image</Filter>
     </ClInclude>
-    <ClInclude Include="src\Waffle\Renderer\Renderer2D.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\Platform\OpenGL\OpenGLBuffer.cpp">
@@ -1476,6 +1484,9 @@
     <ClCompile Include="src\Waffle\Renderer\Renderer.cpp">
       <Filter>src\Waffle\Renderer</Filter>
     </ClCompile>
+    <ClCompile Include="src\Waffle\Renderer\Renderer2D.cpp">
+      <Filter>src\Waffle\Renderer</Filter>
+    </ClCompile>
     <ClCompile Include="src\Waffle\Renderer\RendererAPI.cpp">
       <Filter>src\Waffle\Renderer</Filter>
     </ClCompile>
@@ -1494,6 +1505,5 @@
     <ClCompile Include="vendor\stb_image\stb_image.cpp">
       <Filter>vendor\stb_image</Filter>
     </ClCompile>
-    <ClCompile Include="src\Waffle\Renderer\Renderer2D.cpp" />
   </ItemGroup>
 </Project>

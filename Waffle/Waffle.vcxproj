@@ -164,6 +164,7 @@
     <ClInclude Include="src\Waffle\Core\PlatformDetection.h" />
     <ClInclude Include="src\Waffle\Core\Timestep.h" />
     <ClInclude Include="src\Waffle\Core\Window.h" />
+    <ClInclude Include="src\Waffle\Debug\Instrumentor.h" />
     <ClInclude Include="src\Waffle\Events\ApplicationEvent.h" />
     <ClInclude Include="src\Waffle\Events\Event.h" />
     <ClInclude Include="src\Waffle\Events\KeyEvent.h" />
