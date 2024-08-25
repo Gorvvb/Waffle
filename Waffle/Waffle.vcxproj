@@ -175,6 +175,7 @@
     <ClInclude Include="src\Waffle\Renderer\OrthographicCameraController.h" />
     <ClInclude Include="src\Waffle\Renderer\RenderCommand.h" />
     <ClInclude Include="src\Waffle\Renderer\Renderer.h" />
+    <ClInclude Include="src\Waffle\Renderer\Renderer2D.h" />
     <ClInclude Include="src\Waffle\Renderer\RendererAPI.h" />
     <ClInclude Include="src\Waffle\Renderer\Shader.h" />
     <ClInclude Include="src\Waffle\Renderer\Texture.h" />
@@ -618,6 +619,7 @@
     <ClCompile Include="src\Waffle\Renderer\OrthographicCameraController.cpp" />
     <ClCompile Include="src\Waffle\Renderer\RenderCommand.cpp" />
     <ClCompile Include="src\Waffle\Renderer\Renderer.cpp" />
+    <ClCompile Include="src\Waffle\Renderer\Renderer2D.cpp" />
     <ClCompile Include="src\Waffle\Renderer\RendererAPI.cpp" />
     <ClCompile Include="src\Waffle\Renderer\Shader.cpp" />
     <ClCompile Include="src\Waffle\Renderer\Texture.cpp" />
