@@ -1,7 +1,7 @@
 #pragma once
 
 #include "wfpch.h"
-#include "Waffle/Core.h"
+#include "Waffle/Core/Base.h"
 
 namespace Waffle {
 	// Add buffers to events. Right now we use blocking, witch means when an event occurs it

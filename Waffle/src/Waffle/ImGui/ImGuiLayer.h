@@ -1,6 +1,6 @@
 #pragma once
 
-#include "Waffle/Layer.h"
+#include "Waffle/Core/Layer.h"
 
 #include "Waffle/Events/ApplicationEvent.h"
 #include "Waffle/Events/KeyEvent.h"

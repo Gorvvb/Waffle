@@ -1,6 +1,6 @@
 #pragma once
 
-#include "Waffle/Window.h"
+#include "Waffle/Core/Window.h"
 #include "Waffle/Renderer/GraphicsContext.h"
 
 #include <GLFW/glfw3.h>

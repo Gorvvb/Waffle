@@ -1,5 +1,7 @@
 #pragma once
 
+#include "Waffle/Core/PlatformDetection.h"
+
 #include <iostream>
 #include <memory>
 #include <utility>
@@ -13,7 +15,7 @@
 #include <unordered_map>
 #include <unordered_set>
 
-#include "Waffle/Log.h"
+#include "Waffle/Core/Log.h"
 
 #ifdef WF_PLATFORM_WINDOWS
 #include <Windows.h>

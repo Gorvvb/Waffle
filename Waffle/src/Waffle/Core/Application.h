@@ -1,9 +1,9 @@
 #pragma once
 
-#include "Core.h"
+#include "Waffle/Core/Base.h"
 
-#include "Window.h"
-#include "Waffle/LayerStack.h"
+#include "Waffle/Core/Window.h"
+#include "Waffle/Core/LayerStack.h"
 #include "Waffle/Events/Event.h"
 #include "Waffle/Events/ApplicationEvent.h"
 

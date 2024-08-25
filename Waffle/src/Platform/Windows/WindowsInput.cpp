@@ -1,6 +1,6 @@
 #include "wfpch.h"
 #include "WindowsInput.h"
-#include "Waffle/Application.h"
+#include "Waffle/Core/Application.h"
 
 #include <GLFW/glfw3.h>
 

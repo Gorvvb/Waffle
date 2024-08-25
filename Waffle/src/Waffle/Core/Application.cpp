@@ -1,10 +1,10 @@
 #include "wfpch.h"
 #include "Application.h"
 
-#include "Input.h"
-#include "Renderer/Renderer.h"
+#include "Waffle/Core/Input.h"
+#include "Waffle/Renderer/Renderer.h"
 
-#include "Waffle/Log.h"
+#include "Waffle/Core/Log.h"
 
 #include <GLFW/glfw3.h>
 
