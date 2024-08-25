@@ -76,7 +76,7 @@
       <PrecompiledHeader>Use</PrecompiledHeader>
       <PrecompiledHeaderFile>wfpch.h</PrecompiledHeaderFile>
       <WarningLevel>Level3</WarningLevel>
-      <PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;WF_PLATFORM_WINDOWS;WF_BUILD_DLL;GLFW_INCLUDE_NONE;WF_DEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;WF_BUILD_DLL;GLFW_INCLUDE_NONE;WF_DEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <AdditionalIncludeDirectories>vendor\spdlog\include;src;vendor\GLFW\include;vendor\GLAD\include;vendor\imgui;vendor\glm;vendor\stb_image;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <DebugInformationFormat>EditAndContinue</DebugInformationFormat>
       <Optimization>Disabled</Optimization>
@@ -97,7 +97,7 @@
       <PrecompiledHeader>Use</PrecompiledHeader>
       <PrecompiledHeaderFile>wfpch.h</PrecompiledHeaderFile>
       <WarningLevel>Level3</WarningLevel>
-      <PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;WF_PLATFORM_WINDOWS;WF_BUILD_DLL;GLFW_INCLUDE_NONE;WF_RELEASE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;WF_BUILD_DLL;GLFW_INCLUDE_NONE;WF_RELEASE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <AdditionalIncludeDirectories>vendor\spdlog\include;src;vendor\GLFW\include;vendor\GLAD\include;vendor\imgui;vendor\glm;vendor\stb_image;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <Optimization>Full</Optimization>
       <FunctionLevelLinking>true</FunctionLevelLinking>
@@ -122,7 +122,7 @@
       <PrecompiledHeader>Use</PrecompiledHeader>
       <PrecompiledHeaderFile>wfpch.h</PrecompiledHeaderFile>
       <WarningLevel>Level3</WarningLevel>
-      <PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;WF_PLATFORM_WINDOWS;WF_BUILD_DLL;GLFW_INCLUDE_NONE;WF_DIST;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;WF_BUILD_DLL;GLFW_INCLUDE_NONE;WF_DIST;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <AdditionalIncludeDirectories>vendor\spdlog\include;src;vendor\GLFW\include;vendor\GLAD\include;vendor\imgui;vendor\glm;vendor\stb_image;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <Optimization>Full</Optimization>
       <FunctionLevelLinking>true</FunctionLevelLinking>
@@ -152,32 +152,33 @@
     <ClInclude Include="src\Platform\Windows\WindowsInput.h" />
     <ClInclude Include="src\Platform\Windows\WindowsWindow.h" />
     <ClInclude Include="src\Waffle.h" />
-    <ClInclude Include="src\Waffle\Application.h" />
-    <ClInclude Include="src\Waffle\Core.h" />
+    <ClInclude Include="src\Waffle\Core\Application.h" />
+    <ClInclude Include="src\Waffle\Core\Base.h" />
+    <ClInclude Include="src\Waffle\Core\EntryPoint.h" />
+    <ClInclude Include="src\Waffle\Core\Input.h" />
+    <ClInclude Include="src\Waffle\Core\KeyCodes.h" />
+    <ClInclude Include="src\Waffle\Core\Layer.h" />
+    <ClInclude Include="src\Waffle\Core\LayerStack.h" />
+    <ClInclude Include="src\Waffle\Core\Log.h" />
+    <ClInclude Include="src\Waffle\Core\MouseButtonCodes.h" />
+    <ClInclude Include="src\Waffle\Core\PlatformDetection.h" />
     <ClInclude Include="src\Waffle\Core\Timestep.h" />
-    <ClInclude Include="src\Waffle\EntryPoint.h" />
+    <ClInclude Include="src\Waffle\Core\Window.h" />
     <ClInclude Include="src\Waffle\Events\ApplicationEvent.h" />
     <ClInclude Include="src\Waffle\Events\Event.h" />
     <ClInclude Include="src\Waffle\Events\KeyEvent.h" />
     <ClInclude Include="src\Waffle\Events\MouseEvent.h" />
     <ClInclude Include="src\Waffle\ImGui\ImGuiLayer.h" />
-    <ClInclude Include="src\Waffle\Input.h" />
-    <ClInclude Include="src\Waffle\KeyCodes.h" />
-    <ClInclude Include="src\Waffle\Layer.h" />
-    <ClInclude Include="src\Waffle\LayerStack.h" />
-    <ClInclude Include="src\Waffle\Log.h" />
-    <ClInclude Include="src\Waffle\MouseButtonCodes.h" />
-    <ClInclude Include="src\Waffle\OrthographicCameraController.h" />
     <ClInclude Include="src\Waffle\Renderer\Buffer.h" />
     <ClInclude Include="src\Waffle\Renderer\GraphicsContext.h" />
     <ClInclude Include="src\Waffle\Renderer\OrthographicCamera.h" />
+    <ClInclude Include="src\Waffle\Renderer\OrthographicCameraController.h" />
     <ClInclude Include="src\Waffle\Renderer\RenderCommand.h" />
     <ClInclude Include="src\Waffle\Renderer\Renderer.h" />
     <ClInclude Include="src\Waffle\Renderer\RendererAPI.h" />
     <ClInclude Include="src\Waffle\Renderer\Shader.h" />
     <ClInclude Include="src\Waffle\Renderer\Texture.h" />
     <ClInclude Include="src\Waffle\Renderer\VertexArray.h" />
-    <ClInclude Include="src\Waffle\Window.h" />
     <ClInclude Include="src\wfpch.h" />
     <ClInclude Include="vendor\glm\glm\common.hpp" />
     <ClInclude Include="vendor\glm\glm\detail\_features.hpp" />
@@ -606,15 +607,15 @@
     <ClCompile Include="src\Platform\OpenGL\OpenGlTexture.cpp" />
     <ClCompile Include="src\Platform\Windows\WindowsInput.cpp" />
     <ClCompile Include="src\Platform\Windows\WindowsWindow.cpp" />
-    <ClCompile Include="src\Waffle\Application.cpp" />
+    <ClCompile Include="src\Waffle\Core\Application.cpp" />
+    <ClCompile Include="src\Waffle\Core\Layer.cpp" />
+    <ClCompile Include="src\Waffle\Core\LayerStack.cpp" />
+    <ClCompile Include="src\Waffle\Core\Log.cpp" />
     <ClCompile Include="src\Waffle\ImGui\ImGuiBuild.cpp" />
     <ClCompile Include="src\Waffle\ImGui\ImGuiLayer.cpp" />
-    <ClCompile Include="src\Waffle\Layer.cpp" />
-    <ClCompile Include="src\Waffle\LayerStack.cpp" />
-    <ClCompile Include="src\Waffle\Log.cpp" />
-    <ClCompile Include="src\Waffle\OrthographicCameraController.cpp" />
     <ClCompile Include="src\Waffle\Renderer\Buffer.cpp" />
     <ClCompile Include="src\Waffle\Renderer\OrthographicCamera.cpp" />
+    <ClCompile Include="src\Waffle\Renderer\OrthographicCameraController.cpp" />
     <ClCompile Include="src\Waffle\Renderer\RenderCommand.cpp" />
     <ClCompile Include="src\Waffle\Renderer\Renderer.cpp" />
     <ClCompile Include="src\Waffle\Renderer\RendererAPI.cpp" />

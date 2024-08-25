@@ -81,17 +81,41 @@
     <ClInclude Include="src\Waffle.h">
       <Filter>src</Filter>
     </ClInclude>
-    <ClInclude Include="src\Waffle\Application.h">
-      <Filter>src\Waffle</Filter>
+    <ClInclude Include="src\Waffle\Core\Application.h">
+      <Filter>src\Waffle\Core</Filter>
     </ClInclude>
-    <ClInclude Include="src\Waffle\Core.h">
-      <Filter>src\Waffle</Filter>
+    <ClInclude Include="src\Waffle\Core\Base.h">
+      <Filter>src\Waffle\Core</Filter>
+    </ClInclude>
+    <ClInclude Include="src\Waffle\Core\EntryPoint.h">
+      <Filter>src\Waffle\Core</Filter>
+    </ClInclude>
+    <ClInclude Include="src\Waffle\Core\Input.h">
+      <Filter>src\Waffle\Core</Filter>
+    </ClInclude>
+    <ClInclude Include="src\Waffle\Core\KeyCodes.h">
+      <Filter>src\Waffle\Core</Filter>
+    </ClInclude>
+    <ClInclude Include="src\Waffle\Core\Layer.h">
+      <Filter>src\Waffle\Core</Filter>
+    </ClInclude>
+    <ClInclude Include="src\Waffle\Core\LayerStack.h">
+      <Filter>src\Waffle\Core</Filter>
+    </ClInclude>
+    <ClInclude Include="src\Waffle\Core\Log.h">
+      <Filter>src\Waffle\Core</Filter>
+    </ClInclude>
+    <ClInclude Include="src\Waffle\Core\MouseButtonCodes.h">
+      <Filter>src\Waffle\Core</Filter>
+    </ClInclude>
+    <ClInclude Include="src\Waffle\Core\PlatformDetection.h">
+      <Filter>src\Waffle\Core</Filter>
     </ClInclude>
     <ClInclude Include="src\Waffle\Core\Timestep.h">
       <Filter>src\Waffle\Core</Filter>
     </ClInclude>
-    <ClInclude Include="src\Waffle\EntryPoint.h">
-      <Filter>src\Waffle</Filter>
+    <ClInclude Include="src\Waffle\Core\Window.h">
+      <Filter>src\Waffle\Core</Filter>
     </ClInclude>
     <ClInclude Include="src\Waffle\Events\ApplicationEvent.h">
       <Filter>src\Waffle\Events</Filter>
@@ -108,24 +132,6 @@
     <ClInclude Include="src\Waffle\ImGui\ImGuiLayer.h">
       <Filter>src\Waffle\ImGui</Filter>
     </ClInclude>
-    <ClInclude Include="src\Waffle\Input.h">
-      <Filter>src\Waffle</Filter>
-    </ClInclude>
-    <ClInclude Include="src\Waffle\KeyCodes.h">
-      <Filter>src\Waffle</Filter>
-    </ClInclude>
-    <ClInclude Include="src\Waffle\Layer.h">
-      <Filter>src\Waffle</Filter>
-    </ClInclude>
-    <ClInclude Include="src\Waffle\LayerStack.h">
-      <Filter>src\Waffle</Filter>
-    </ClInclude>
-    <ClInclude Include="src\Waffle\Log.h">
-      <Filter>src\Waffle</Filter>
-    </ClInclude>
-    <ClInclude Include="src\Waffle\MouseButtonCodes.h">
-      <Filter>src\Waffle</Filter>
-    </ClInclude>
     <ClInclude Include="src\Waffle\Renderer\Buffer.h">
       <Filter>src\Waffle\Renderer</Filter>
     </ClInclude>
@@ -133,6 +139,9 @@
       <Filter>src\Waffle\Renderer</Filter>
     </ClInclude>
     <ClInclude Include="src\Waffle\Renderer\OrthographicCamera.h">
+      <Filter>src\Waffle\Renderer</Filter>
+    </ClInclude>
+    <ClInclude Include="src\Waffle\Renderer\OrthographicCameraController.h">
       <Filter>src\Waffle\Renderer</Filter>
     </ClInclude>
     <ClInclude Include="src\Waffle\Renderer\RenderCommand.h">
@@ -152,9 +161,6 @@
     </ClInclude>
     <ClInclude Include="src\Waffle\Renderer\VertexArray.h">
       <Filter>src\Waffle\Renderer</Filter>
-    </ClInclude>
-    <ClInclude Include="src\Waffle\Window.h">
-      <Filter>src\Waffle</Filter>
     </ClInclude>
     <ClInclude Include="src\wfpch.h">
       <Filter>src</Filter>
@@ -1410,7 +1416,6 @@
     <ClInclude Include="vendor\stb_image\stb_image.h">
       <Filter>vendor\stb_image</Filter>
     </ClInclude>
-    <ClInclude Include="src\Waffle\OrthographicCameraController.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\Platform\OpenGL\OpenGLBuffer.cpp">
@@ -1437,8 +1442,17 @@
     <ClCompile Include="src\Platform\Windows\WindowsWindow.cpp">
       <Filter>src\Platform\Windows</Filter>
     </ClCompile>
-    <ClCompile Include="src\Waffle\Application.cpp">
-      <Filter>src\Waffle</Filter>
+    <ClCompile Include="src\Waffle\Core\Application.cpp">
+      <Filter>src\Waffle\Core</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Waffle\Core\Layer.cpp">
+      <Filter>src\Waffle\Core</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Waffle\Core\LayerStack.cpp">
+      <Filter>src\Waffle\Core</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Waffle\Core\Log.cpp">
+      <Filter>src\Waffle\Core</Filter>
     </ClCompile>
     <ClCompile Include="src\Waffle\ImGui\ImGuiBuild.cpp">
       <Filter>src\Waffle\ImGui</Filter>
@@ -1446,19 +1460,13 @@
     <ClCompile Include="src\Waffle\ImGui\ImGuiLayer.cpp">
       <Filter>src\Waffle\ImGui</Filter>
     </ClCompile>
-    <ClCompile Include="src\Waffle\Layer.cpp">
-      <Filter>src\Waffle</Filter>
-    </ClCompile>
-    <ClCompile Include="src\Waffle\LayerStack.cpp">
-      <Filter>src\Waffle</Filter>
-    </ClCompile>
-    <ClCompile Include="src\Waffle\Log.cpp">
-      <Filter>src\Waffle</Filter>
-    </ClCompile>
     <ClCompile Include="src\Waffle\Renderer\Buffer.cpp">
       <Filter>src\Waffle\Renderer</Filter>
     </ClCompile>
     <ClCompile Include="src\Waffle\Renderer\OrthographicCamera.cpp">
+      <Filter>src\Waffle\Renderer</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Waffle\Renderer\OrthographicCameraController.cpp">
       <Filter>src\Waffle\Renderer</Filter>
     </ClCompile>
     <ClCompile Include="src\Waffle\Renderer\RenderCommand.cpp">
@@ -1485,6 +1493,5 @@
     <ClCompile Include="vendor\stb_image\stb_image.cpp">
       <Filter>vendor\stb_image</Filter>
     </ClCompile>
-    <ClCompile Include="src\Waffle\OrthographicCameraController.cpp" />
   </ItemGroup>
 </Project>

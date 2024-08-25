@@ -1,6 +1,6 @@
 #pragma once
 
-#include "Waffle/Core.h"
+#include "Waffle/Core/Base.h"
 
 namespace Waffle {
 

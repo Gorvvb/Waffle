@@ -2,7 +2,7 @@
 
 #include "wfpch.h"
 
-#include "Waffle/Core.h"
+#include "Waffle/Core/Base.h"
 #include "Waffle/Events/Event.h"
 
 namespace Waffle {

@@ -1,16 +1,18 @@
 #pragma once
 
 // For use by Waffle applications
-#include "Waffle/Application.h"
-#include "Waffle/Layer.h"
-#include "Waffle/Log.h"
+#include "Waffle/Core/Base.h"
+
+#include "Waffle/Core/Application.h"
+#include "Waffle/Core/Layer.h"
+#include "Waffle/Core/Log.h"
 
 #include "Waffle/Core/Timestep.h"
 
-#include "Waffle/Input.h"
-#include "Waffle/KeyCodes.h"
-#include "Waffle/MouseButtonCodes.h"
-#include "Waffle/OrthographicCameraController.h"
+#include "Waffle/Core/Input.h"
+#include "Waffle/Core/KeyCodes.h"
+#include "Waffle/Core/MouseButtonCodes.h"
+#include "Waffle/Renderer/OrthographicCameraController.h"
 
 #include "Waffle/ImGui/ImGuiLayer.h"
 
@@ -24,8 +26,4 @@
 #include "Waffle/Renderer/VertexArray.h"
 
 #include "Waffle/Renderer/OrthographicCamera.h"
-// ----------------------------------
-
-// ---Entry Point--------------------
-#include "Waffle/EntryPoint.h"
 // ----------------------------------
