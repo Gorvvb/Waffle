@@ -19,6 +19,7 @@ namespace Waffle {
 		std::unique_ptr<Window> m_Window;
 		ImGuiLayer* m_ImGuiLayer;
 		bool m_Running = true;
+		bool m_Minimized = false;
 		LayerStack m_LayerStack;
 
 		float m_lastFrameTime = 0.0f;
@@ -39,6 +40,7 @@ namespace Waffle {
 		inline static Application& Get() { return *s_Instance; }
 	private:
 		bool OnWindowClose(WindowCloseEvent& e);
+		bool OnWindowRisize(WindowResizeEvent& e);
 	};
 
 	// Remember to define in client
