@@ -18,6 +18,7 @@
 
 // ---Renderer-----------------------
 #include "Waffle/Renderer/Renderer.h"
+#include "Waffle/Renderer/Renderer2D.h"
 #include "Waffle/Renderer/RenderCommand.h"
 
 #include "Waffle/Renderer/Buffer.h"
