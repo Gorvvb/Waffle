@@ -35,6 +35,8 @@ namespace Waffle {
 
 	void WindowsWindow::Init(const WindowProps& props)
 	{
+		WF_PROFILE_FUNCTION();
+
 		m_Data.Title = props.Title;
 		m_Data.Width = props.Width;
 		m_Data.Height = props.Height;
@@ -43,7 +45,8 @@ namespace Waffle {
 
 		if (!s_GLFWInitialized)
 		{
-			// TODO: glfwTerminate on system shutdown
+			WF_PROFILE_FUNCTION();
+
 			int success = glfwInit();
 			WF_CORE_ASSERT(success, "Could not initialize GLFW!");
 			glfwSetErrorCallback(GLFWErrorCallback);
@@ -152,17 +155,21 @@ namespace Waffle {
 
 	void WindowsWindow::Shutdown()
 	{
+		WF_PROFILE_FUNCTION();
 		glfwDestroyWindow(m_Window);
 	}
 
 	void WindowsWindow::OnUpdate()
 	{
+		WF_PROFILE_FUNCTION();
 		glfwPollEvents();
 		m_Context->SwapBuffers();
 	}
 
 	void WindowsWindow::SetVSync(bool enabled)
 	{
+		WF_PROFILE_FUNCTION();
+
 		if (enabled)
 			glfwSwapInterval(1);
 		else

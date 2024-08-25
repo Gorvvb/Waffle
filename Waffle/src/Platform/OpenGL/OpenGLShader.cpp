@@ -19,6 +19,8 @@ namespace Waffle {
 
 	OpenGLShader::OpenGLShader(const std::string& filepath)
 	{
+		WF_PROFILE_FUNCTION();
+
 		std::string source = ReadFile(filepath);
 		auto shaderSources = PreProcess(source);
 		Compile(shaderSources);
@@ -35,6 +37,8 @@ namespace Waffle {
 	OpenGLShader::OpenGLShader(const std::string& name, const std::string& vertexSource, const std::string& fragmentSource)
 		: m_Name(name)
 	{
+		WF_PROFILE_FUNCTION();
+
 		std::unordered_map<GLenum, std::string> sources;
 		sources[GL_VERTEX_SHADER] = vertexSource;
 		sources[GL_FRAGMENT_SHADER] = fragmentSource;
@@ -43,11 +47,15 @@ namespace Waffle {
 
 	OpenGLShader::~OpenGLShader()
 	{
+		WF_PROFILE_FUNCTION();
+
 		glDeleteProgram(m_RendererID);
 	}
 
 	std::string OpenGLShader::ReadFile(const std::string& filepath)
 	{
+		WF_PROFILE_FUNCTION();
+
 		std::string result;
 		std::ifstream in(filepath, std::ios::in | std::ios::binary);
 		if (in)
@@ -69,6 +77,8 @@ namespace Waffle {
 
 	std::unordered_map<GLenum, std::string> OpenGLShader::PreProcess(const std::string& source)
 	{
+		WF_PROFILE_FUNCTION();
+
 		std::unordered_map<GLenum, std::string> shaderSources;
 
 		const char* typeToken = "#type";
@@ -91,6 +101,8 @@ namespace Waffle {
 
 	void OpenGLShader::Compile(std::unordered_map<GLenum, std::string>& shaderSources)
 	{
+		WF_PROFILE_FUNCTION();
+
 		GLuint program = glCreateProgram();
 		WF_CORE_ASSERT(shaderSources.size() <= 2, "We only support 2 shaders for now");
 		std::array<GLenum, 2> glShaderIDs;
@@ -157,6 +169,8 @@ namespace Waffle {
 
 	void OpenGLShader::Bind() const
 	{
+		WF_PROFILE_FUNCTION();
+
 		glUseProgram(m_RendererID);
 	}
 
@@ -167,21 +181,29 @@ namespace Waffle {
 
 	void OpenGLShader::SetInt(const std::string& name, int value)
 	{
+		WF_PROFILE_FUNCTION();
+
 		UploadUniformInt(name, value);
 	}
 
 	void OpenGLShader::SetFloat3(const std::string& name, const glm::vec3& value)
 	{
+		WF_PROFILE_FUNCTION();
+
 		UploadUniformFloat3(name, value);
 	}
 
 	void OpenGLShader::SetFloat4(const std::string& name, const glm::vec4& value)
 	{
+		WF_PROFILE_FUNCTION();
+
 		UploadUniformFloat4(name, value);
 	}
 
 	void OpenGLShader::SetMat4(const std::string& name, const glm::mat4& value)
 	{
+		WF_PROFILE_FUNCTION();
+
 		UploadUniformMat4(name, value);
 	}
 

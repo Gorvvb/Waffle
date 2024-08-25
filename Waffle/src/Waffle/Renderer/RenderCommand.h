@@ -11,6 +11,8 @@ namespace Waffle {
 	public:
 		inline static void Init()
 		{
+			WF_PROFILE_FUNCTION();
+
 			s_RendererAPI->Init();
 		}
 

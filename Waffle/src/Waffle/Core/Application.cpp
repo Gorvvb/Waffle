@@ -14,6 +14,8 @@ namespace Waffle {
 
 	Application::Application()
 	{
+		WF_PROFILE_FUNCTION();
+
 		WF_CORE_ASSERT(!s_Instance, "Application already exists!");
 		s_Instance = this;
 
@@ -29,22 +31,31 @@ namespace Waffle {
 
 	Application::~Application()
 	{
+		WF_PROFILE_FUNCTION();
+
+		//Renderer::Shutdown();
 	}
 
 	void Application::PushLayer(Layer* layer)
 	{
+		WF_PROFILE_FUNCTION();
+
 		m_LayerStack.PushLayer(layer);
 		layer->OnAttach();
 	}
 
 	void Application::PushOverlay(Layer* layer)
 	{
+		WF_PROFILE_FUNCTION();
+
 		m_LayerStack.PushOverlay(layer);
 		layer->OnAttach();
 	}
 
 	void Application::OnEvent(Event& e)
 	{
+		WF_PROFILE_FUNCTION();
+
 		EventDispatcher dispacher(e);
 		dispacher.Dispatch<WindowCloseEvent>(WF_BIND_EVENT_FN(Application::OnWindowClose));
 		dispacher.Dispatch<WindowResizeEvent>(WF_BIND_EVENT_FN(Application::OnWindowRisize));
@@ -59,22 +70,33 @@ namespace Waffle {
 
 	void Application::Run()
 	{
+		WF_PROFILE_FUNCTION();
+
 		while (m_Running)
 		{
+			WF_PROFILE_SCOPE("RunLoop");
+
 			float time = (float)glfwGetTime(); // Platform::GetTime()
 			Timestep timestep = time - m_lastFrameTime;
 			m_lastFrameTime = time;
 
 			if (!m_Minimized)
 			{
-				for (Layer* layer : m_LayerStack)
-					layer->OnUpdate(timestep);
-			}
+				{
+					WF_PROFILE_SCOPE("LayerStack OnUpdate");
 
-			m_ImGuiLayer->Begin();
-			for (Layer* layer : m_LayerStack)
-				layer->OnImGuiRender();
-			m_ImGuiLayer->End();
+					for (Layer* layer : m_LayerStack)
+						layer->OnUpdate(timestep);
+				}
+
+				m_ImGuiLayer->Begin();
+				{
+					WF_PROFILE_SCOPE("LayerStack OnImGuiRender");
+					for (Layer* layer : m_LayerStack)
+						layer->OnImGuiRender();
+				}
+				m_ImGuiLayer->End();
+			}
 
 			m_Window->OnUpdate();
 		}
@@ -87,6 +109,8 @@ namespace Waffle {
 	}
 	bool Application::OnWindowRisize(WindowResizeEvent& e)
 	{
+		WF_PROFILE_FUNCTION();
+
 		if (e.GetWidth() == 0 || e.GetHeight() == 0)
 		{
 			m_Minimized = true;

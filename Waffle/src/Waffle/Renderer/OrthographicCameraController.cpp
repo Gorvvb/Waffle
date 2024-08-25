@@ -12,6 +12,8 @@ namespace Waffle {
 
 	void OrthographicCameraController::OnUpdate(Timestep ts)
 	{
+		WF_PROFILE_FUNCTION();
+
 		if (Input::IsKeyPressed(WF_KEY_A))
 		{
 			m_CameraPosition.x -= cos(glm::radians(m_CameraRotation)) * m_CameraTranslationSpeed * ts;
@@ -50,6 +52,8 @@ namespace Waffle {
 
 	void OrthographicCameraController::OnEvent(Event& e)
 	{
+		WF_PROFILE_FUNCTION();
+
 		EventDispatcher dispacher(e);
 		dispacher.Dispatch<MouseScrolledEvent>(WF_BIND_EVENT_FN(OrthographicCameraController::OnMouseScrolled));
 		dispacher.Dispatch<WindowResizeEvent>(WF_BIND_EVENT_FN(OrthographicCameraController::OnWindowResized));
@@ -57,6 +61,8 @@ namespace Waffle {
 
 	bool OrthographicCameraController::OnMouseScrolled(MouseScrolledEvent& e)
 	{
+		WF_PROFILE_FUNCTION();
+
 		m_ZoomLevel -= e.GetYOffset() * 0.25f;
 		m_ZoomLevel = std::max(m_ZoomLevel, 0.25f);
 		m_Camera.SetProjection(-m_AspectRatio * m_ZoomLevel, m_AspectRatio * m_ZoomLevel, -m_ZoomLevel, m_ZoomLevel);
@@ -65,6 +71,8 @@ namespace Waffle {
 
 	bool OrthographicCameraController::OnWindowResized(WindowResizeEvent& e)
 	{
+		WF_PROFILE_FUNCTION();
+
 		m_AspectRatio = (float)e.GetWidth() / (float)e.GetHeight();
 		m_Camera.SetProjection(-m_AspectRatio * m_ZoomLevel, m_AspectRatio * m_ZoomLevel, -m_ZoomLevel, m_ZoomLevel);
 		return false;
