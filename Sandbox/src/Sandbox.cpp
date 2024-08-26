@@ -24,8 +24,7 @@ public:
 			 0.0f,  0.5f, 0.0f, 0.8f, 0.8f, 0.2f, 1.0f,
 		};
 
-		Waffle::Ref<Waffle::VertexBuffer> vertexBuffer;
-		vertexBuffer.reset(Waffle::VertexBuffer::Create(vertecies, sizeof(vertecies)));
+		Waffle::Ref<Waffle::VertexBuffer> vertexBuffer = Waffle::VertexBuffer::Create(vertecies, sizeof(vertecies));
 
 		Waffle::BufferLayout layout = {
 		{ Waffle::ShaderDataType::Float3, "a_Position" },
@@ -36,8 +35,7 @@ public:
 		m_VertexArray->AddVertexBuffer(vertexBuffer);
 
 		uint32_t indecies[3] = { 0, 1, 2 };
-		Waffle::Ref<Waffle::IndexBuffer> indexBuffer;
-		indexBuffer.reset(Waffle::IndexBuffer::Create(indecies, sizeof(indecies) / sizeof(uint32_t)));
+		Waffle::Ref<Waffle::IndexBuffer> indexBuffer = Waffle::IndexBuffer::Create(indecies, sizeof(indecies) / sizeof(uint32_t));
 		m_VertexArray->SetIndexBuffer(indexBuffer);
 
 		m_SquareVA = Waffle::VertexArray::Create();
@@ -49,8 +47,7 @@ public:
 			-0.5f,  0.5f, 0.0f, 0.0f, 1.0f
 		};
 
-		Waffle::Ref<Waffle::VertexBuffer> squareVB;
-		squareVB.reset(Waffle::VertexBuffer::Create(squareVertecies, sizeof(squareVertecies)));
+		Waffle::Ref<Waffle::VertexBuffer> squareVB = Waffle::VertexBuffer::Create(squareVertecies, sizeof(squareVertecies));
 		squareVB->SetLayout({ 
 			{ Waffle::ShaderDataType::Float3, "a_Position" },
 			{ Waffle::ShaderDataType::Float2, "a_TexCoord" }
@@ -58,8 +55,7 @@ public:
 		m_SquareVA->AddVertexBuffer(squareVB);
 
 		uint32_t squareIndecies[6] = { 0, 1, 2, 2, 3, 0 };
-		Waffle::Ref<Waffle::IndexBuffer> squareIB;
-		squareIB.reset(Waffle::IndexBuffer::Create(squareIndecies, sizeof(squareIndecies) / sizeof(uint32_t)));
+		Waffle::Ref<Waffle::IndexBuffer> squareIB = Waffle::IndexBuffer::Create(squareIndecies, sizeof(squareIndecies) / sizeof(uint32_t));
 		m_SquareVA->SetIndexBuffer(squareIB);
 
 		std::string vertexSrc = R"(
