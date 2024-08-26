@@ -43,9 +43,10 @@ void Sandbox2D::OnUpdate(Waffle::Timestep ts)
 		Waffle::Renderer2D::BeginScene(m_CameraController.GetCamera());
 
 		//Waffle::Renderer2D::DrawRotatedQuad({ -1.0f, 0.0f }, { 0.8f, 0.8f }, glm::radians(-45.0f), {0.8f, 0.2f, 0.3f, 1.0f});
-		Waffle::Renderer2D::DrawQuad({ 0.5f, -0.5f }, { 0.5f, 0.75f }, m_SquareColor);
+		Waffle::Renderer2D::DrawQuad({ 0.5f, -0.5f }, { 0.5f, 0.75f }, { 0.2f, 0.3f, 0.8f, 1.0f });
 		Waffle::Renderer2D::DrawQuad({ -1.0f, 0.0f }, { 0.8f, 0.8f }, { 0.8f, 0.2f, 0.3f, 1.0f });
-		//Waffle::Renderer2D::DrawQuad({ 0.0f, 0.0f, -0.1f }, { 10.0f, 10.0f }, m_CheckerboardTexture, 10.0f, glm::vec4(1.0f, 0.9f, 0.9f, 1.0f));
+		Waffle::Renderer2D::DrawQuad({ -5.0f, -5.0f, -0.1f }, { 10.0f, 10.0f }, m_CheckerboardTexture, 10.0f);
+		//Waffle::Renderer2D::DrawQuad({ -0.5f, -0.5f, 0.0f }, { 1.0f, 1.0f }, m_CheckerboardTexture, 5.0f);
 
 		Waffle::Renderer2D::EndScene();
 	}
@@ -53,9 +54,9 @@ void Sandbox2D::OnUpdate(Waffle::Timestep ts)
 
 void Sandbox2D::OnImGuiRender()
 {
-	ImGui::Begin("Settings");
+	/*ImGui::Begin("Settings");
 	ImGui::ColorEdit4("Square Color", glm::value_ptr(m_SquareColor));
-	ImGui::End();
+	ImGui::End();*/
 }
 
 void Sandbox2D::OnEvent(Waffle::Event& e)
