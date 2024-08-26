@@ -124,7 +124,7 @@ namespace Waffle {
 
 }
 
-#define WF_PROFILE 1
+#define WF_PROFILE 0
 
 #if WF_PROFILE
     #define WF_PROFILE_BEGIN_SESSION(name, filepath) ::Waffle::Instrumentor::Get().BeginSession(name, filepath)

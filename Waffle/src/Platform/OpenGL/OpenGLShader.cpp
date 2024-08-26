@@ -186,6 +186,13 @@ namespace Waffle {
 		UploadUniformInt(name, value);
 	}
 
+	void OpenGLShader::SetFloat(const std::string& name, float value)
+	{
+		WF_PROFILE_FUNCTION();
+
+		UploadUniformFloat(name, value);
+	}
+
 	void OpenGLShader::SetFloat3(const std::string& name, const glm::vec3& value)
 	{
 		WF_PROFILE_FUNCTION();
