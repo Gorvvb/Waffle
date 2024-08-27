@@ -49,7 +49,7 @@ namespace Waffle {
 
 		// Setup Platform/Renderer bindings
 		ImGui_ImplGlfw_InitForOpenGL(window, true);
-		ImGui_ImplOpenGL3_Init("#version 460"); // maybe #version 410
+		ImGui_ImplOpenGL3_Init("#version 460");
 	}
 
 	void ImGuiLayer::OnDetach()
@@ -66,8 +66,18 @@ namespace Waffle {
 		WF_PROFILE_FUNCTION();
 
 		ImGui_ImplOpenGL3_NewFrame();
-		ImGui_ImplGlfw_NewFrame(); // remove if buggy
+		ImGui_ImplGlfw_NewFrame();
 		ImGui::NewFrame();
+	}
+
+	void ImGuiLayer::OnEvent(Event& e)
+	{
+		if (m_BlockEvents)
+		{
+			ImGuiIO& io = ImGui::GetIO();
+			e.handled |= e.IsInCategory(EventCategoryMouse) & io.WantCaptureMouse;
+			e.handled |= e.IsInCategory(EventCategoryKeyboard) & io.WantCaptureKeyboard;
+		}
 	}
 
 	void ImGuiLayer::End()

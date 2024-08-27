@@ -22,10 +22,10 @@ namespace Waffle {
 	enum EventCategory
 	{
 		None = 0,
-		EventCategotyApplication		= BIT(0),
-		EventCategotyInput				= BIT(1),
-		EventCategotyKeyboard			= BIT(2),
-		EventCategotyMouse				= BIT(3),
+		EventCategoryApplication		= BIT(0),
+		EventCategoryInput				= BIT(1),
+		EventCategoryKeyboard			= BIT(2),
+		EventCategoryMouse				= BIT(3),
 		EventCategoryMouseButton		= BIT(4)
 	};
 
