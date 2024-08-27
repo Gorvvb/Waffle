@@ -108,7 +108,7 @@
     <ClInclude Include="src\Waffle\Core\Log.h">
       <Filter>src\Waffle\Core</Filter>
     </ClInclude>
-    <ClInclude Include="src\Waffle\Core\MouseButtonCodes.h">
+    <ClInclude Include="src\Waffle\Core\MouseCodes.h">
       <Filter>src\Waffle\Core</Filter>
     </ClInclude>
     <ClInclude Include="src\Waffle\Core\PlatformDetection.h">

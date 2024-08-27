@@ -11,7 +11,7 @@
 
 #include "Waffle/Core/Input.h"
 #include "Waffle/Core/KeyCodes.h"
-#include "Waffle/Core/MouseButtonCodes.h"
+#include "Waffle/Core/MouseCodes.h"
 #include "Waffle/Renderer/OrthographicCameraController.h"
 
 #include "Waffle/ImGui/ImGuiLayer.h"
