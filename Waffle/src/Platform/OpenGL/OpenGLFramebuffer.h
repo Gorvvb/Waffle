@@ -12,7 +12,7 @@ namespace Waffle {
 		FramebufferSpecification m_Specification;
 	public:
 		OpenGLFrameBuffer(const FramebufferSpecification& spec);
-		virtual ~OpenGLFrameBuffer();
+		virtual ~OpenGLFrameBuffer() override;
 
 		void Invalidate();
 

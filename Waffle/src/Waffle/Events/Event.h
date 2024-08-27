@@ -4,6 +4,7 @@
 #include "Waffle/Core/Base.h"
 
 namespace Waffle {
+
 	// Add buffers to events. Right now we use blocking, witch means when an event occurs it
 	// immediatly gets sipatched and must be delt with right then and there.
 	// Use the bus method insead to only process events during a "event" part of the update cycle.
@@ -38,6 +39,8 @@ namespace Waffle {
 	class WAFFLE_API Event {
 		friend class EventDispatcher;
 	public:
+		virtual ~Event() = default;
+
 		virtual EventType GetEventType() const = 0;
 		virtual const char* GetName() const = 0;
 		virtual int GetCategoryFlags() const = 0;

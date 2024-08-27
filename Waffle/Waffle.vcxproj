@@ -150,7 +150,6 @@
     <ClInclude Include="src\Platform\OpenGL\OpenGLVertexArray.h" />
     <ClInclude Include="src\Platform\OpenGL\OpenGlRendererAPI.h" />
     <ClInclude Include="src\Platform\OpenGL\OpenGlTexture.h" />
-    <ClInclude Include="src\Platform\Windows\WindowsInput.h" />
     <ClInclude Include="src\Platform\Windows\WindowsWindow.h" />
     <ClInclude Include="src\Waffle.h" />
     <ClInclude Include="src\Waffle\Core\Application.h" />
