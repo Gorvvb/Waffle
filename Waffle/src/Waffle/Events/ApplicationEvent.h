@@ -21,7 +21,7 @@ namespace Waffle {
 		}
 
 		EVENT_CLASS_TYPE(WindowResize)
-		EVENT_CLASS_CATEGORY(EventCategotyApplication)
+		EVENT_CLASS_CATEGORY(EventCategoryApplication)
 	private:
 		unsigned int m_Width, m_Height;
 	};
@@ -32,7 +32,7 @@ namespace Waffle {
 		WindowCloseEvent() {}
 
 		EVENT_CLASS_TYPE(WindowClose)
-		EVENT_CLASS_CATEGORY(EventCategotyApplication)
+		EVENT_CLASS_CATEGORY(EventCategoryApplication)
 	};
 
 	class WAFFLE_API AppTickEvent : public Event
@@ -41,7 +41,7 @@ namespace Waffle {
 		AppTickEvent() {}
 
 		EVENT_CLASS_TYPE(AppTick)
-		EVENT_CLASS_CATEGORY(EventCategotyApplication)
+		EVENT_CLASS_CATEGORY(EventCategoryApplication)
 	};
 
 	class WAFFLE_API AppUpdateEvent : public Event
@@ -50,7 +50,7 @@ namespace Waffle {
 		AppUpdateEvent() {}
 
 		EVENT_CLASS_TYPE(AppUpdate)
-		EVENT_CLASS_CATEGORY(EventCategotyApplication)
+		EVENT_CLASS_CATEGORY(EventCategoryApplication)
 	};
 
 	class WAFFLE_API AppRenderEvent : public Event
@@ -59,6 +59,6 @@ namespace Waffle {
 		AppRenderEvent() {}
 
 		EVENT_CLASS_TYPE(AppRender)
-		EVENT_CLASS_CATEGORY(EventCategotyApplication)
+		EVENT_CLASS_CATEGORY(EventCategoryApplication)
 	};
 }

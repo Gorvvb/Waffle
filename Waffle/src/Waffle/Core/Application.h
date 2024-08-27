@@ -37,9 +37,12 @@ namespace Waffle {
 		void PushOverlay(Layer* layer);
 
 		Window& GetWindow() { return *m_Window; }
-		static Application& Get() { return *s_Instance; }
 
 		void Close();
+
+		ImGuiLayer* GetImGuiLayer() { return m_ImGuiLayer; }
+
+		static Application& Get() { return *s_Instance; }
 	private:
 		bool OnWindowClose(WindowCloseEvent& e);
 		bool OnWindowRisize(WindowResizeEvent& e);

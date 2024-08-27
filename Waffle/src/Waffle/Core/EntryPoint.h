@@ -14,7 +14,7 @@ int main(int argc, char** argv)
 	WF_PROFILE_BEGIN_SESSION("Startup", "WaffleProfile-Runtime.json");
 	app->Run();
 	WF_PROFILE_END_SESSION();
-	WF_PROFILE_BEGIN_SESSION("Startup", "WaffleProfile-Shutdown.json");
+	WF_PROFILE_BEGIN_SESSION("Shutdown", "WaffleProfile-Shutdown.json");
 	delete app;
 	WF_PROFILE_END_SESSION();
 }
