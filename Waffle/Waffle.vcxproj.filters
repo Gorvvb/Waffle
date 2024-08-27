@@ -63,6 +63,9 @@
     <ClInclude Include="src\Platform\OpenGL\OpenGLContext.h">
       <Filter>src\Platform\OpenGL</Filter>
     </ClInclude>
+    <ClInclude Include="src\Platform\OpenGL\OpenGLFramebuffer.h">
+      <Filter>src\Platform\OpenGL</Filter>
+    </ClInclude>
     <ClInclude Include="src\Platform\OpenGL\OpenGLShader.h">
       <Filter>src\Platform\OpenGL</Filter>
     </ClInclude>
@@ -139,6 +142,9 @@
       <Filter>src\Waffle\ImGui</Filter>
     </ClInclude>
     <ClInclude Include="src\Waffle\Renderer\Buffer.h">
+      <Filter>src\Waffle\Renderer</Filter>
+    </ClInclude>
+    <ClInclude Include="src\Waffle\Renderer\Framebuffer.h">
       <Filter>src\Waffle\Renderer</Filter>
     </ClInclude>
     <ClInclude Include="src\Waffle\Renderer\GraphicsContext.h">
@@ -1433,6 +1439,9 @@
     <ClCompile Include="src\Platform\OpenGL\OpenGLContext.cpp">
       <Filter>src\Platform\OpenGL</Filter>
     </ClCompile>
+    <ClCompile Include="src\Platform\OpenGL\OpenGLFramebuffer.cpp">
+      <Filter>src\Platform\OpenGL</Filter>
+    </ClCompile>
     <ClCompile Include="src\Platform\OpenGL\OpenGLShader.cpp">
       <Filter>src\Platform\OpenGL</Filter>
     </ClCompile>
@@ -1463,6 +1472,9 @@
     <ClCompile Include="src\Waffle\Core\Log.cpp">
       <Filter>src\Waffle\Core</Filter>
     </ClCompile>
+    <ClCompile Include="src\Waffle\Core\Window.cpp">
+      <Filter>src\Waffle\Core</Filter>
+    </ClCompile>
     <ClCompile Include="src\Waffle\ImGui\ImGuiBuild.cpp">
       <Filter>src\Waffle\ImGui</Filter>
     </ClCompile>
@@ -1470,6 +1482,9 @@
       <Filter>src\Waffle\ImGui</Filter>
     </ClCompile>
     <ClCompile Include="src\Waffle\Renderer\Buffer.cpp">
+      <Filter>src\Waffle\Renderer</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Waffle\Renderer\Framebuffer.cpp">
       <Filter>src\Waffle\Renderer</Filter>
     </ClCompile>
     <ClCompile Include="src\Waffle\Renderer\OrthographicCamera.cpp">

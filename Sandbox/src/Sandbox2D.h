@@ -19,6 +19,9 @@ private:
 	// Temporary
 	Waffle::Ref<Waffle::VertexArray> m_SquareVA;
 	Waffle::Ref<Waffle::Shader> m_FlatColorShader;
+	Waffle::Ref<Waffle::Framebuffer> m_Framebuffer;
 
 	Waffle::Ref<Waffle::Texture2D> m_CheckerboardTexture;
+
+	glm::vec4 m_Color = { 0.2f, 0.3f, 0.8f, 1.0f };
 };

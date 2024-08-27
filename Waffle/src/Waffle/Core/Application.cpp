@@ -12,14 +12,14 @@ namespace Waffle {
 
 	Application* Application::s_Instance = nullptr;
 
-	Application::Application()
+	Application::Application(const std::string& name)
 	{
 		WF_PROFILE_FUNCTION();
 
 		WF_CORE_ASSERT(!s_Instance, "Application already exists!");
 		s_Instance = this;
 
-		m_Window = std::unique_ptr<Window>(Window::Create());
+		m_Window = Window::Create(WindowProps(name));
 		m_Window->SetEventCallback(WF_BIND_EVENT_FN(Application::OnEvent));
 		//m_Window->SetVSync(false);
 
@@ -62,9 +62,9 @@ namespace Waffle {
 
 		for (auto it = m_LayerStack.end(); it != m_LayerStack.begin();)
 		{
-			(*--it)->OnEvent(e);
 			if (e.handled)
 				break;
+			(*--it)->OnEvent(e);
 		}
 	}
 
@@ -100,6 +100,11 @@ namespace Waffle {
 
 			m_Window->OnUpdate();
 		}
+	}
+
+	void Application::Close()
+	{
+		m_Running = false;
 	}
 
 	bool Application::OnWindowClose(WindowCloseEvent& e)

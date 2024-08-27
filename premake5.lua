@@ -1,6 +1,6 @@
 workspace "Waffle"
     architecture "x64"
-    startproject "Sandbox"
+    startproject "Waffle-Engine"
 
     configurations
     {
@@ -18,9 +18,11 @@ Includedir["ImGui"] = "Waffle/vendor/imgui"
 Includedir["glm"] = "Waffle/vendor/glm"
 Includedir["stb_image"] = "Waffle/vendor/stb_image"
 
-include "Waffle/vendor/GLFW"
-include "Waffle/vendor/GLAD"
-include "Waffle/vendor/imgui"
+group "Dependencies"
+    include "Waffle/vendor/GLFW"
+    include "Waffle/vendor/GLAD"
+    include "Waffle/vendor/imgui"
+group ""
 
 project "Waffle"
     location "Waffle"
@@ -91,6 +93,50 @@ project "Waffle"
 
 project "Sandbox"
         location "Sandbox"
+        kind "ConsoleApp"
+        language "C++"
+        cppdialect "C++20"
+        staticruntime "on"
+
+        targetdir ("bin/" .. outputdir .. "/%{prj.name}")
+        objdir ("bin-int/" .. outputdir .. "/%{prj.name}")
+
+        files
+        {
+            "%{prj.name}/src/**.h",
+            "%{prj.name}/src/**.cpp"
+        }
+
+        includedirs
+        {
+            "Waffle/vendor/spdlog/include",
+            "Waffle/src",
+            "Waffle/vendor",
+            "%{Includedir.glm}"
+        }
+
+        links
+        {
+            "Waffle"
+        }
+
+        filter "system:windows"
+            systemversion "latest"
+        
+        filter "configurations:Debug"
+        defines "WF_DEBUG"
+            symbols "on"
+        
+        filter "configurations:Release"
+            defines "WF_RELEASE"
+            optimize "on"
+        
+        filter "configurations:Dist"
+            defines "WF_DIST"
+            optimize "on"
+
+project "Waffle-Editor"
+        location "Waffle-Editor"
         kind "ConsoleApp"
         language "C++"
         cppdialect "C++20"
