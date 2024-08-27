@@ -18,7 +18,7 @@ namespace Waffle {
 		virtual void OnImGuiRender() {}
 		virtual void OnEvent(Event& e) {}
 
-		inline const std::string& GetName() const { return m_DebugName; }
+		const std::string& GetName() const { return m_DebugName; }
 
 	protected:
 		std::string m_DebugName;

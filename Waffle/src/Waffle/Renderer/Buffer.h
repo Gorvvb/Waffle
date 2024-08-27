@@ -79,8 +79,8 @@ namespace Waffle {
 			CalculateOffsetsAndStride();
 		}
 
-		inline uint32_t GetStride() const { return m_Stride; }
-		inline const std::vector<BufferElements>& GetElements() const { return m_Elements; }
+		uint32_t GetStride() const { return m_Stride; }
+		const std::vector<BufferElements>& GetElements() const { return m_Elements; }
 
 		std::vector<BufferElements>::iterator begin() { return m_Elements.begin(); }
 		std::vector<BufferElements>::iterator end() { return m_Elements.end(); }
