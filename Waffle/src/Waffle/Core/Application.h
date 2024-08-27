@@ -16,7 +16,7 @@ namespace Waffle {
 	class Application
 	{
 	private:
-		std::unique_ptr<Window> m_Window;
+		Scope<Window> m_Window;
 		ImGuiLayer* m_ImGuiLayer;
 		bool m_Running = true;
 		bool m_Minimized = false;
@@ -26,7 +26,7 @@ namespace Waffle {
 
 		static Application* s_Instance;
 	public:
-		Application();
+		Application(const std::string& name = "Waffle Engine");
 		virtual ~Application();
 
 		void Run();
@@ -38,6 +38,8 @@ namespace Waffle {
 
 		Window& GetWindow() { return *m_Window; }
 		static Application& Get() { return *s_Instance; }
+
+		void Close();
 	private:
 		bool OnWindowClose(WindowCloseEvent& e);
 		bool OnWindowRisize(WindowResizeEvent& e);

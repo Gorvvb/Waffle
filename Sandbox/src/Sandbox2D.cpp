@@ -32,11 +32,11 @@ void Sandbox2D::OnUpdate(Waffle::Timestep ts)
 	m_CameraController.OnUpdate(ts);
 
 	// Render
-
 	Waffle::Renderer2D::ResetStats();
 
 	{
 		WF_PROFILE_SCOPE("Renderer Prep");
+
 		Waffle::RenderCommand::SetClearColor({ 0.1f, 0.1f, 0.1f, 1.0f });
 		Waffle::RenderCommand::Clear();
 	}
@@ -77,7 +77,8 @@ void Sandbox2D::OnImGuiRender()
 	ImGui::Text("Quads: %d", stats.QuadCount);
 	ImGui::Text("Verticies: %d", stats.GetTotalVertexCount());
 	ImGui::Text("Indices: %d", stats.GetTotalIndexCount());
-	//ImGui::ColorEdit4("Square Color", glm::value_ptr(m_SquareColor));
+
+	ImGui::ColorEdit4("Square Color", glm::value_ptr(m_Color));
 	ImGui::End();
 }
 
