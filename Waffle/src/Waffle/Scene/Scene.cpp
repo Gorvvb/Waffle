@@ -34,10 +34,10 @@ namespace Waffle {
 		Camera* mainCamera = nullptr;
 		glm::mat4* cameraTransform = nullptr;
 		{
-			auto group = m_Registry.view<TransformComponent, CameraComponent>();
-			for (auto entity : group)
+			auto view = m_Registry.view<TransformComponent, CameraComponent>();
+			for (auto entity : view)
 			{
-				auto components = group.get<TransformComponent, CameraComponent>(entity);
+				auto components = view.get<TransformComponent, CameraComponent>(entity);
 				auto& [transform, camera] = components;
 
 				if (camera.Primary)
@@ -63,6 +63,23 @@ namespace Waffle {
 			}
 
 			Renderer2D::EndScene();
+		}
+	}
+
+	void Scene::OnViewportResize(uint32_t width, uint32_t height)
+	{
+		m_ViewportWidth = width;
+		m_ViewportHeight = height;
+
+		// Resize the cameras that haven't locked their viewport aspect ratio
+		auto view = m_Registry.view<CameraComponent>();
+		for (auto entity : view)
+		{
+			auto& cameraComponent = view.get<CameraComponent>(entity);
+			if (!cameraComponent.FixedAspectRatio)
+			{
+				cameraComponent.Camera.SetViewportSize(width, height);
+			}
 		}
 	}
 }
