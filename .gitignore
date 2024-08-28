@@ -1,9 +1,14 @@
-# Directories
-.vs/
-x64/
-Entropy/x64/
-bin/
+# Binaries
+**/bin/
 bin-int/
 
-# Files
-*.user
+# Waffle log files
+*.log
+
+# Visual Studio files and folder
+.vs/
+**.sln
+**.vcxproj
+**.vcxproj.filters
+**.vcxproj.user
+**.csproj
