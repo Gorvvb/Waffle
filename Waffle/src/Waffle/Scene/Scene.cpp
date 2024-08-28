@@ -33,16 +33,17 @@ namespace Waffle {
 	{
 		// Update scripts
 		{
+			// TODO: MOVE TO SCENE ONSCENEPLAY WHEN YOU MAKE IT
 			m_Registry.view<NativeScriptComponent>().each([=](auto entity, auto& nsc)
 			{
 				if (!nsc.Instance)
 				{
-					nsc.InstanciateFuncton();
+					nsc.Instance = nsc.InstanciateScript();
 					nsc.Instance->m_Entity = Entity{ entity, this };
-					nsc.OnCreateFunction(nsc.Instance);
+					nsc.Instance->OnCreate();
 				}
 
-				nsc.OnUpdateFunction(nsc.Instance, ts);
+				nsc.Instance->OnUpdate(ts);
 			});
 		}
 
@@ -53,7 +54,7 @@ namespace Waffle {
 			for (auto entity : view)
 			{
 				auto components = view.get<TransformComponent, CameraComponent>(entity);
-				auto& [transform, camera] = components;
+				auto [transform, camera] = components;
 
 				if (camera.Primary)
 				{
@@ -72,7 +73,7 @@ namespace Waffle {
 			for (auto entity : group)
 			{
 				auto components = group.get<TransformComponent, SpriteRendererComponent>(entity);
-				auto& [transform, sprite] = components;
+				auto [transform, sprite] = components;
 
 				Renderer2D::DrawQuad(transform, sprite.Color);
 			}
