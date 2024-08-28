@@ -2,6 +2,8 @@
 
 #include <glm/glm.hpp>
 
+#include "Waffle/Renderer/Camera.h"
+
 namespace Waffle {
 
 	struct TagComponent
@@ -20,7 +22,7 @@ namespace Waffle {
 
 		TransformComponent() = default;
 		TransformComponent(const TransformComponent&) = default;
-		TransformComponent(glm::mat4 & transform)
+		TransformComponent(glm::mat4& transform)
 			: Transform(transform) {}
 
 		operator glm::mat4& () { return Transform; }
@@ -35,5 +37,16 @@ namespace Waffle {
 		SpriteRendererComponent(const SpriteRendererComponent&) = default;
 		SpriteRendererComponent(const glm::vec4& color)
 			: Color(color) {}
+	};
+
+	struct CameraComponent
+	{
+		Waffle::Camera Camera;
+		bool Primary = true;
+
+		CameraComponent() = default;
+		CameraComponent(const CameraComponent&) = default;
+		CameraComponent(const glm::mat4& projection)
+			: Camera(projection) {}
 	};
 }

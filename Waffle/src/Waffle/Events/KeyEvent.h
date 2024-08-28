@@ -4,7 +4,7 @@
 
 namespace Waffle {
 
-	class WAFFLE_API KeyEvent : public Event
+	class KeyEvent : public Event
 	{
 	public:
 		int GetKeyCode() const { return m_KeyCode; }
@@ -17,7 +17,7 @@ namespace Waffle {
 		int m_KeyCode;
 	};
 
-	class WAFFLE_API KeyPressedEvent : public KeyEvent
+	class KeyPressedEvent : public KeyEvent
 	{
 	public:
 		KeyPressedEvent(int keycode, int repeatCount)
@@ -37,7 +37,7 @@ namespace Waffle {
 		int m_RepeatCount;
 	};
 
-	class WAFFLE_API KeyTypedEvent : public KeyEvent
+	class KeyTypedEvent : public KeyEvent
 	{
 	public:
 		KeyTypedEvent(int keycode)
@@ -53,7 +53,7 @@ namespace Waffle {
 		EVENT_CLASS_TYPE(KeyTyped);
 	};
 
-	class WAFFLE_API KeyReleasedEvent : public KeyEvent
+	class KeyReleasedEvent : public KeyEvent
 	{
 	public:
 		KeyReleasedEvent(int keycode)

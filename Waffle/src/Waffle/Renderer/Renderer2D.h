@@ -4,6 +4,8 @@
 
 #include "Texture.h"
 
+#include "Waffle/Renderer/Camera.h"
+
 namespace Waffle {
 
 	class Renderer2D
@@ -12,7 +14,8 @@ namespace Waffle {
 		static void Init();
 		static void Shutdown();
 
-		static void BeginScene(const OrthographicCamera& camera);
+		static void BeginScene(const Camera& camera, const glm::mat4& transform);
+		static void BeginScene(const OrthographicCamera& camera); // TODO: REMOVE
 		static void EndScene();
 		static void Flush();
 

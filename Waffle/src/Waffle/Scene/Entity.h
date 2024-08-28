@@ -9,7 +9,7 @@ namespace Waffle {
 	class Entity
 	{
 	private:
-		entt::entity m_EntityHandle{ 0 };
+		entt::entity m_EntityHandle;
 		Scene* m_Scene = nullptr;
 	public:
 		Entity() = default;
@@ -33,7 +33,7 @@ namespace Waffle {
 		template<typename T>
 		bool HasComponent()
 		{
-			return m_Scene->m_Registry.all_of<T>(m_EntityHandle); // If it doesn't work try any_of
+			return m_Scene->m_Registry.all_of<T>(m_EntityHandle);
 		}
 
 		template<typename T>
