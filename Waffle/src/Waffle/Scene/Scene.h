@@ -6,17 +6,19 @@
 
 namespace Waffle {
 
+	class Entity;
+
 	class Scene
 	{
 	private:
 		entt::registry m_Registry;
+
+		friend class Entity;
 	public:
 		Scene();
 		~Scene();
 
-		// TEMPORARY
-		entt::entity CreateEntity();
-		entt::registry& Reg() { return m_Registry; }
+		Entity CreateEntity(const std::string& name = std::string());
 
 		void OnUpdate(Timestep ts);
 	};
