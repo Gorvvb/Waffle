@@ -16,6 +16,9 @@
 
 #include "Waffle/ImGui/ImGuiLayer.h"
 
+#include "Waffle/Scene/Scene.h"
+#include "Waffle/Scene/Components.h"
+
 // ---Renderer-----------------------
 #include "Waffle/Renderer/Renderer.h"
 #include "Waffle/Renderer/Renderer2D.h"

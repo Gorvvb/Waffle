@@ -23,6 +23,14 @@ namespace Waffle {
 		fbSpec.Width = 1280;
 		fbSpec.Height = 720;
 		m_Framebuffer = Framebuffer::Create(fbSpec);
+
+		m_ActiveScene = CreateRef<Scene>();
+
+		auto square = m_ActiveScene->CreateEntity();
+		m_ActiveScene->Reg().emplace<TransformComponent>(square);
+		m_ActiveScene->Reg().emplace<SpriteRendererComponent>(square, glm::vec4{ 0.0f, 1.0f, 0.0f, 1.0f });
+
+		m_Square = square;
 	}
 
 	void EditorLayer::OnDetach()
@@ -30,11 +38,11 @@ namespace Waffle {
 		WF_PROFILE_FUNCTION();
 	}
 
-	void EditorLayer::OnUpdate(Waffle::Timestep ts)
+	void EditorLayer::OnUpdate(Timestep ts)
 	{
 		WF_PROFILE_FUNCTION();
 
-		if (Waffle::FramebufferSpecification spec = m_Framebuffer->GetSpecification();
+		if (FramebufferSpecification spec = m_Framebuffer->GetSpecification();
 			m_ViewportSize.x > 0.0f && m_ViewportSize.y > 0.0f &&
 			(spec.Width != m_ViewportSize.x || spec.Height != m_ViewportSize.y))
 		{
@@ -49,39 +57,24 @@ namespace Waffle {
 		// Render
 		Renderer2D::ResetStats();
 
-		{
-			WF_PROFILE_SCOPE("Renderer Prep");
-			m_Framebuffer->Bind();
 
-			RenderCommand::SetClearColor({ 0.1f, 0.1f, 0.1f, 1.0f });
-			RenderCommand::Clear();
-		}
+		m_Framebuffer->Bind();
 
-		{
-			static float rotation = 0.0f;
-			rotation += ts * 50.0f;
+		RenderCommand::SetClearColor({ 0.1f, 0.1f, 0.1f, 1.0f });
+		RenderCommand::Clear();
+		
 
-			WF_PROFILE_SCOPE("Renderer Draw");
-			Renderer2D::BeginScene(m_CameraController.GetCamera());
+		// Update scene
 
-			Renderer2D::DrawRotatedQuad({ 1.0f, 0.0f }, { 0.8f, 0.8f }, glm::radians(45.0f), { 0.8f, 0.2f, 0.3f, 1.0f });
-			Renderer2D::DrawQuad({ 0.5f, -0.5f }, { 0.5f, 0.75f }, { 0.2f, 0.3f, 0.8f, 1.0f });
-			Renderer2D::DrawQuad({ -1.0f, 0.0f }, { 0.8f, 0.8f }, m_Color);
-			Renderer2D::DrawQuad({ 0.0f, 0.0f, -0.1f }, { 20.0f, 20.0f }, m_CheckerboardTexture, 10.0f);
-			Renderer2D::DrawRotatedQuad({ -2.0f, 0.0f, 0.0f }, { 1.0f, 1.0f }, glm::radians(rotation), m_CheckerboardTexture, 5.0f);
+		Renderer2D::BeginScene(m_CameraController.GetCamera());
+		
+		m_ActiveScene->OnUpdate(ts);
 
-			for (float y = -5.0f; y < 5.0f; y += 0.5f)
-			{
-				for (float x = -5.0f; x < 5.0f; x += 0.5f)
-				{
-					glm::vec4 color = { (x + 5.0f) / 10.0f, 0.4f, (y + 5.0f) / 10.0f, 0.57f };
-					Renderer2D::DrawQuad({ x, y }, { 0.45f, 0.45f }, color);
-				}
-			}
-			Renderer2D::EndScene();
 
-			m_Framebuffer->Unbind();
-		}
+
+		Renderer2D::EndScene();
+
+		m_Framebuffer->Unbind();
 	}
 
 	void EditorLayer::OnImGuiRender()
@@ -148,7 +141,8 @@ namespace Waffle {
 		ImGui::Text("Verticies: %d", stats.GetTotalVertexCount());
 		ImGui::Text("Indices: %d", stats.GetTotalIndexCount());
 
-		ImGui::ColorEdit4("Square Color", glm::value_ptr(m_Color));
+		auto& squareColor = m_ActiveScene->Reg().get<SpriteRendererComponent>(m_Square).Color;
+		ImGui::ColorEdit4("Square Color", glm::value_ptr(squareColor));
 		ImGui::End();
 
 		ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2{ 0, 0 });
