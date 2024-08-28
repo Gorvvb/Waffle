@@ -29,6 +29,7 @@ namespace Waffle {
 		Entity m_SecondCameraEntity;
 
 		bool m_MainCamera = true;
+		//bool FixedAspectRatio = false;
 
 		Ref<Texture2D> m_CheckerboardTexture;
 
