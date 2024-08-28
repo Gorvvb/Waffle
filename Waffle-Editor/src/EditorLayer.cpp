@@ -6,8 +6,6 @@
 
 #include "Platform/OpenGL/OpenGLShader.h"
 
-#include <chrono>
-
 namespace Waffle {
 
 	EditorLayer::EditorLayer()

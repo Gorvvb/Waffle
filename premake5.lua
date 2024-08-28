@@ -17,6 +17,7 @@ Includedir["GLAD"] = "Waffle/vendor/GLAD/include"
 Includedir["ImGui"] = "Waffle/vendor/imgui"
 Includedir["glm"] = "Waffle/vendor/glm"
 Includedir["stb_image"] = "Waffle/vendor/stb_image"
+Includedir["entt"] = "Waffle/vendor/entt/include"
 
 group "Dependencies"
     include "Waffle/vendor/GLFW"
@@ -50,7 +51,7 @@ project "Waffle"
     defines
     {
         "_CRT_SECURE_NO_WARNINGS",
-		"GLFW_INCLUDE_NONE"
+        "GLFW_INCLUDE_NONE"
     }
 
     includedirs
@@ -61,7 +62,8 @@ project "Waffle"
         "%{Includedir.GLAD}",
         "%{Includedir.ImGui}",
         "%{Includedir.glm}",
-        "%{Includedir.stb_image}"
+        "%{Includedir.stb_image}",
+        "%{Includedir.entt}"
     }
 
     links
@@ -112,7 +114,8 @@ project "Sandbox"
             "Waffle/vendor/spdlog/include",
             "Waffle/src",
             "Waffle/vendor",
-            "%{Includedir.glm}"
+            "%{Includedir.glm}",
+            "%{Includedir.entt}"
         }
 
         links
@@ -156,7 +159,8 @@ project "Waffle-Editor"
             "Waffle/vendor/spdlog/include",
             "Waffle/src",
             "Waffle/vendor",
-            "%{Includedir.glm}"
+            "%{Includedir.glm}",
+            "%{Includedir.entt}"
         }
 
         links
