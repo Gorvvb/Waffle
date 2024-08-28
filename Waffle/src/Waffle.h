@@ -18,6 +18,7 @@
 
 #include "Waffle/Scene/Scene.h"
 #include "Waffle/Scene/Entity.h"
+#include "Waffle/Scene/ScriptableEntity.h"
 #include "Waffle/Scene/Components.h"
 
 // ---Renderer-----------------------
