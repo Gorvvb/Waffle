@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Waffle.h"
+#include "Panels/SceneHierarchyPanel.h"
 
 namespace Waffle {
 
@@ -29,11 +30,12 @@ namespace Waffle {
 		Entity m_SecondCameraEntity;
 
 		bool m_MainCamera = true;
-		//bool FixedAspectRatio = false;
 
 		Ref<Texture2D> m_CheckerboardTexture;
 
 		bool m_ViewportFocused = false, m_ViewportHovered = false;
 		glm::vec2 m_ViewportSize = { 0, 0 };
+
+		SceneHierarchyPanel m_SceneHierarchyPanel;
 	};
 }

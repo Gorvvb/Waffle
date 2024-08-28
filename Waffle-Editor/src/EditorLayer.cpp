@@ -101,6 +101,7 @@ namespace Waffle {
 		m_ActiveScene->OnUpdate(ts);
 
 		m_Framebuffer->Unbind();
+		m_SceneHierarchyPanel.SetContext(m_ActiveScene);
 	}
 
 	void EditorLayer::OnImGuiRender()
@@ -132,7 +133,7 @@ namespace Waffle {
 
 		if (!opt_padding)
 			ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
-		ImGui::Begin("DockSpace Demo", &dockSpaceOpen, window_flags);
+		ImGui::Begin("Waffle DockSpace", &dockSpaceOpen, window_flags);
 		if (!opt_padding)
 			ImGui::PopStyleVar();
 
@@ -208,6 +209,8 @@ namespace Waffle {
 		ImGui::Image((void*)textureID, ImVec2{ m_ViewportSize.x, m_ViewportSize.y }, ImVec2{ 0, 1 }, ImVec2{ 1, 0 });
 		ImGui::End();
 		ImGui::PopStyleVar();
+
+		m_SceneHierarchyPanel.OnImGuiRender();
 
 		ImGui::End();
 	}
