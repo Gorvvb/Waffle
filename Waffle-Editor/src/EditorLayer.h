@@ -25,6 +25,10 @@ namespace Waffle {
 		
 		Ref<Scene> m_ActiveScene;
 		Entity m_SquareEntity;
+		Entity m_CameraEntity;
+		Entity m_SecondCameraEntity;
+
+		bool m_MainCamera = true;
 
 		Ref<Texture2D> m_CheckerboardTexture;
 

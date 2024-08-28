@@ -6,7 +6,7 @@
 
 namespace Waffle {
 
-	class WAFFLE_API LayerStack
+	class LayerStack
 	{
 	public:
 		LayerStack();
