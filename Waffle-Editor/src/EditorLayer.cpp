@@ -26,17 +26,17 @@ namespace Waffle {
 
 		m_ActiveScene = CreateRef<Scene>();
 
-		auto square = m_ActiveScene->CreateEntity("First Square");
+		auto square = m_ActiveScene->CreateEntity("Green Square");
 		square.AddComponent<SpriteRendererComponent>(glm::vec4{ 0.0f, 1.0f, 0.0f, 1.0f });
 
-		auto secondSquare = m_ActiveScene->CreateEntity("Second Square");
+		auto secondSquare = m_ActiveScene->CreateEntity("Red Square");
 		secondSquare.AddComponent<SpriteRendererComponent>(glm::vec4{ 1.0f, 0.0f, 0.0f, 1.0f });
 		m_SquareEntity = square;
 
-		m_CameraEntity = m_ActiveScene->CreateEntity("Main Camera");
+		m_CameraEntity = m_ActiveScene->CreateEntity("Camera A");
 		m_CameraEntity.AddComponent<CameraComponent>();
 
-		m_SecondCameraEntity = m_ActiveScene->CreateEntity("Camera 2");
+		m_SecondCameraEntity = m_ActiveScene->CreateEntity("Camera B");
 		m_SecondCameraEntity.AddComponent<CameraComponent>().Primary = false;
 
 		class CameraController : public ScriptableEntity
@@ -52,17 +52,17 @@ namespace Waffle {
 
 			virtual void OnUpdate(Timestep ts) override
 			{
-				auto& transform = GetComponent<TransformComponent>().Transform;
+				auto& translation = GetComponent<TransformComponent>().Translation;
 				float speed = 5.0f;
 
 				if (Input::IsKeyPressed(KeyCode::A))
-					transform[3][0] -= speed * ts;
+					translation.x -= speed * ts;
 				if (Input::IsKeyPressed(KeyCode::D))
-					transform[3][0] += speed * ts;
+					translation.x += speed * ts;
 				if (Input::IsKeyPressed(KeyCode::W))
-					transform[3][1] += speed * ts;
+					translation.y += speed * ts;
 				if (Input::IsKeyPressed(KeyCode::S))
-					transform[3][1] -= speed * ts;
+					translation.y -= speed * ts;
 			}
 		};
 
@@ -165,7 +165,7 @@ namespace Waffle {
 		m_SceneHierarchyPanel.OnImGuiRender();
 
 		// RENDER SETTINGS
-		ImGui::Begin("Settings");
+		ImGui::Begin("Stats");
 
 		auto stats = Renderer2D::GetStats();
 		ImGui::Text("Renderer2D Stats:");
@@ -173,31 +173,6 @@ namespace Waffle {
 		ImGui::Text("Quads: %d", stats.QuadCount);
 		ImGui::Text("Verticies: %d", stats.GetTotalVertexCount());
 		ImGui::Text("Indices: %d", stats.GetTotalIndexCount());
-
-		if (m_SquareEntity)
-		{
-			ImGui::Separator();
-			auto& tag = m_SquareEntity.GetComponent<TagComponent>().Tag;
-			ImGui::Text("%s", tag.c_str());
-			auto& squareColor = m_SquareEntity.GetComponent<SpriteRendererComponent>().Color;
-			ImGui::ColorEdit4("Square color", glm::value_ptr(squareColor));
-			ImGui::Separator();
-		}
-
-		ImGui::DragFloat3("Camera Transform", glm::value_ptr(m_CameraEntity.GetComponent<TransformComponent>().Transform[3]));
-
-		if (ImGui::Checkbox("Camera A", &m_MainCamera))
-		{
-			m_CameraEntity.GetComponent<CameraComponent>().Primary = m_MainCamera;
-			m_SecondCameraEntity.GetComponent<CameraComponent>().Primary =! m_MainCamera;
-		}
-
-		{
-			auto& camera = m_SecondCameraEntity.GetComponent<CameraComponent>().Camera;
-			float orthoSize = camera.GetOrthographicSize();
-			if (ImGui::DragFloat("Second Camera orthograpic size", &orthoSize))
-				camera.SetOrthographicSize(orthoSize);
-		}
 
 		ImGui::End();
 
@@ -212,7 +187,8 @@ namespace Waffle {
 		m_ViewportSize = { viewportPanelSize.x, viewportPanelSize.y };
 
 		uint32_t textureID = m_Framebuffer->GetColorAttachmentRendererID();
-		ImGui::Image((void*)textureID, ImVec2{ m_ViewportSize.x, m_ViewportSize.y }, ImVec2{ 0, 1 }, ImVec2{ 1, 0 });
+		//ImGui::Image((void*)textureID, ImVec2{ m_ViewportSize.x, m_ViewportSize.y }, ImVec2{ 0, 1 }, ImVec2{ 1, 0 });
+		ImGui::Image(reinterpret_cast<void*>(static_cast<uintptr_t>(textureID)), ImVec2{ m_ViewportSize.x, m_ViewportSize.y }, ImVec2{ 0, 1 }, ImVec2{ 1, 0 });
 		ImGui::End();
 		ImGui::PopStyleVar();
 

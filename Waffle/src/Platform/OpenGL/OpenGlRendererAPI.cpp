@@ -33,9 +33,10 @@ namespace Waffle {
 	void OpenGLRendererAPI::DrawIndexed(const std::shared_ptr<VertexArray>& vertexArray, uint32_t indexCount)
 	{
 		uint32_t count = indexCount ? indexCount : vertexArray->GetIndexBuffer()->GetCount();
-		glDrawElements(GL_TRIANGLES, count, GL_UNSIGNED_INT, nullptr);
-		glBindTexture(GL_TEXTURE_2D, 0);
+		if (indexCount != 0)
+		{
+			glDrawElements(GL_TRIANGLES, count, GL_UNSIGNED_INT, nullptr);
+			glBindTexture(GL_TEXTURE_2D, 0);
+		}
 	}
 }
-
-// 7:50 https://www.youtube.com/watch?v=raj1Y5bF_wk&list=PLlrATfBNZ98dC-V-N3m0Go4deliWHPFwT&index=68
