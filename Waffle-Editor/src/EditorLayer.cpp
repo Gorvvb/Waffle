@@ -30,24 +30,24 @@ namespace Waffle {
 		square.AddComponent<SpriteRendererComponent>(glm::vec4{ 0.0f, 1.0f, 0.0f, 1.0f });
 		m_SquareEntity = square;
 
-		m_CameraEntity = m_ActiveScene->CreateEntity("Camera Entity");
+		m_CameraEntity = m_ActiveScene->CreateEntity("Main Camera");
 		m_CameraEntity.AddComponent<CameraComponent>();
 
-		m_SecondCameraEntity = m_ActiveScene->CreateEntity("Clip-Space Camera Entity");
+		m_SecondCameraEntity = m_ActiveScene->CreateEntity("Camera 2");
 		m_SecondCameraEntity.AddComponent<CameraComponent>().Primary = false;
 
 		class CameraController : public ScriptableEntity
 		{
 		public:
-			void OnCreate()
+			virtual void OnCreate() override
 			{
 			}
 
-			void OnDestroy()
+			virtual void OnDestroy() override
 			{
 			}
 
-			void OnUpdate(Timestep ts)
+			virtual void OnUpdate(Timestep ts) override
 			{
 				auto& transform = GetComponent<TransformComponent>().Transform;
 				float speed = 5.0f;
@@ -65,6 +65,8 @@ namespace Waffle {
 
 		m_CameraEntity.AddComponent<NativeScriptComponent>().Bind<CameraController>();
 		m_SecondCameraEntity.AddComponent<NativeScriptComponent>().Bind<CameraController>();
+
+		m_SceneHierarchyPanel.SetContext(m_ActiveScene);
 	}
 
 	void EditorLayer::OnDetach()
@@ -101,7 +103,6 @@ namespace Waffle {
 		m_ActiveScene->OnUpdate(ts);
 
 		m_Framebuffer->Unbind();
-		m_SceneHierarchyPanel.SetContext(m_ActiveScene);
 	}
 
 	void EditorLayer::OnImGuiRender()
@@ -158,6 +159,8 @@ namespace Waffle {
 			ImGui::EndMenuBar();
 		}
 
+		m_SceneHierarchyPanel.OnImGuiRender();
+
 		// RENDER SETTINGS
 		ImGui::Begin("Settings");
 
@@ -209,8 +212,6 @@ namespace Waffle {
 		ImGui::Image((void*)textureID, ImVec2{ m_ViewportSize.x, m_ViewportSize.y }, ImVec2{ 0, 1 }, ImVec2{ 1, 0 });
 		ImGui::End();
 		ImGui::PopStyleVar();
-
-		m_SceneHierarchyPanel.OnImGuiRender();
 
 		ImGui::End();
 	}
