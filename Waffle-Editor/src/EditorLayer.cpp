@@ -26,8 +26,11 @@ namespace Waffle {
 
 		m_ActiveScene = CreateRef<Scene>();
 
-		auto square = m_ActiveScene->CreateEntity("Square Entity");
+		auto square = m_ActiveScene->CreateEntity("First Square");
 		square.AddComponent<SpriteRendererComponent>(glm::vec4{ 0.0f, 1.0f, 0.0f, 1.0f });
+
+		auto secondSquare = m_ActiveScene->CreateEntity("Second Square");
+		secondSquare.AddComponent<SpriteRendererComponent>(glm::vec4{ 1.0f, 0.0f, 0.0f, 1.0f });
 		m_SquareEntity = square;
 
 		m_CameraEntity = m_ActiveScene->CreateEntity("Main Camera");
