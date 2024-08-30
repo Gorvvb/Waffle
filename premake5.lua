@@ -30,7 +30,7 @@ Includedir["ImGui"] = "%{wks.location}/Waffle/vendor/imgui"
 Includedir["glm"] = "%{wks.location}/Waffle/vendor/glm"
 Includedir["stb_image"] = "%{wks.location}/Waffle/vendor/stb_image"
 Includedir["entt"] = "%{wks.location}/Waffle/vendor/entt/include"
-Includedir["yaml_cpp"] = "%{wks.location}/Waffle/vendor/yaml-cpp"
+Includedir["yaml_cpp"] = "%{wks.location}/Waffle/vendor/yaml-cpp/include"
 
 group "Dependencies"
 	include "Waffle/vendor/GLFW"
