@@ -4,7 +4,9 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
 
-#include "Platform/OpenGL/OpenGLShader.h"
+//#include "Platform/OpenGL/OpenGLShader.h"
+
+#include "Waffle/Scene/SceneSerializer.h"
 
 namespace Waffle {
 
@@ -26,6 +28,7 @@ namespace Waffle {
 
 		m_ActiveScene = CreateRef<Scene>();
 
+#if 0
 		auto square = m_ActiveScene->CreateEntity("Green Square");
 		square.AddComponent<SpriteRendererComponent>(glm::vec4{ 0.0f, 1.0f, 0.0f, 1.0f });
 
@@ -69,7 +72,12 @@ namespace Waffle {
 		m_CameraEntity.AddComponent<NativeScriptComponent>().Bind<CameraController>();
 		m_SecondCameraEntity.AddComponent<NativeScriptComponent>().Bind<CameraController>();
 
+#endif
 		m_SceneHierarchyPanel.SetContext(m_ActiveScene);
+
+		//SceneSerializer serializer(m_ActiveScene);
+		//serializer.Serialize("assets/scenes/Example.waffle");
+		//serializer.Deserialize("assets/scenes/Example.waffle");
 	}
 
 	void EditorLayer::OnDetach()
@@ -161,6 +169,18 @@ namespace Waffle {
 		{
 			if (ImGui::BeginMenu("File"))
 			{
+				if (ImGui::MenuItem("Serialize"))
+				{
+					SceneSerializer serializer(m_ActiveScene);
+					serializer.Serialize("assets/scenes/Example.waffle");
+				}
+
+				if (ImGui::MenuItem("Deserialize"))
+				{
+					SceneSerializer serializer(m_ActiveScene);
+					serializer.Deserialize("assets/scenes/Example.waffle");
+				}
+
 				if (ImGui::MenuItem("Exit")) Application::Get().Close();
 				ImGui::EndMenu();
 			}
