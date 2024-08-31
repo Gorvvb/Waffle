@@ -12,6 +12,8 @@
 #include "GLFW/glfw3.h"
 #include "glad/glad.h"
 
+#include "ImGuizmo.h"
+
 namespace Waffle {
 	ImGuiLayer::ImGuiLayer()
 		: Layer("ImGuiLayer")
@@ -73,6 +75,7 @@ namespace Waffle {
 		ImGui_ImplOpenGL3_NewFrame();
 		ImGui_ImplGlfw_NewFrame();
 		ImGui::NewFrame();
+		ImGuizmo::BeginFrame();
 	}
 
 	void ImGuiLayer::OnEvent(Event& e)

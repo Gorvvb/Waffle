@@ -17,7 +17,10 @@ project "Waffle"
 		"vendor/stb_image/**.h",
 		"vendor/stb_image/**.cpp",
 		"vendor/glm/glm/**.hpp",
-		"vendor/glm/glm/**.inl"
+		"vendor/glm/glm/**.inl",
+
+		"vendor/ImGuizmo/ImGuizmo.h",
+		"vendor/ImGuizmo/ImGuizmo.cpp"
 	}
 
 	defines
@@ -37,7 +40,8 @@ project "Waffle"
 		"%{Includedir.glm}",
 		"%{Includedir.stb_image}",
 		"%{Includedir.entt}",
-		"%{Includedir.yaml_cpp}"
+		"%{Includedir.yaml_cpp}",
+		"%{Includedir.ImGuizmo}"
 	}
 
 	links
@@ -48,6 +52,9 @@ project "Waffle"
 		"opengl32.lib",
 		"yaml-cpp"
 	}
+
+	filter "files:vendor/ImGuizmo/**.cpp"
+	flags { "NoPCH" }
 
 	filter "system:windows"
 		systemversion "latest"
