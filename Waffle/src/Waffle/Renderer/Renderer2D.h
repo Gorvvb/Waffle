@@ -5,6 +5,7 @@
 #include "Texture.h"
 
 #include "Waffle/Renderer/Camera.h"
+#include "Waffle/Renderer/EditorCamera.h"
 
 namespace Waffle {
 
@@ -15,6 +16,7 @@ namespace Waffle {
 		static void Shutdown();
 
 		static void BeginScene(const Camera& camera, const glm::mat4& transform);
+		static void BeginScene(const EditorCamera& camera);
 		static void BeginScene(const OrthographicCamera& camera); // TODO: REMOVE
 		static void EndScene();
 		static void Flush();
@@ -46,6 +48,7 @@ namespace Waffle {
 		static Statistics GetStats();
 
 	private:
-		static void FlushAndReset();
+		static void StartBatch();
+		static void NextBatch();
 	};
 }
