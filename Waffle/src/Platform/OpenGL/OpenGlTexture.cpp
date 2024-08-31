@@ -13,8 +13,6 @@ namespace Waffle {
 
 		m_InternalFormat = GL_RGBA8, m_DataFormat = GL_RGBA;
 
-		WF_CORE_ASSERT(internalFormat & dataFormat, "Format not supported");
-
 		glCreateTextures(GL_TEXTURE_2D, 1, &m_RendererID);
 		glTextureStorage2D(m_RendererID, 1, m_InternalFormat, m_Width, m_Height);
 

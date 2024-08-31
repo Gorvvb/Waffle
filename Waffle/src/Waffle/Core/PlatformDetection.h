@@ -26,14 +26,6 @@
 	#error "Unknown platform!"
 #endif
 
-#ifdef HZ_ENABLE_ASSERTS
-	#define WF_ASSERT(x, ...) { if(!(x)) { HZ_ERROR("Assertion Failed: {0}", __VA_ARGS__); __debugbreak(); } }
-	#define WF_CORE_ASSERT(x, ...) { if(!(x)) { HZ_CORE_ERROR("Assertion Failed: {0}", __VA_ARGS__); __debugbreak(); }}
-#else
-	#define WF_ASSERT(x, ...)
-	#define WF_CORE_ASSERT(x, ...)
-#endif
-
 #ifdef WF_PLATFORM_WINDOWS
 	#if WF_DYNAMIC_LINK
 		#ifdef WF_BUILD_DLL
