@@ -1,6 +1,5 @@
 #pragma once
 
-#include "wfpch.h"
 #include "Waffle/Core/Base.h"
 
 namespace Waffle {
@@ -29,7 +28,6 @@ namespace Waffle {
 		EventCategoryMouseButton		= BIT(4)
 	};
 
-// static EventType GetStaticType() { return EventType::##type; }\/
 #define EVENT_CLASS_TYPE(type) static EventType GetStaticType() { return EventType::##type; }\
 								virtual EventType GetEventType() const override { return GetStaticType(); }\
 								virtual const char* GetName() const override { return #type; }
@@ -66,7 +64,7 @@ namespace Waffle {
 		{
 			if (m_Event.GetEventType() == T::GetStaticType())
 			{
-				m_Event.handled = func(static_cast<T&>(m_Event));
+				m_Event.handled |= func(static_cast<T&>(m_Event));
 				return true;
 			}
 			return false;

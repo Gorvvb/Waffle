@@ -4,9 +4,9 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
 
-//#include "Platform/OpenGL/OpenGLShader.h"
-
 #include "Waffle/Scene/SceneSerializer.h"
+
+#include "Waffle/Utils/PlatformUtils.h"
 
 namespace Waffle {
 
@@ -169,17 +169,14 @@ namespace Waffle {
 		{
 			if (ImGui::BeginMenu("File"))
 			{
-				if (ImGui::MenuItem("Serialize"))
-				{
-					SceneSerializer serializer(m_ActiveScene);
-					serializer.Serialize("assets/scenes/Example.waffle");
-				}
+				if (ImGui::MenuItem("New", "Ctrl+N"))
+					NewScene();
 
-				if (ImGui::MenuItem("Deserialize"))
-				{
-					SceneSerializer serializer(m_ActiveScene);
-					serializer.Deserialize("assets/scenes/Example.waffle");
-				}
+				if (ImGui::MenuItem("Open...", "Ctrl+O"))
+					OpenScene();
+
+				if (ImGui::MenuItem("Save As..." , "Ctrl+S")) // Maybe "Ctrl+Shift+S"
+					SaveSceneAs();
 
 				if (ImGui::MenuItem("Exit")) Application::Get().Close();
 				ImGui::EndMenu();
@@ -224,5 +221,71 @@ namespace Waffle {
 	void EditorLayer::OnEvent(Waffle::Event& e)
 	{
 		m_CameraController.OnEvent(e);
+
+		EventDispatcher dispacher(e);
+		dispacher.Dispatch<KeyPressedEvent>(WF_BIND_EVENT_FN(EditorLayer::OnkeyPressed));
+	}
+
+	bool EditorLayer::OnkeyPressed(KeyPressedEvent e)
+	{
+		// Shortcuts
+		if (e.GetRepeatCount() > 0)
+			return false;
+
+		
+		bool controll = Input::IsKeyPressed(Key::LeftControl) || Input::IsKeyPressed(Key::RightControl);
+		bool shift = Input::IsKeyPressed(Key::LeftShift) || Input::IsKeyPressed(Key::RightShift);
+		switch (e.GetKeyCode())
+		{
+			case Key::S:
+			{
+				if (controll) // maybe "controll && shift"
+					SaveSceneAs();
+				break;
+			}
+			case Key::O:
+			{
+				if (controll)
+					OpenScene();
+				break;
+			}
+			case Key::N:
+			{
+				if (controll)
+					NewScene();
+				break;
+			}
+		}
+	}
+
+	void EditorLayer::NewScene()
+	{
+		m_ActiveScene = CreateRef<Scene>();
+		m_ActiveScene->OnViewportResize((uint32_t)m_ViewportSize.x, (uint32_t)m_ViewportSize.y);
+		m_SceneHierarchyPanel.SetContext(m_ActiveScene);
+	}
+
+	void EditorLayer::OpenScene()
+	{
+		std::string filepath = FileDialogs::OpenFile("Waffle Scene (*.waffle)\0*.waffle\0");
+		if (!filepath.empty())
+		{
+			m_ActiveScene = CreateRef<Scene>();
+			m_ActiveScene->OnViewportResize((uint32_t)m_ViewportSize.x, (uint32_t)m_ViewportSize.y);
+			m_SceneHierarchyPanel.SetContext(m_ActiveScene);
+
+			SceneSerializer serializer(m_ActiveScene);
+			serializer.Deserialize(filepath);
+		}
+	}
+
+	void EditorLayer::SaveSceneAs()
+	{
+		std::string filepath = FileDialogs::SaveFile("Waffle Scene (*.waffle)\0*.waffle\0");
+		if (!filepath.empty())
+		{
+			SceneSerializer serializer(m_ActiveScene);
+			serializer.Serialize(filepath);
+		}
 	}
 }

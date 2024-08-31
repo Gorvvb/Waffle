@@ -6,6 +6,7 @@
 #include "Waffle/Core/Application.h"
 #include "Waffle/Core/Layer.h"
 #include "Waffle/Core/Log.h"
+#include "Waffle/Core/Assert.h"
 
 #include "Waffle/Core/Timestep.h"
 

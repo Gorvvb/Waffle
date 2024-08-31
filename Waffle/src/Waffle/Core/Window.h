@@ -1,6 +1,6 @@
 #pragma once
 
-#include "wfpch.h"
+#include <sstream>
 
 #include "Waffle/Core/Base.h"
 #include "Waffle/Events/Event.h"

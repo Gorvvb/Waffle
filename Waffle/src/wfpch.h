@@ -16,6 +16,7 @@
 #include <unordered_set>
 
 #include "Waffle/Core/Log.h"
+#include "Waffle/Core/Base.h"
 #include "Waffle/Debug/Instrumentor.h"
 
 #ifdef WF_PLATFORM_WINDOWS
