@@ -31,6 +31,7 @@ Includedir["glm"] = "%{wks.location}/Waffle/vendor/glm"
 Includedir["stb_image"] = "%{wks.location}/Waffle/vendor/stb_image"
 Includedir["entt"] = "%{wks.location}/Waffle/vendor/entt/include"
 Includedir["yaml_cpp"] = "%{wks.location}/Waffle/vendor/yaml-cpp/include"
+Includedir["ImGuizmo"] = "%{wks.location}/Waffle/vendor/ImGuizmo"
 
 group "Dependencies"
 	include "Waffle/vendor/GLFW"

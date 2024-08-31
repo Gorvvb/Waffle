@@ -8,6 +8,10 @@
 
 #include "Waffle/Utils/PlatformUtils.h"
 
+#include "ImGuizmo/ImGuizmo.h"
+
+#include "Waffle/Math/Math.h"
+
 namespace Waffle {
 
 	EditorLayer::EditorLayer()
@@ -27,57 +31,7 @@ namespace Waffle {
 		m_Framebuffer = Framebuffer::Create(fbSpec);
 
 		m_ActiveScene = CreateRef<Scene>();
-
-#if 0
-		auto square = m_ActiveScene->CreateEntity("Green Square");
-		square.AddComponent<SpriteRendererComponent>(glm::vec4{ 0.0f, 1.0f, 0.0f, 1.0f });
-
-		auto secondSquare = m_ActiveScene->CreateEntity("Red Square");
-		secondSquare.AddComponent<SpriteRendererComponent>(glm::vec4{ 1.0f, 0.0f, 0.0f, 1.0f });
-		m_SquareEntity = square;
-
-		m_CameraEntity = m_ActiveScene->CreateEntity("Camera A");
-		m_CameraEntity.AddComponent<CameraComponent>();
-
-		m_SecondCameraEntity = m_ActiveScene->CreateEntity("Camera B");
-		m_SecondCameraEntity.AddComponent<CameraComponent>().Primary = false;
-
-		class CameraController : public ScriptableEntity
-		{
-		public:
-			virtual void OnCreate() override
-			{
-			}
-
-			virtual void OnDestroy() override
-			{
-			}
-
-			virtual void OnUpdate(Timestep ts) override
-			{
-				auto& translation = GetComponent<TransformComponent>().Translation;
-				float speed = 5.0f;
-
-				if (Input::IsKeyPressed(KeyCode::A))
-					translation.x -= speed * ts;
-				if (Input::IsKeyPressed(KeyCode::D))
-					translation.x += speed * ts;
-				if (Input::IsKeyPressed(KeyCode::W))
-					translation.y += speed * ts;
-				if (Input::IsKeyPressed(KeyCode::S))
-					translation.y -= speed * ts;
-			}
-		};
-
-		m_CameraEntity.AddComponent<NativeScriptComponent>().Bind<CameraController>();
-		m_SecondCameraEntity.AddComponent<NativeScriptComponent>().Bind<CameraController>();
-
-#endif
 		m_SceneHierarchyPanel.SetContext(m_ActiveScene);
-
-		//SceneSerializer serializer(m_ActiveScene);
-		//serializer.Serialize("assets/scenes/Example.waffle");
-		//serializer.Deserialize("assets/scenes/Example.waffle");
 	}
 
 	void EditorLayer::OnDetach()
@@ -204,7 +158,7 @@ namespace Waffle {
 
 		m_ViewportFocused = ImGui::IsWindowFocused();
 		m_ViewportHovered = ImGui::IsWindowHovered();
-		Application::Get().GetImGuiLayer()->BlockEvents(!m_ViewportFocused || !m_ViewportHovered);
+		Application::Get().GetImGuiLayer()->BlockEvents(!m_ViewportFocused && !m_ViewportHovered);
 
 		ImVec2 viewportPanelSize = ImGui::GetContentRegionAvail();
 		m_ViewportSize = { viewportPanelSize.x, viewportPanelSize.y };
@@ -212,6 +166,50 @@ namespace Waffle {
 		uint32_t textureID = m_Framebuffer->GetColorAttachmentRendererID();
 		//ImGui::Image((void*)textureID, ImVec2{ m_ViewportSize.x, m_ViewportSize.y }, ImVec2{ 0, 1 }, ImVec2{ 1, 0 });
 		ImGui::Image(reinterpret_cast<void*>(static_cast<uintptr_t>(textureID)), ImVec2{ m_ViewportSize.x, m_ViewportSize.y }, ImVec2{ 0, 1 }, ImVec2{ 1, 0 });
+
+		// Gizmos
+		Entity selectedEntity = m_SceneHierarchyPanel.GetSelectedEntity();
+		if (selectedEntity && m_GizmoType != -1)
+		{
+			ImGuizmo::SetOrthographic(false);
+			ImGuizmo::SetDrawlist();
+			float windowWidth = (float)ImGui::GetWindowWidth();
+			float windowHeight = (float)ImGui::GetWindowHeight();
+			ImGuizmo::SetRect(ImGui::GetWindowPos().x, ImGui::GetWindowPos().y, windowWidth, windowHeight);
+
+			// Camera
+			auto cameraEntity = m_ActiveScene->GetPrimaryCameraEntity();
+			const auto& camera = cameraEntity.GetComponent<CameraComponent>().Camera;
+
+			const glm::mat4& cameraProjection = camera.GetProjection();
+			glm::mat4 cameraView = glm::inverse(cameraEntity.GetComponent<TransformComponent>().GetTransform());
+
+			// Entity transform
+			auto& tc = selectedEntity.GetComponent<TransformComponent>();
+			glm::mat4 transform = tc.GetTransform();
+
+			// Snapping
+			bool snap = Input::IsKeyPressed(Key::LeftControl);
+			float snapValue = 0.5f;
+			if (m_GizmoType == ImGuizmo::OPERATION::ROTATE)
+				snapValue = 45.0f;
+
+			float snapValues[3] = { snapValue, snapValue, snapValue };
+
+			ImGuizmo::Manipulate(glm::value_ptr(cameraView), glm::value_ptr(cameraProjection), (ImGuizmo::OPERATION)m_GizmoType, ImGuizmo::LOCAL, glm::value_ptr(transform), nullptr, snap ? snapValues : nullptr);
+
+			if (ImGuizmo::IsUsing())
+			{
+				glm::vec3 translation, rotation, scale;
+				Math::DecomposeTransform(transform, translation, rotation, scale);
+
+				glm::vec3 deltaRotation = rotation - tc.Rotation;
+				tc.Translation = translation;
+				tc.Rotation += deltaRotation;
+				tc.Scale = scale;
+			}
+		}
+
 		ImGui::End();
 		ImGui::PopStyleVar();
 
@@ -255,7 +253,31 @@ namespace Waffle {
 					NewScene();
 				break;
 			}
+
+			// Gizmos
+
+			case Key::Q:
+			{
+				m_GizmoType = -1;
+				break;
+			}
+			case Key::W:
+			{
+				m_GizmoType = ImGuizmo::OPERATION::TRANSLATE;
+				break;
+			}
+			case Key::E:
+			{
+				m_GizmoType = ImGuizmo::OPERATION::ROTATE;
+				break;
+			}
+			case Key::R:
+			{
+				m_GizmoType = ImGuizmo::OPERATION::SCALE;
+				break;
+			}
 		}
+		return false;
 	}
 
 	void EditorLayer::NewScene()
