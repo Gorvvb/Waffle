@@ -3,6 +3,8 @@
 #include "Waffle.h"
 #include "Panels/SceneHierarchyPanel.h"
 
+#include "Waffle/Renderer/EditorCamera.h"
+
 namespace Waffle {
 
 	class EditorLayer : public Layer
@@ -33,6 +35,8 @@ namespace Waffle {
 		Ref<Scene> m_ActiveScene;
 
 		bool m_MainCamera = true;
+
+		EditorCamera m_EditorCamera;
 
 		Ref<Texture2D> m_CheckerboardTexture;
 
