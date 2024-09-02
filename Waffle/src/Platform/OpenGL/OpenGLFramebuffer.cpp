@@ -72,6 +72,18 @@ namespace Waffle {
 			}
 			return false;
 		}
+
+		static GLenum WaffleFramebufferTextureFormatToOpenGL(FramebufferTextureFormat format)
+		{
+			switch (format)
+			{
+				case Waffle::FramebufferTextureFormat::RGBA8:		return GL_RGBA8;
+				case Waffle::FramebufferTextureFormat::RED_INTEGER: return GL_RED_INTEGER;
+			}
+
+			WF_CORE_ASSERT(false);
+			return 0;
+		}
 	}
 
 	OpenGLFrameBuffer::OpenGLFrameBuffer(const FramebufferSpecification& spec)
@@ -190,5 +202,13 @@ namespace Waffle {
 		int pixelData;
 		glReadPixels(x, y, 1, 1, GL_RED_INTEGER, GL_INT, &pixelData);
 		return pixelData;
+	}
+
+	void OpenGLFrameBuffer::ClearAttachment(uint32_t attachmentIndex, int value)
+	{
+		WF_CORE_ASSERT(attachmentIndex < m_ColorAttachments.size());
+
+		auto& spec = m_ColorAttachmentSpecifications[attachmentIndex];
+		glClearTexImage(m_ColorAttachments[attachmentIndex], 0, Utils::WaffleFramebufferTextureFormatToOpenGL(spec.TextureFormat), GL_INT, &value);
 	}
 }

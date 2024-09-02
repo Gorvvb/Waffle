@@ -31,6 +31,8 @@ namespace Waffle {
 		Ref<VertexArray> m_SquareVA;
 		Ref<Shader> m_FlatColorShader;
 		Ref<Framebuffer> m_Framebuffer;
+
+		Entity m_HoveredEntity;
 		
 		Ref<Scene> m_ActiveScene;
 
