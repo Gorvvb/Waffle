@@ -68,7 +68,8 @@ namespace Waffle {
 
 		m_Framebuffer->Bind();
 
-		RenderCommand::SetClearColor({ 0.1f, 0.1f, 0.1f, 1.0f });
+		//RenderCommand::SetClearColor({ 0.1f, 0.1f, 0.1f, 1.0f });
+		RenderCommand::SetClearColor({ 0.18f, 0.18f, 0.19f, 1.0f });
 		RenderCommand::Clear();
 
 		m_Framebuffer->ClearAttachment(1, -1);

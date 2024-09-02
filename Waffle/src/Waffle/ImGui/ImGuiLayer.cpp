@@ -112,7 +112,8 @@ namespace Waffle {
 	{
 		auto& colors = ImGui::GetStyle().Colors;
 
-		colors[ImGuiCol_WindowBg] = ImVec4{ 0.1f, 0.105f, 0.11f, 1.0f };
+		// OLD THEME -- DARKER THEME
+		/*colors[ImGuiCol_WindowBg] = ImVec4{0.1f, 0.105f, 0.11f, 1.0f};
 
 		colors[ImGuiCol_Header] = ImVec4{ 0.2f, 0.205f, 0.21f, 1.0f };
 		colors[ImGuiCol_HeaderHovered] = ImVec4{ 0.3f, 0.305f, 0.31f, 1.0f };
@@ -134,6 +135,30 @@ namespace Waffle {
 
 		colors[ImGuiCol_TitleBg] = ImVec4{ 0.15f, 0.1505f, 0.151f, 1.0f };
 		colors[ImGuiCol_TitleBgActive] = ImVec4{ 0.15f, 0.1505f, 0.151f, 1.0f };
-		colors[ImGuiCol_TitleBgCollapsed] = ImVec4{ 0.15f, 0.1505f, 0.151f, 1.0f };
+		colors[ImGuiCol_TitleBgCollapsed] = ImVec4{ 0.15f, 0.1505f, 0.151f, 1.0f };*/
+
+		colors[ImGuiCol_WindowBg] = ImVec4{0.15f, 0.16f, 0.17f, 1.0f};
+
+		colors[ImGuiCol_Header] = ImVec4{ 0.25f, 0.26f, 0.27f, 1.0f };
+		colors[ImGuiCol_HeaderHovered] = ImVec4{ 0.35f, 0.36f, 0.37f, 1.0f };
+		colors[ImGuiCol_HeaderActive] = ImVec4{ 0.2f, 0.21f, 0.22f, 1.0f };
+
+		colors[ImGuiCol_Button] = ImVec4{ 0.25f, 0.26f, 0.27f, 1.0f };
+		colors[ImGuiCol_ButtonHovered] = ImVec4{ 0.35f, 0.36f, 0.37f, 1.0f };
+		colors[ImGuiCol_ButtonActive] = ImVec4{ 0.2f, 0.21f, 0.22f, 1.0f };
+
+		colors[ImGuiCol_FrameBg] = ImVec4{ 0.25f, 0.26f, 0.27f, 1.0f };
+		colors[ImGuiCol_FrameBgHovered] = ImVec4{ 0.35f, 0.36f, 0.37f, 1.0f };
+		colors[ImGuiCol_FrameBgActive] = ImVec4{ 0.2f, 0.21f, 0.22f, 1.0f };
+
+		colors[ImGuiCol_Tab] = ImVec4{ 0.2f, 0.21f, 0.22f, 1.0f };
+		colors[ImGuiCol_TabHovered] = ImVec4{ 0.43f, 0.44f, 0.45f, 1.0f };
+		colors[ImGuiCol_TabActive] = ImVec4{ 0.33f, 0.34f, 0.35f, 1.0f };
+		colors[ImGuiCol_TabUnfocused] = ImVec4{ 0.2f, 0.21f, 0.22f, 1.0f };
+		colors[ImGuiCol_TabUnfocusedActive] = ImVec4{ 0.25f, 0.26f, 0.27f, 1.0f };
+
+		colors[ImGuiCol_TitleBg] = ImVec4{ 0.2f, 0.21f, 0.22f, 1.0f };
+		colors[ImGuiCol_TitleBgActive] = ImVec4{ 0.2f, 0.21f, 0.22f, 1.0f };
+		colors[ImGuiCol_TitleBgCollapsed] = ImVec4{ 0.2f, 0.21f, 0.22f, 1.0f };
 	}
 }
