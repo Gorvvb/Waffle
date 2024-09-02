@@ -200,7 +200,6 @@ namespace Waffle {
 		m_ViewportSize = { viewportPanelSize.x, viewportPanelSize.y };
 
 		uint32_t textureID = m_Framebuffer->GetColorAttachmentRendererID();
-		//ImGui::Image((void*)textureID, ImVec2{ m_ViewportSize.x, m_ViewportSize.y }, ImVec2{ 0, 1 }, ImVec2{ 1, 0 });
 		ImGui::Image(reinterpret_cast<void*>(static_cast<uintptr_t>(textureID)), ImVec2{ m_ViewportSize.x, m_ViewportSize.y }, ImVec2{ 0, 1 }, ImVec2{ 1, 0 });
 
 		// Gizmos
@@ -211,12 +210,6 @@ namespace Waffle {
 			ImGuizmo::SetDrawlist();
 
 			ImGuizmo::SetRect(m_ViewportBounds[0].x, m_ViewportBounds[0].y, m_ViewportBounds[1].x - m_ViewportBounds[0].x, m_ViewportBounds[1].y - m_ViewportBounds[0].y);
-
-			// Camera
-			//auto cameraEntity = m_ActiveScene->GetPrimaryCameraEntity();
-			//const auto& camera = cameraEntity.GetComponent<CameraComponent>().Camera;
-			//const glm::mat4& cameraProjection = camera.GetProjection();
-			//glm::mat4 cameraView = glm::inverse(cameraEntity.GetComponent<TransformComponent>().GetTransform());
 
 			const glm::mat4& cameraProjection = m_EditorCamera.GetProjection();
 			glm::mat4 cameraView = m_EditorCamera.GetViewMatrix();
@@ -260,6 +253,7 @@ namespace Waffle {
 
 		EventDispatcher dispacher(e);
 		dispacher.Dispatch<KeyPressedEvent>(WF_BIND_EVENT_FN(EditorLayer::OnkeyPressed));
+		dispacher.Dispatch<MouseButtonPressedEvent>(WF_BIND_EVENT_FN(EditorLayer::OnMouseButton));
 	}
 
 	bool EditorLayer::OnkeyPressed(KeyPressedEvent e)
@@ -275,7 +269,7 @@ namespace Waffle {
 		{
 			case Key::S:
 			{
-				if (controll) // maybe "controll && shift"
+				if (controll && shift)
 					SaveSceneAs();
 				break;
 			}
@@ -314,6 +308,16 @@ namespace Waffle {
 				break;
 			}
 		}
+		return false;
+	}
+
+	bool EditorLayer::OnMouseButton(MouseButtonPressedEvent e)
+	{
+		if (e.GetMouseButton() == Mouse::ButtonLeft && m_ViewportHovered && !ImGuizmo::IsOver() && !Input::IsKeyPressed(Key::LeftControl))
+		{
+			m_SceneHierarchyPanel.SetSelectedEntity(m_HoveredEntity);
+		}
+
 		return false;
 	}
 
