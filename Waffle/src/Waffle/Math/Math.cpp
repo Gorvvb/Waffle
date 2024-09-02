@@ -62,7 +62,6 @@ namespace Waffle {
 				}
 			}
 #endif
-
 			rotation.y = asin(-Row[0][2]);
 			if (cos(rotation.y) != 0) {
 				rotation.x = atan2(Row[1][2], Row[2][2]);
@@ -73,9 +72,7 @@ namespace Waffle {
 				rotation.z = 0;
 			}
 
-
 			return true;
-
 		}
 	}
 }
