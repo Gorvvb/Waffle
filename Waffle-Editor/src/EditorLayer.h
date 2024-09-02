@@ -20,6 +20,7 @@ namespace Waffle {
 		void OnEvent(Event& e) override;
 	private:
 		bool OnkeyPressed(KeyPressedEvent e);
+		bool OnMouseButton(MouseButtonPressedEvent e);
 
 		void NewScene();
 		void OpenScene();

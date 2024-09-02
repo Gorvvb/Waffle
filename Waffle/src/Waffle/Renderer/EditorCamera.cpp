@@ -20,7 +20,7 @@ namespace Waffle {
 
 	void EditorCamera::OnUpdate(Timestep ts)
 	{
-		if (Input::IsKeyPressed(Key::LeftControl))
+		if (Input::IsKeyPressed(Key::LeftShift))
 		{
 			const glm::vec2& mouse{ Input::GetMouseX(), Input::GetMouseY() };
 			glm::vec2 delta = (mouse - m_InitialMousePosition) * 0.003f;
