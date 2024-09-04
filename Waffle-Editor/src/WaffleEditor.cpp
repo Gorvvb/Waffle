@@ -15,8 +15,8 @@ namespace Waffle {
 	class WaffleEditor : public Application
 	{
 	public:
-		WaffleEditor()
-			: Application("Waffle Editor")
+		WaffleEditor(ApplicationCommandLineArgs args)
+			: Application("Waffle Editor", args)
 		{
 			PushLayer(new EditorLayer());
 		}
@@ -26,8 +26,8 @@ namespace Waffle {
 		}
 	};
 
-	Application* CreateApplication()
+	Application* CreateApplication(ApplicationCommandLineArgs args)
 	{
-		return new WaffleEditor();
+		return new WaffleEditor(args);
 	}
 }

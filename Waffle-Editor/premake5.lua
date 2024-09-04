@@ -2,7 +2,7 @@ project "Waffle-Editor"
 		kind "ConsoleApp"
 		language "C++"
 		cppdialect "C++20"
-		staticruntime "on"
+		staticruntime "off"
 		
 		targetdir ("%{wks.location}/bin/" .. outputdir .. "/%{prj.name}")
 		objdir ("%{wks.location}/bin-int/" .. outputdir .. "/%{prj.name}")
@@ -19,7 +19,8 @@ project "Waffle-Editor"
 			"%{wks.location}/Waffle/src",
 			"%{wks.location}/Waffle/vendor",
 			"%{Includedir.glm}",
-			"%{Includedir.entt}"
+			"%{Includedir.entt}",
+			"%{Includedir.ImGuizmo}"
 		}
 
 		links
@@ -31,13 +32,19 @@ project "Waffle-Editor"
 			systemversion "latest"
 		
 		filter "configurations:Debug"
-		defines "WF_DEBUG"
+			defines "WF_DEBUG"
+			runtime "Debug"
 			symbols "on"
+			linkoptions { "/IGNORE:4099" }
 		
 		filter "configurations:Release"
 			defines "WF_RELEASE"
+			runtime "Release"
 			optimize "on"
+			linkoptions { "/IGNORE:4099" }
 		
 		filter "configurations:Dist"
 			defines "WF_DIST"
+			runtime "Release"
 			optimize "on"
+			linkoptions { "/IGNORE:4099" }

@@ -25,7 +25,7 @@ public:
 	}
 };
 
-Waffle::Application* Waffle::CreateApplication()
+Waffle::Application* Waffle::CreateApplication(ApplicationCommandLineArgs args)
 {
 	return new Sandbox();
 }

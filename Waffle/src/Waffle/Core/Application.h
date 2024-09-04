@@ -13,6 +13,18 @@
 
 namespace Waffle {
 
+	struct ApplicationCommandLineArgs
+	{
+		int Count = 0;
+		char** Args = nullptr;
+
+		const char* operator[](int index) const
+		{
+			WF_CORE_ASSERT(index < Count);
+			return Args[index];
+		}
+	};
+
 	class Application
 	{
 	private:
@@ -24,9 +36,12 @@ namespace Waffle {
 
 		float m_lastFrameTime = 0.0f;
 
+		ApplicationCommandLineArgs m_CommandLineArgs;
+
 		static Application* s_Instance;
+		friend int main(int argc, char** argv);
 	public:
-		Application(const std::string& name = "Waffle Engine");
+		Application(const std::string& name = "Waffle Engine", ApplicationCommandLineArgs args = ApplicationCommandLineArgs());
 		virtual ~Application();
 
 		void Run();
@@ -43,11 +58,13 @@ namespace Waffle {
 		ImGuiLayer* GetImGuiLayer() { return m_ImGuiLayer; }
 
 		static Application& Get() { return *s_Instance; }
+
+		ApplicationCommandLineArgs GetCommandLineArgs() const { return m_CommandLineArgs; }
 	private:
 		bool OnWindowClose(WindowCloseEvent& e);
 		bool OnWindowRisize(WindowResizeEvent& e);
 	};
 
 	// Remember to define in client
-	Application* CreateApplication();
+	Application* CreateApplication(ApplicationCommandLineArgs args);
 }
