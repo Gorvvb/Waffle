@@ -2,7 +2,7 @@ project "Waffle"
 	kind "StaticLib"
 	language "C++"
 	cppdialect "C++20"
-	staticruntime "on"
+	staticruntime "off"
 
 	targetdir ("%{wks.location}/bin/" .. outputdir .. "/%{prj.name}")
 	objdir ("%{wks.location}/bin-int/" .. outputdir .. "/%{prj.name}")
@@ -41,7 +41,8 @@ project "Waffle"
 		"%{Includedir.stb_image}",
 		"%{Includedir.entt}",
 		"%{Includedir.yaml_cpp}",
-		"%{Includedir.ImGuizmo}"
+		"%{Includedir.ImGuizmo}",
+		"%{Includedir.VulkanSDK}"
 	}
 
 	links
@@ -65,12 +66,39 @@ project "Waffle"
 	
 	filter "configurations:Debug"
 		defines "WF_DEBUG"
+		runtime "Debug"
 		symbols "on"
+		linkoptions { "/IGNORE:4099", "/IGNORE:4006" }
+
+		links
+		{
+			"%{Library.ShaderC_Debug}",
+			"%{Library.SPIRV_Cross_Debug}",
+			"%{Library.SPIRV_Cross_GLSL_Debug}"
+		}
 	
 	filter "configurations:Release"
 		defines "WF_RELEASE"
+		runtime "Release"
 		optimize "on"
+		linkoptions { "/IGNORE:4099", "/IGNORE:4006" }
+
+		links
+		{
+			"%{Library.ShaderC_Release}",
+			"%{Library.SPIRV_Cross_Release}",
+			"%{Library.SPIRV_Cross_GLSL_Release}"
+		}
 	
 	filter "configurations:Dist"
 		defines "WF_DIST"
+		runtime "Release"
 		optimize "on"
+		linkoptions { "/IGNORE:4099", "/IGNORE:4006" }
+
+		links
+		{
+			"%{Library.ShaderC_Release}",
+			"%{Library.SPIRV_Cross_Release}",
+			"%{Library.SPIRV_Cross_GLSL_Release}"
+		}

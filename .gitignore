@@ -12,3 +12,7 @@ bin-int/
 **.vcxproj.filters
 **.vcxproj.user
 **.csproj
+
+scripts/__pycache__
+Waffle/vendor/VulkanSDK
+Waffle-Editor/assets/cache
