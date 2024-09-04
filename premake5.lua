@@ -3,7 +3,7 @@ include "Dependencies.lua"
 
 workspace "Waffle"
 	architecture "x64"
-	startproject "Waffle-Engine"
+	startproject "Waffle-Editor"
 
 	configurations
 	{
