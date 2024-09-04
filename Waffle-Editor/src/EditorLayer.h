@@ -2,6 +2,7 @@
 
 #include "Waffle.h"
 #include "Panels/SceneHierarchyPanel.h"
+#include "Panels/ContentBrowserPanel.h"
 
 #include "Waffle/Renderer/EditorCamera.h"
 
@@ -50,5 +51,6 @@ namespace Waffle {
 		int m_GizmoType = -1;
 
 		SceneHierarchyPanel m_SceneHierarchyPanel;
+		ContentBrowserPanel m_ContentBrowserPanel;
 	};
 }

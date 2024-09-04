@@ -173,6 +173,7 @@ namespace Waffle {
 		}
 
 		m_SceneHierarchyPanel.OnImGuiRender();
+		m_ContentBrowserPanel.OnImGuiRender();
 
 		// RENDER SETTINGS
 		ImGui::Begin("Stats");
