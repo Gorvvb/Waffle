@@ -26,7 +26,10 @@ namespace Waffle {
 		void NewScene();
 		void OpenScene();
 		void OpenScene(const std::filesystem::path& path);
+		void SaveScene();
 		void SaveSceneAs();
+
+		void SerializeScene(Ref<Scene> scene, const std::filesystem::path& path);
 
 		void OnScenePlay();
 		void OnSceneStop();
@@ -44,6 +47,8 @@ namespace Waffle {
 		Entity m_HoveredEntity;
 		
 		Ref<Scene> m_ActiveScene;
+
+		std::filesystem::path m_EditorScenePath;
 
 		bool m_MainCamera = true;
 
