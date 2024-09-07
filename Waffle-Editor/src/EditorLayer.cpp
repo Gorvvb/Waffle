@@ -177,7 +177,10 @@ namespace Waffle {
 				if (ImGui::MenuItem("Open...", "Ctrl+O"))
 					OpenScene();
 
-				if (ImGui::MenuItem("Save As..." , "Ctrl+S")) // Maybe "Ctrl+Shift+S"
+				if(ImGui::MenuItem("Save Scene", "Ctrl+S"))
+					SaveScene();
+
+				if (ImGui::MenuItem("Save As..." , "Ctrl+Shift+S"))
 					SaveSceneAs();
 
 				if (ImGui::MenuItem("Exit")) Application::Get().Close();
@@ -335,8 +338,12 @@ namespace Waffle {
 		{
 			case Key::S:
 			{
-				if (controll && shift)
-					SaveSceneAs();
+				if (controll)
+					if (shift)
+						SaveSceneAs();
+					else
+						SaveScene();
+
 				break;
 			}
 			case Key::O:
@@ -392,6 +399,8 @@ namespace Waffle {
 		m_ActiveScene = CreateRef<Scene>();
 		m_ActiveScene->OnViewportResize((uint32_t)m_ViewportSize.x, (uint32_t)m_ViewportSize.y);
 		m_SceneHierarchyPanel.SetContext(m_ActiveScene);
+
+		m_EditorScenePath = std::filesystem::path();
 	}
 
 	void EditorLayer::OpenScene()
@@ -413,23 +422,39 @@ namespace Waffle {
 		serializer.Deserialize(path.string());
 	}
 
+	void EditorLayer::SaveScene()
+	{
+		if (!m_EditorScenePath.empty())
+			SerializeScene(m_ActiveScene, m_EditorScenePath);
+		else
+			SaveSceneAs();
+	}
+
 	void EditorLayer::SaveSceneAs()
 	{
 		std::string filepath = FileDialogs::SaveFile("Waffle Scene (*.waffle)\0*.waffle\0");
 		if (!filepath.empty())
 		{
-			SceneSerializer serializer(m_ActiveScene);
-			serializer.Serialize(filepath);
+			SerializeScene(m_ActiveScene, filepath);
+			m_EditorScenePath = filepath;
 		}
+	}
+
+	void EditorLayer::SerializeScene(Ref<Scene> scene, const std::filesystem::path& path)
+	{
+		SceneSerializer serializer(scene);
+		serializer.Serialize(path.string());
 	}
 
 	void EditorLayer::OnScenePlay()
 	{
+		m_ActiveScene->OnRuntimeStart();
 		m_SceneState = SceneState::Play;
 	}
 
 	void EditorLayer::OnSceneStop()
 	{
+		m_ActiveScene->OnRuntimeStop();
 		m_SceneState = SceneState::Edit;
 	}
 }
