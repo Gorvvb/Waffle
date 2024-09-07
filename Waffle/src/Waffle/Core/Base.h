@@ -2,7 +2,7 @@
 
 #include "Waffle/Core/PlatformDetection.h"
 
-#include "Waffle/Core/Log.h"
+//#include "Waffle/Core/Log.h"
 #include "Waffle/Core/Assert.h"
 
 #include <memory>
