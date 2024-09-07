@@ -6,6 +6,7 @@ Includedir = {}
 
 Includedir["GLFW"] = "%{wks.location}/Waffle/vendor/GLFW/include"
 Includedir["GLAD"] = "%{wks.location}/Waffle/vendor/GLAD/include"
+Includedir["Box2D"] = "%{wks.location}/Waffle/vendor/Box2D/include"
 Includedir["ImGui"] = "%{wks.location}/Waffle/vendor/imgui"
 Includedir["glm"] = "%{wks.location}/Waffle/vendor/glm"
 Includedir["stb_image"] = "%{wks.location}/Waffle/vendor/stb_image"

@@ -34,6 +34,7 @@ project "Waffle"
 	{
 		"src",
 		"vendor/spdlog/include",
+		"%{Includedir.Box2D}",
 		"%{Includedir.GLFW}",
 		"%{Includedir.GLAD}",
 		"%{Includedir.ImGui}",
@@ -47,6 +48,7 @@ project "Waffle"
 
 	links
 	{
+		"Box2D",
 		"GLFW",
 		"GLAD",
 		"ImGui",
