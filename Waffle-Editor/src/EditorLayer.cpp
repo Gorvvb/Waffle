@@ -28,6 +28,10 @@ namespace Waffle {
 		m_CheckerboardTexture = Texture2D::Create("assets/textures/Checkerboard.png");
 		m_IconPlay = Texture2D::Create("Resources/Icons/PlayButton.png");
 		m_IconStop = Texture2D::Create("Resources/Icons/StopButton.png");
+		m_IconNoGuizmo = Texture2D::Create("Resources/Icons/NoGuizmo.png");
+		m_IconTransformGuizmo = Texture2D::Create("Resources/Icons/TransformGuizmo.png");
+		m_IconRotationGuizmo = Texture2D::Create("Resources/Icons/RotationGuizmo.png");
+		m_IconScaleGuizmo = Texture2D::Create("Resources/Icons/ScaleGuizmo.png");
 
 		FramebufferSpecification fbSpec;
 		fbSpec.Attachments = { FramebufferTextureFormat::RGBA8, FramebufferTextureFormat::RED_INTEGER, FramebufferTextureFormat::Depth };
@@ -57,6 +61,8 @@ namespace Waffle {
 	void EditorLayer::OnUpdate(Timestep ts)
 	{
 		WF_PROFILE_FUNCTION();
+
+		m_fps = ts;
 
 		if (FramebufferSpecification spec = m_Framebuffer->GetSpecification();
 			m_ViewportSize.x > 0.0f && m_ViewportSize.y > 0.0f &&
@@ -209,6 +215,10 @@ namespace Waffle {
 		ImGui::Text("Verticies: %d", stats.GetTotalVertexCount());
 		ImGui::Text("Indices: %d", stats.GetTotalIndexCount());
 
+		// Calculate and display FPS
+		float fps = 1.0f / m_fps;
+		ImGui::Text("FPS: %.1f", fps);
+
 		ImGui::End();
 
 		ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2{ 0, 0 });
@@ -240,6 +250,26 @@ namespace Waffle {
 			ImGui::EndDragDropTarget();
 		}
 
+		// Display Gizmo Toolbar with Images in the Viewport
+		float iconSize = 20.0f; // Set appropriate icon size
+
+		ImGui::SetCursorPosY(5.0f);
+		ImGui::SetCursorPosX(5.0f);
+		if (ImGui::ImageButton("##NoGizmo", (ImTextureID)(uintptr_t)m_IconNoGuizmo->GetRendererID(), ImVec2(iconSize, iconSize), ImVec2(0, 0), ImVec2(1, 1)))
+			m_GizmoType = -1;
+
+		ImGui::SetCursorPosX(5.0f);
+		if (ImGui::ImageButton("##TranslateGizmo", (ImTextureID)(uintptr_t)m_IconTransformGuizmo->GetRendererID(), ImVec2(iconSize, iconSize), ImVec2(0, 0), ImVec2(1, 1)))
+			m_GizmoType = ImGuizmo::OPERATION::TRANSLATE;
+
+		ImGui::SetCursorPosX(5.0f);
+		if (ImGui::ImageButton("##RotateGizmo", (ImTextureID)(uintptr_t)m_IconRotationGuizmo->GetRendererID(), ImVec2(iconSize, iconSize), ImVec2(0, 0), ImVec2(1, 1)))
+			m_GizmoType = ImGuizmo::OPERATION::ROTATE;
+
+		ImGui::SetCursorPosX(5.0f);
+		if (ImGui::ImageButton("##ScaleGizmo", (ImTextureID)(uintptr_t)m_IconScaleGuizmo->GetRendererID(), ImVec2(iconSize, iconSize), ImVec2(0, 0), ImVec2(1, 1)))
+			m_GizmoType = ImGuizmo::OPERATION::SCALE;
+
 		// Gizmos
 		Entity selectedEntity = m_SceneHierarchyPanel.GetSelectedEntity();
 		if (selectedEntity && m_GizmoType != -1)
@@ -265,17 +295,20 @@ namespace Waffle {
 
 			float snapValues[3] = { snapValue, snapValue, snapValue };
 
-			ImGuizmo::Manipulate(glm::value_ptr(cameraView), glm::value_ptr(cameraProjection), (ImGuizmo::OPERATION)m_GizmoType, ImGuizmo::LOCAL, glm::value_ptr(transform), nullptr, snap ? snapValues : nullptr);
-
-			if (ImGuizmo::IsUsing())
+			if (m_SceneState == SceneState::Edit)
 			{
-				glm::vec3 translation, rotation, scale;
-				Math::DecomposeTransform(transform, translation, rotation, scale);
+				ImGuizmo::Manipulate(glm::value_ptr(cameraView), glm::value_ptr(cameraProjection), (ImGuizmo::OPERATION)m_GizmoType, ImGuizmo::LOCAL, glm::value_ptr(transform), nullptr, snap ? snapValues : nullptr);
 
-				glm::vec3 deltaRotation = rotation - tc.Rotation;
-				tc.Translation = translation;
-				tc.Rotation += deltaRotation;
-				tc.Scale = scale;
+				if (ImGuizmo::IsUsing())
+				{
+					glm::vec3 translation, rotation, scale;
+					Math::DecomposeTransform(transform, translation, rotation, scale);
+
+					glm::vec3 deltaRotation = rotation - tc.Rotation;
+					tc.Translation = translation;
+					tc.Rotation += deltaRotation;
+					tc.Scale = scale;
+				}
 			}
 		}
 
@@ -311,6 +344,7 @@ namespace Waffle {
 			else if (m_SceneState == SceneState::Play)
 				OnSceneStop();
 		}
+
 		ImGui::PopStyleVar(3);
 		ImGui::PopStyleColor(3);
 		ImGui::End();
@@ -319,7 +353,8 @@ namespace Waffle {
 	void EditorLayer::OnEvent(Waffle::Event& e)
 	{
 		m_CameraController.OnEvent(e);
-		m_EditorCamera.OnEvent(e);
+		if (m_SceneState == SceneState::Edit)
+			m_EditorCamera.OnEvent(e);
 
 		EventDispatcher dispacher(e);
 		dispacher.Dispatch<KeyPressedEvent>(WF_BIND_EVENT_FN(EditorLayer::OnkeyPressed));
@@ -332,7 +367,6 @@ namespace Waffle {
 		if (e.GetRepeatCount() > 0)
 			return false;
 
-		
 		bool controll = Input::IsKeyPressed(Key::LeftControl) || Input::IsKeyPressed(Key::RightControl);
 		bool shift = Input::IsKeyPressed(Key::LeftShift) || Input::IsKeyPressed(Key::RightShift);
 		switch (e.GetKeyCode())
@@ -389,7 +423,10 @@ namespace Waffle {
 	{
 		if (e.GetMouseButton() == Mouse::ButtonLeft && m_ViewportHovered && !ImGuizmo::IsOver() && !Input::IsKeyPressed(Key::LeftControl))
 		{
-			m_SceneHierarchyPanel.SetSelectedEntity(m_HoveredEntity);
+			if (m_HoveredEntity)
+			{
+				m_SceneHierarchyPanel.SetSelectedEntity(m_HoveredEntity);
+			}
 		}
 
 		return false;

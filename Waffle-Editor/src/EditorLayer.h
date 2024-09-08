@@ -72,7 +72,10 @@ namespace Waffle {
 		SceneHierarchyPanel m_SceneHierarchyPanel;
 		ContentBrowserPanel m_ContentBrowserPanel;
 
+		float m_fps = 0.0f;
+
 		// Editor resources
 		Ref<Texture2D> m_IconPlay, m_IconStop;
+		Ref<Texture2D> m_IconNoGuizmo, m_IconTransformGuizmo, m_IconRotationGuizmo, m_IconScaleGuizmo;
 	};
 }
