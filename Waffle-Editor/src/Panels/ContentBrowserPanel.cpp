@@ -49,7 +49,6 @@ namespace Waffle {
 			ImGui::PushStyleColor(ImGuiCol_Button, { 0, 0, 0,0 });
 			ImGui::ImageButton("##", (ImTextureID)(uintptr_t)icon->GetRendererID(), { thumbnailSize, thumbnailSize }, { 0, 1 }, { 1, 0 });
 
-
 			if (ImGui::BeginDragDropSource())
 			{
 				const wchar_t* itemPath = relativePath.c_str();

@@ -41,7 +41,8 @@ project "Waffle-Editor"
 			defines "WF_RELEASE"
 			runtime "Release"
 			optimize "on"
-			linkoptions { "/IGNORE:4099" }
+			linkoptions { "/IGNORE:4099", "/SUBSYSTEM:WINDOWS" }
+			entrypoint "mainCRTStartup"
 		
 		filter "configurations:Dist"
 			defines "WF_DIST"
