@@ -1,17 +1,25 @@
 #pragma once
 
+#include "SceneCamera.h"
+#include "Waffle/Core/UUID.h"
+#include "Waffle/Renderer/Texture.h"
+
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 
 #define GLM_ENABLE_EXPERIMENTAL
 #include <glm/gtx/quaternion.hpp>
 
-#include "SceneCamera.h"
-#include "ScriptableEntity.h"
-
-#include "Waffle/Renderer/Texture.h"
-
 namespace Waffle {
+
+	struct IDComponent
+	{
+		UUID ID;
+		IDComponent() = default;
+		IDComponent(const IDComponent&) = default;
+		IDComponent(const UUID& uuid)
+			: ID(uuid) {}
+	};
 
 	struct TagComponent
 	{
@@ -64,6 +72,9 @@ namespace Waffle {
 		CameraComponent() = default;
 		CameraComponent(const CameraComponent&) = default;
 	};
+
+	// Forward declaration
+	class ScriptableEntity;
 
 	struct NativeScriptComponent
 	{
