@@ -33,7 +33,6 @@ namespace Waffle {
 			for (auto entityID : view)
 			{
 				Entity entity{ entityID, m_Context.get() };
-
 				DrawEntityNode(entity);
 			}
 
@@ -44,7 +43,7 @@ namespace Waffle {
 			if (ImGui::BeginPopupContextWindow(0, 1 | ImGuiPopupFlags_NoOpenOverItems))
 			{
 				if (ImGui::MenuItem("Create Empty Entity"))
-					m_Context->CreateEntity(); // maybe add a default name
+					m_Context->CreateEntity();
 				ImGui::EndPopup();
 			}
 
@@ -340,9 +339,32 @@ namespace Waffle {
 				{
 					const wchar_t* path = (const wchar_t*)payload->Data;
 					std::filesystem::path texturePath = std::filesystem::path(g_AssetPath) / path;
-					component.Texture = Texture2D::Create(texturePath.string());
+					component.Texture = Texture2D::Create(texturePath.string(), component.FilterMode);
 				}
 				ImGui::EndDragDropTarget();
+			}
+
+			const char* filterOptions[] = { "Nearest", "Linear" };
+			const char* currentFilter = filterOptions[static_cast<int>(component.FilterMode)];
+			if (ImGui::BeginCombo("Filter Mode", currentFilter))
+			{
+				for (int i = 0; i < IM_ARRAYSIZE(filterOptions); i++)
+				{
+					bool isSelected = (currentFilter == filterOptions[i]);
+					if (ImGui::Selectable(filterOptions[i], isSelected))
+					{
+						component.FilterMode = static_cast<Waffle::TextureFilter>(i);
+
+						if (component.Texture)
+						{
+							std::string currentTexturePath = component.Texture->GetPath();
+							component.Texture = Texture2D::Create(currentTexturePath, component.FilterMode);
+						}
+					}
+					if (isSelected)
+						ImGui::SetItemDefaultFocus();
+				}
+				ImGui::EndCombo();
 			}
 
 			ImGui::DragFloat("Tiling Factor", &component.TilingFactor, 0.1f, 0.0f, 100.0f);

@@ -6,7 +6,8 @@
 #include <glad/glad.h>
 
 namespace Waffle {
-	OpenGlTexture2D::OpenGlTexture2D(uint32_t width, uint32_t height)
+	
+	/*OpenGlTexture2D::OpenGlTexture2D(uint32_t width, uint32_t height)
 		: m_Width(width), m_Height(height)
 	{
 		WF_PROFILE_FUNCTION();
@@ -21,9 +22,29 @@ namespace Waffle {
 
 		glTextureParameteri(m_RendererID, GL_TEXTURE_WRAP_S, GL_REPEAT);
 		glTextureParameteri(m_RendererID, GL_TEXTURE_WRAP_T, GL_REPEAT);
+	}*/
+
+	OpenGlTexture2D::OpenGlTexture2D(uint32_t width, uint32_t height, TextureFilter filter)
+		: m_Width(width), m_Height(height)
+	{
+		WF_PROFILE_FUNCTION();
+
+		m_InternalFormat = GL_RGBA8, m_DataFormat = GL_RGBA;
+
+		glCreateTextures(GL_TEXTURE_2D, 1, &m_RendererID);
+		glTextureStorage2D(m_RendererID, 1, m_InternalFormat, m_Width, m_Height);
+
+		GLenum minFilter = (filter == TextureFilter::Nearest) ? GL_NEAREST : GL_LINEAR;
+		GLenum magFilter = (filter == TextureFilter::Nearest) ? GL_NEAREST : GL_LINEAR;
+
+		glTextureParameteri(m_RendererID, GL_TEXTURE_MIN_FILTER, minFilter);
+		glTextureParameteri(m_RendererID, GL_TEXTURE_MAG_FILTER, magFilter);
+
+		glTextureParameteri(m_RendererID, GL_TEXTURE_WRAP_S, GL_REPEAT);
+		glTextureParameteri(m_RendererID, GL_TEXTURE_WRAP_T, GL_REPEAT);
 	}
 
-	OpenGlTexture2D::OpenGlTexture2D(const std::string& path)
+	OpenGlTexture2D::OpenGlTexture2D(const std::string& path, TextureFilter filter)
 		: m_Path(path)
 	{
 		WF_PROFILE_FUNCTION();
@@ -60,8 +81,11 @@ namespace Waffle {
 		glCreateTextures(GL_TEXTURE_2D, 1, &m_RendererID);
 		glTextureStorage2D(m_RendererID, 1, m_InternalFormat, m_Width, m_Height);
 
-		glTextureParameteri(m_RendererID, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-		glTextureParameteri(m_RendererID, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+		GLenum minFilter = (filter == TextureFilter::Nearest) ? GL_NEAREST : GL_LINEAR;
+		GLenum magFilter = (filter == TextureFilter::Nearest) ? GL_NEAREST : GL_LINEAR;
+
+		glTextureParameteri(m_RendererID, GL_TEXTURE_MIN_FILTER, minFilter);
+		glTextureParameteri(m_RendererID, GL_TEXTURE_MAG_FILTER, magFilter);
 
 		glTextureParameteri(m_RendererID, GL_TEXTURE_WRAP_S, GL_REPEAT);
 		glTextureParameteri(m_RendererID, GL_TEXTURE_WRAP_T, GL_REPEAT);
