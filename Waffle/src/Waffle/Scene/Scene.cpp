@@ -105,6 +105,19 @@ namespace Waffle {
 		return entity;
 	}
 
+	Entity Scene::GetEntityByUUID(UUID uuid)
+	{
+		auto view = m_Registry.view<IDComponent>();
+		for (auto entity : view)
+		{
+			if (view.get<IDComponent>(entity).ID == uuid)
+			{
+				return Entity(entity, this);
+			}
+		}
+		return Entity();
+	}
+
 	void Scene::DestroyEntity(Entity entity)
 	{
 		m_Registry.destroy(entity);
@@ -172,7 +185,6 @@ namespace Waffle {
 		}
 
 		// Physics
-
 		{
 			const int32_t velocityIterations = 6;
 			const int32_t positionIterations = 2;

@@ -199,6 +199,11 @@ namespace Waffle {
 			auto& spriteRendererComponent = entity.GetComponent<SpriteRendererComponent>();
 			out << YAML::Key << "Color" << YAML::Value << spriteRendererComponent.Color;
 
+			if (spriteRendererComponent.Texture)
+				out << YAML::Key << "TexturePath" << YAML::Value << spriteRendererComponent.Texture->GetPath();
+
+			out << YAML::Key << "FilterMode" << YAML::Value << static_cast<int>(spriteRendererComponent.FilterMode);
+
 			out << YAML::EndMap; // SpriteRendererComponent
 		}
 
@@ -326,6 +331,24 @@ namespace Waffle {
 				{
 					auto& src = deserializedEntity.AddComponent<SpriteRendererComponent>();
 					src.Color = spriteRendererComponent["Color"].as<glm::vec4>();
+
+					if (spriteRendererComponent["TexturePath"])
+					{
+						std::string texturePath = spriteRendererComponent["TexturePath"].as<std::string>();
+						src.Texture = Texture2D::Create(texturePath, src.FilterMode);
+					}
+
+					if (spriteRendererComponent["FilterMode"])
+					{
+						int filterModeValue = spriteRendererComponent["FilterMode"].as<int>();
+						src.FilterMode = static_cast<Waffle::TextureFilter>(filterModeValue);
+
+						if (src.Texture)
+						{
+							std::string currentTexturePath = src.Texture->GetPath();
+							src.Texture = Texture2D::Create(currentTexturePath, src.FilterMode);
+						}
+					}
 				}
 
 				auto rigidbody2DComponent = entity["Rigidbody2DComponent"];

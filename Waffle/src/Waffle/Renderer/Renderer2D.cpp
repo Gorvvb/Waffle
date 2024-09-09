@@ -178,7 +178,9 @@ namespace Waffle {
 	void Renderer2D::DrawSprite(const glm::mat4& transform, SpriteRendererComponent& src, int entityID)
 	{
 		if (src.Texture)
+		{
 			DrawQuad(transform, src.Texture, src.TilingFactor, src.Color, entityID);
+		}
 		else
 			DrawQuad(transform, src.Color, entityID);
 	}

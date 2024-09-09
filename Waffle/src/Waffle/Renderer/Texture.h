@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Waffle/Core/Base.h"
+#include "TextureFilter.h"
 
 #include <string>
 
@@ -19,13 +20,15 @@ namespace Waffle {
 		
 		virtual void Bind(uint32_t slot = 0) const = 0;
 
+		virtual std::string GetPath() const = 0;
+
 		virtual bool operator==(const Texture& other) const = 0;
 	};
 
 	class Texture2D : public Texture
 	{
 	public:
-		static Ref<Texture2D> Create(uint32_t width, uint32_t height);
-		static Ref<Texture2D> Create(const std::string& path);
+		static Ref<Texture2D> Create(uint32_t width, uint32_t height, TextureFilter filter = TextureFilter::Linear);
+		static Ref<Texture2D> Create(const std::string& path, TextureFilter filter = TextureFilter::Linear);
 	};
 }
