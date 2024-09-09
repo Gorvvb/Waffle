@@ -202,10 +202,14 @@ namespace Waffle {
 		// RENDER SETTINGS
 		ImGui::Begin("Stats");
 		
+		// Calculate and display FPS
+		float fps = 1.0f / m_fps;
+		ImGui::Text("FPS: %.1f", fps);
+
 		std::string name = "None";
 		if (m_HoveredEntity)
 			name = m_HoveredEntity.GetComponent<TagComponent>().Tag;
-			
+		
 		ImGui::Text("Hovered Entity: %s", name.c_str());
 
 		auto stats = Renderer2D::GetStats();
@@ -214,10 +218,6 @@ namespace Waffle {
 		ImGui::Text("Quads: %d", stats.QuadCount);
 		ImGui::Text("Verticies: %d", stats.GetTotalVertexCount());
 		ImGui::Text("Indices: %d", stats.GetTotalIndexCount());
-
-		// Calculate and display FPS
-		float fps = 1.0f / m_fps;
-		ImGui::Text("FPS: %.1f", fps);
 
 		ImGui::End();
 
@@ -251,7 +251,7 @@ namespace Waffle {
 		}
 
 		// Display Gizmo Toolbar with Images in the Viewport
-		float iconSize = 20.0f; // Set appropriate icon size
+		float iconSize = 20.0f;
 
 		ImGui::SetCursorPosY(5.0f);
 		ImGui::SetCursorPosX(5.0f);
@@ -367,13 +367,13 @@ namespace Waffle {
 		if (e.GetRepeatCount() > 0)
 			return false;
 
-		bool controll = Input::IsKeyPressed(Key::LeftControl) || Input::IsKeyPressed(Key::RightControl);
+		bool control = Input::IsKeyPressed(Key::LeftControl) || Input::IsKeyPressed(Key::RightControl);
 		bool shift = Input::IsKeyPressed(Key::LeftShift) || Input::IsKeyPressed(Key::RightShift);
 		switch (e.GetKeyCode())
 		{
 			case Key::S:
 			{
-				if (controll)
+				if (control)
 					if (shift)
 						SaveSceneAs();
 					else
@@ -383,14 +383,21 @@ namespace Waffle {
 			}
 			case Key::O:
 			{
-				if (controll)
+				if (control)
 					OpenScene();
 				break;
 			}
 			case Key::N:
 			{
-				if (controll)
+				if (control)
 					NewScene();
+				break;
+			}
+			case Key::D:
+			{
+				if (control)
+					OnDuplicateEntity();
+
 				break;
 			}
 
@@ -445,19 +452,31 @@ namespace Waffle {
 	{
 		std::string filepath = FileDialogs::OpenFile("Waffle Scene (*.waffle)\0*.waffle\0");
 		if (!filepath.empty())
-		{
 			OpenScene(filepath);
-		}
 	}
 
 	void EditorLayer::OpenScene(const std::filesystem::path& path)
 	{
-		m_ActiveScene = CreateRef<Scene>();
-		m_ActiveScene->OnViewportResize((uint32_t)m_ViewportSize.x, (uint32_t)m_ViewportSize.y);
-		m_SceneHierarchyPanel.SetContext(m_ActiveScene);
+		if (m_SceneState != SceneState::Edit)
+			OnSceneStop();
 
-		SceneSerializer serializer(m_ActiveScene);
-		serializer.Deserialize(path.string());
+		if (path.extension().string() != ".waffle")
+		{
+			WF_WARN("Could not load {0} - not a scene file", path.filename().string());
+			return;
+		}
+
+		Ref<Scene> newScene = CreateRef<Scene>();
+		SceneSerializer serializer(newScene);
+		if (serializer.Deserialize(path.string()))
+		{
+			m_EditorScene = newScene;
+			m_EditorScene->OnViewportResize((uint32_t)m_ViewportSize.x, (uint32_t)m_ViewportSize.y);
+			m_SceneHierarchyPanel.SetContext(m_EditorScene);
+
+			m_ActiveScene = m_EditorScene;
+			m_EditorScenePath = path;
+		}
 	}
 
 	void EditorLayer::SaveScene()
@@ -486,13 +505,31 @@ namespace Waffle {
 
 	void EditorLayer::OnScenePlay()
 	{
-		m_ActiveScene->OnRuntimeStart();
 		m_SceneState = SceneState::Play;
+
+		m_ActiveScene = Scene::Copy(m_EditorScene);
+		m_ActiveScene->OnRuntimeStart();
+
+		m_SceneHierarchyPanel.SetContext(m_ActiveScene);
 	}
 
 	void EditorLayer::OnSceneStop()
 	{
-		m_ActiveScene->OnRuntimeStop();
 		m_SceneState = SceneState::Edit;
+
+		m_ActiveScene->OnRuntimeStop();
+		m_ActiveScene = m_EditorScene;
+
+		m_SceneHierarchyPanel.SetContext(m_ActiveScene);
+	}
+
+	void EditorLayer::OnDuplicateEntity()
+	{
+		if (m_SceneState != SceneState::Edit)
+			return;
+
+		Entity selectedEntity = m_SceneHierarchyPanel.GetSelectedEntity();
+		if (selectedEntity)
+			m_EditorScene->DuplicateEntity(selectedEntity);
 	}
 }

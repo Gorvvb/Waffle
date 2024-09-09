@@ -1,7 +1,7 @@
 #include "wfpch.h"
 #include "ImGuiLayer.h"
 
-#include "imgui.h"
+#include <imgui.h>
 
 #include "backends/imgui_impl_opengl3.h"
 #include "backends/imgui_impl_glfw.h"
@@ -139,24 +139,29 @@ namespace Waffle {
 
 		colors[ImGuiCol_WindowBg] = ImVec4{0.15f, 0.16f, 0.17f, 1.0f};
 
+		// Headers
 		colors[ImGuiCol_Header] = ImVec4{ 0.25f, 0.26f, 0.27f, 1.0f };
 		colors[ImGuiCol_HeaderHovered] = ImVec4{ 0.35f, 0.36f, 0.37f, 1.0f };
 		colors[ImGuiCol_HeaderActive] = ImVec4{ 0.2f, 0.21f, 0.22f, 1.0f };
 
+		// Buttons
 		colors[ImGuiCol_Button] = ImVec4{ 0.25f, 0.26f, 0.27f, 1.0f };
 		colors[ImGuiCol_ButtonHovered] = ImVec4{ 0.35f, 0.36f, 0.37f, 1.0f };
 		colors[ImGuiCol_ButtonActive] = ImVec4{ 0.2f, 0.21f, 0.22f, 1.0f };
 
+		// Frame background
 		colors[ImGuiCol_FrameBg] = ImVec4{ 0.25f, 0.26f, 0.27f, 1.0f };
 		colors[ImGuiCol_FrameBgHovered] = ImVec4{ 0.35f, 0.36f, 0.37f, 1.0f };
 		colors[ImGuiCol_FrameBgActive] = ImVec4{ 0.2f, 0.21f, 0.22f, 1.0f };
 
+		// Tabs
 		colors[ImGuiCol_Tab] = ImVec4{ 0.2f, 0.21f, 0.22f, 1.0f };
 		colors[ImGuiCol_TabHovered] = ImVec4{ 0.43f, 0.44f, 0.45f, 1.0f };
 		colors[ImGuiCol_TabActive] = ImVec4{ 0.33f, 0.34f, 0.35f, 1.0f };
 		colors[ImGuiCol_TabUnfocused] = ImVec4{ 0.2f, 0.21f, 0.22f, 1.0f };
 		colors[ImGuiCol_TabUnfocusedActive] = ImVec4{ 0.25f, 0.26f, 0.27f, 1.0f };
 
+		// Title
 		colors[ImGuiCol_TitleBg] = ImVec4{ 0.2f, 0.21f, 0.22f, 1.0f };
 		colors[ImGuiCol_TitleBgActive] = ImVec4{ 0.2f, 0.21f, 0.22f, 1.0f };
 		colors[ImGuiCol_TitleBgCollapsed] = ImVec4{ 0.2f, 0.21f, 0.22f, 1.0f };

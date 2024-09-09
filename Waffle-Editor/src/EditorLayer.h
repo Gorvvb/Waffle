@@ -34,6 +34,8 @@ namespace Waffle {
 		void OnScenePlay();
 		void OnSceneStop();
 
+		void OnDuplicateEntity();
+
 		// UI Panels
 		void UI_Toolbar();
 	private:
@@ -47,6 +49,7 @@ namespace Waffle {
 		Entity m_HoveredEntity;
 		
 		Ref<Scene> m_ActiveScene;
+		Ref<Scene> m_EditorScene, m_RuntimeScene;
 
 		std::filesystem::path m_EditorScenePath;
 
@@ -73,6 +76,7 @@ namespace Waffle {
 		ContentBrowserPanel m_ContentBrowserPanel;
 
 		float m_fps = 0.0f;
+		bool m_ClickedOnButton = false;
 
 		// Editor resources
 		Ref<Texture2D> m_IconPlay, m_IconStop;

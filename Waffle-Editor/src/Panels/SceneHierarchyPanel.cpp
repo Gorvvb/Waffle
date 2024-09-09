@@ -26,34 +26,37 @@ namespace Waffle {
 	{
         ImGui::Begin("Scene Hierarchy");
 
-		auto view = m_Context->m_Registry.view<TagComponent>();
-
-		for (auto entityID : view)
+		if (m_Context)
 		{
-			Entity entity{ entityID, m_Context.get() };
+			auto view = m_Context->m_Registry.view<TagComponent>();
 
-			DrawEntityNode(entity);
+			for (auto entityID : view)
+			{
+				Entity entity{ entityID, m_Context.get() };
+
+				DrawEntityNode(entity);
+			}
+
+			if (ImGui::IsMouseDown(0) && ImGui::IsWindowHovered())
+				m_SelectionContext = {};
+
+			// Right-click on a blank space
+			if (ImGui::BeginPopupContextWindow(0, 1 | ImGuiPopupFlags_NoOpenOverItems))
+			{
+				if (ImGui::MenuItem("Create Empty Entity"))
+					m_Context->CreateEntity(); // maybe add a default name
+				ImGui::EndPopup();
+			}
+
+			ImGui::End();
+
+			ImGui::Begin("Properties");
+			if (m_SelectionContext)
+			{
+				DrawComponents(m_SelectionContext);
+			}
+			ImGui::End();
 		}
-
-		if (ImGui::IsMouseDown(0) && ImGui::IsWindowHovered())
-			m_SelectionContext = {};
-
-		// Right-click on a blank space
-		if (ImGui::BeginPopupContextWindow(0, 1 | ImGuiPopupFlags_NoOpenOverItems))
-		{
-			if (ImGui::MenuItem("Create Empty Entity"))
-				m_Context->CreateEntity(); // maybe add a default name
-			ImGui::EndPopup();
-		}
-
-		ImGui::End();
-
-		ImGui::Begin("Properties");
-		if (m_SelectionContext)
-		{
-			DrawComponents(m_SelectionContext);
-		}
-		ImGui::End();
 	}
 
 	void SceneHierarchyPanel::SetSelectedEntity(Entity entity)
@@ -74,10 +77,13 @@ namespace Waffle {
 		}
 
 		bool entityDeleted = false;
+		bool entityDuplicated = false;
 		if (ImGui::BeginPopupContextItem())
 		{
 			if (ImGui::MenuItem("Delete Entity"))
 				entityDeleted = true;
+			if (ImGui::MenuItem("Duplicate Entity"))
+				entityDuplicated = true;
 			ImGui::EndPopup();
 		}
 
@@ -95,6 +101,11 @@ namespace Waffle {
 			m_Context->DestroyEntity(entity);
 			if (m_SelectionContext == entity)
 				m_SelectionContext = {};
+		}
+
+		if (entityDuplicated)
+		{
+			m_Context->DuplicateEntity(entity);
 		}
 	}
 
@@ -311,7 +322,18 @@ namespace Waffle {
 		{
 			ImGui::ColorEdit4("Color", glm::value_ptr(component.Color));
 
-			ImGui::Button("Texture", ImVec2(100.0f, 0.0f));
+			if (component.Texture)
+			{
+				ImGui::ImageButton("##Texture", (void*)(intptr_t)component.Texture->GetRendererID(), ImVec2(100.0f, 100.0f), ImVec2(0, 1), ImVec2(1, 0));
+				ImGui::SameLine();
+				if (ImGui::Button("Remove Texture"))
+					component.Texture = nullptr;
+			}
+			else
+			{
+				ImGui::Button("No Texture", ImVec2(100.0f, 0.0f));
+			}
+
 			if (ImGui::BeginDragDropTarget())
 			{
 				if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("CONTENT_BROWSER_ITEM"))
