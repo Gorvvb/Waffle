@@ -1,66 +1,5 @@
 Scene: Untitled
 Entities:
-  - Entity: 7399516023711510470
-    TagComponent:
-      Tag: Red Quad
-    TransformComponent:
-      Translation: [-1.29999995, 1.5, 0]
-      Rotation: [0, 0, 0]
-      Scale: [1, 1, 1]
-    SpriteRendererComponent:
-      Color: [1, 0, 0, 1]
-      FilterMode: 1
-    Rigidbody2DComponent:
-      BodyType: Dynamic
-      FixedRotation: false
-    BoxCollider2DComponent:
-      Offset: [0, 0]
-      Size: [0.5, 0.5]
-      Density: 1
-      Friction: 0.5
-      Restitution: 0
-      RestitutionThreshold: 0.5
-  - Entity: 7551150442719733316
-    TagComponent:
-      Tag: Ground
-    TransformComponent:
-      Translation: [0, -2, 0]
-      Rotation: [0, 0, 0]
-      Scale: [7, 1, 1]
-    SpriteRendererComponent:
-      Color: [0.216216207, 1, 0, 1]
-      FilterMode: 1
-    Rigidbody2DComponent:
-      BodyType: Static
-      FixedRotation: false
-    BoxCollider2DComponent:
-      Offset: [0, 0]
-      Size: [0.5, 0.5]
-      Density: 1
-      Friction: 0.5
-      Restitution: 0
-      RestitutionThreshold: 0.5
-  - Entity: 9823113814534774259
-    TagComponent:
-      Tag: Blue Quad
-    TransformComponent:
-      Translation: [1.29999995, 1.5, 2.98023224e-08]
-      Rotation: [0, 0, 0.794124782]
-      Scale: [0.999999881, 0.999999881, 1]
-    SpriteRendererComponent:
-      Color: [0, 0.224325985, 0.764478743, 1]
-      TexturePath: assets\textures\Checkerboard.png
-      FilterMode: 0
-    Rigidbody2DComponent:
-      BodyType: Dynamic
-      FixedRotation: false
-    BoxCollider2DComponent:
-      Offset: [0, 0]
-      Size: [0.5, 0.5]
-      Density: 0.879999995
-      Friction: 0.5
-      Restitution: 0.680000007
-      RestitutionThreshold: 0.600000024
   - Entity: 16277925466150019560
     TagComponent:
       Tag: Camera
@@ -79,3 +18,67 @@ Entities:
         OrthographicFar: 1
       Primary: true
       FixedAspectRatio: false
+  - Entity: 9823113814534774259
+    TagComponent:
+      Tag: Blue Quad
+    TransformComponent:
+      Translation: [1.29999995, 1.5, 2.98023224e-08]
+      Rotation: [0, 0, 0.794124782]
+      Scale: [0.999999881, 0.999999881, 1]
+    SpriteRendererComponent:
+      Color: [0, 0.224325985, 0.764478743, 1]
+      TexturePath: assets\textures\Checkerboard.png
+      FilterMode: 0
+      TilingFactor: 1
+    Rigidbody2DComponent:
+      BodyType: Dynamic
+      FixedRotation: false
+    BoxCollider2DComponent:
+      Offset: [0, 0]
+      Size: [0.5, 0.5]
+      Density: 0.879999995
+      Friction: 0.5
+      Restitution: 0.680000007
+      RestitutionThreshold: 0.600000024
+  - Entity: 7551150442719733316
+    TagComponent:
+      Tag: Ground
+    TransformComponent:
+      Translation: [0, -2, 0]
+      Rotation: [0, 0, 0]
+      Scale: [7, 1, 1]
+    SpriteRendererComponent:
+      Color: [0.216216207, 1, 0, 1]
+      FilterMode: 1
+      TilingFactor: 1
+    Rigidbody2DComponent:
+      BodyType: Static
+      FixedRotation: false
+    BoxCollider2DComponent:
+      Offset: [0, 0]
+      Size: [0.5, 0.5]
+      Density: 1
+      Friction: 0.5
+      Restitution: 0
+      RestitutionThreshold: 0.5
+  - Entity: 7399516023711510470
+    TagComponent:
+      Tag: Red Quad
+    TransformComponent:
+      Translation: [-1.29999995, 1.5, 0]
+      Rotation: [0, 0, 0]
+      Scale: [1, 1, 1]
+    SpriteRendererComponent:
+      Color: [1, 0, 0, 1]
+      FilterMode: 1
+      TilingFactor: 1
+    Rigidbody2DComponent:
+      BodyType: Dynamic
+      FixedRotation: false
+    BoxCollider2DComponent:
+      Offset: [0, 0]
+      Size: [0.5, 0.5]
+      Density: 1
+      Friction: 0.5
+      Restitution: 0
+      RestitutionThreshold: 0.5

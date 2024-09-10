@@ -204,6 +204,8 @@ namespace Waffle {
 
 			out << YAML::Key << "FilterMode" << YAML::Value << static_cast<int>(spriteRendererComponent.FilterMode);
 
+			out << YAML::Key << "TilingFactor" << YAML::Value << spriteRendererComponent.TilingFactor;
+
 			out << YAML::EndMap; // SpriteRendererComponent
 		}
 
@@ -349,6 +351,9 @@ namespace Waffle {
 							src.Texture = Texture2D::Create(currentTexturePath, src.FilterMode);
 						}
 					}
+
+					float tilingFactor = spriteRendererComponent["TilingFactor"].as<float>();
+					src.TilingFactor = tilingFactor;
 				}
 
 				auto rigidbody2DComponent = entity["Rigidbody2DComponent"];
