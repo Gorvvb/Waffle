@@ -1,3 +1,8 @@
+//--------------------------
+// - Waffle 2D -
+// - Renderer2D Circle Shader
+//--------------------------
+
 #type vertex
 #version 460 core
 
