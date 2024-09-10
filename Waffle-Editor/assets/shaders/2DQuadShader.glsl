@@ -1,3 +1,8 @@
+//--------------------------
+// - Waffle 2D -
+// - Renderer2D Quad Shader
+//--------------------------
+
 #type vertex
 #version 460 core
 
@@ -38,8 +43,8 @@ void main()
 #type fragment
 #version 460 core
 
-layout(location = 0) out vec4 color;
-layout(location = 1) out int object;
+layout(location = 0) out vec4 o_Color;
+layout(location = 1) out int o_EntityID;
 
 struct VertexOutput
 {
@@ -93,7 +98,7 @@ void main()
 		case 30: texColor *= texture(u_Textures[30], Input.TexCoord * Input.TilingFactor); break;
 		case 31: texColor *= texture(u_Textures[31], Input.TexCoord * Input.TilingFactor); break;
 	}
-	color = texColor;
 
-	object = v_EntityID;
+	o_Color = texColor;
+	o_EntityID = v_EntityID;
 }
