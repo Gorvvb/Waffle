@@ -1,0 +1,253 @@
+Scene: Untitled
+Entities:
+  - Entity: 4927287482720239630
+    TagComponent:
+      Tag: Blue Quad
+    TransformComponent:
+      Translation: [-2.87918067, 6.84311152, -0.00286863279]
+      Rotation: [0, 0, -1.43116999]
+      Scale: [0.75, 0.75, 1]
+    SpriteRendererComponent:
+      Color: [0, 0.455598593, 1, 1]
+      TexturePath: assets\textures\Checkerboard.png
+      FilterMode: 0
+      TilingFactor: 0.5
+    Rigidbody2DComponent:
+      BodyType: Dynamic
+      FixedRotation: false
+    BoxCollider2DComponent:
+      Offset: [0, 0]
+      Size: [0.5, 0.5]
+      Density: 1
+      Friction: 0.340000004
+      Restitution: 1
+      RestitutionThreshold: 0.239999995
+  - Entity: 13915327046600830334
+    TagComponent:
+      Tag: GroundL4
+    TransformComponent:
+      Translation: [3.67729998, 1.30921102, 0]
+      Rotation: [0.0255415235, -0.004061352, 1.43116987]
+      Scale: [1.50000262, 0.631385446, 0.999916136]
+    SpriteRendererComponent:
+      Color: [0.216216207, 1, 0, 1]
+      FilterMode: 1
+      TilingFactor: 1
+    Rigidbody2DComponent:
+      BodyType: Static
+      FixedRotation: false
+    BoxCollider2DComponent:
+      Offset: [0, 0]
+      Size: [0.5, 0.5]
+      Density: 1
+      Friction: 0.5
+      Restitution: 0
+      RestitutionThreshold: 0.5
+  - Entity: 11974501404581133963
+    TagComponent:
+      Tag: GroundR3
+    TransformComponent:
+      Translation: [-3.23000002, 0.0011219494, 0]
+      Rotation: [0.0255415402, -0.00406134408, -1.07337749]
+      Scale: [1.5000006, 0.631385684, 0.999914527]
+    SpriteRendererComponent:
+      Color: [0.216216207, 1, 0, 1]
+      FilterMode: 1
+      TilingFactor: 1
+    Rigidbody2DComponent:
+      BodyType: Static
+      FixedRotation: false
+    BoxCollider2DComponent:
+      Offset: [0, 0]
+      Size: [0.5, 0.5]
+      Density: 1
+      Friction: 0.5
+      Restitution: 0
+      RestitutionThreshold: 0.5
+  - Entity: 7190937267387484643
+    TagComponent:
+      Tag: GroundR2
+    TransformComponent:
+      Translation: [-2.3499999, -1.08780456, -9.52348226e-13]
+      Rotation: [0.0255415402, -0.00406135619, -0.715584934]
+      Scale: [1.50000012, 0.631385684, 0.999926984]
+    SpriteRendererComponent:
+      Color: [0.216216207, 1, 0, 1]
+      FilterMode: 1
+      TilingFactor: 1
+    Rigidbody2DComponent:
+      BodyType: Static
+      FixedRotation: false
+    BoxCollider2DComponent:
+      Offset: [0, 0]
+      Size: [0.5, 0.5]
+      Density: 1
+      Friction: 0.5
+      Restitution: 0
+      RestitutionThreshold: 0.5
+  - Entity: 3453419081984487695
+    TagComponent:
+      Tag: GroundL1
+    TransformComponent:
+      Translation: [1.19428098, -1.75911295, 0]
+      Rotation: [0.0258192234, 0.001494086, 0.357792348]
+      Scale: [1.49999988, 0.631385863, 0.999945045]
+    SpriteRendererComponent:
+      Color: [0.216216207, 1, 0, 1]
+      FilterMode: 1
+      TilingFactor: 1
+    Rigidbody2DComponent:
+      BodyType: Static
+      FixedRotation: false
+    BoxCollider2DComponent:
+      Offset: [0, 0]
+      Size: [0.5, 0.5]
+      Density: 1
+      Friction: 0.5
+      Restitution: 0
+      RestitutionThreshold: 0.5
+  - Entity: 6800545633402408773
+    TagComponent:
+      Tag: GroundL3
+    TransformComponent:
+      Translation: [3.22612238, 0.00112208724, -2.32830644e-10]
+      Rotation: [0.0255415402, -0.00406135712, 1.07337761]
+      Scale: [1.5000006, 0.631385684, 0.999912858]
+    SpriteRendererComponent:
+      Color: [0.216216207, 1, 0, 1]
+      FilterMode: 1
+      TilingFactor: 1
+    Rigidbody2DComponent:
+      BodyType: Static
+      FixedRotation: false
+    BoxCollider2DComponent:
+      Offset: [0, 0]
+      Size: [0.5, 0.5]
+      Density: 1
+      Friction: 0.5
+      Restitution: 0
+      RestitutionThreshold: 0.5
+  - Entity: 2563144361111057542
+    TagComponent:
+      Tag: GroundL2
+    TransformComponent:
+      Translation: [2.34742975, -1.08780456, 0]
+      Rotation: [0.0255415402, -0.00406135619, 0.715584934]
+      Scale: [1.50000012, 0.631385684, 0.999927044]
+    SpriteRendererComponent:
+      Color: [0.216216207, 1, 0, 1]
+      FilterMode: 1
+      TilingFactor: 1
+    Rigidbody2DComponent:
+      BodyType: Static
+      FixedRotation: false
+    BoxCollider2DComponent:
+      Offset: [0, 0]
+      Size: [0.5, 0.5]
+      Density: 1
+      Friction: 0.5
+      Restitution: 0
+      RestitutionThreshold: 0.5
+  - Entity: 4325415940139604263
+    TagComponent:
+      Tag: GroundR1
+    TransformComponent:
+      Translation: [-1.19000006, -1.75911295, 0]
+      Rotation: [0.0258191954, 0.001494086, -0.357792467]
+      Scale: [1.49999988, 0.631385863, 0.999945164]
+    SpriteRendererComponent:
+      Color: [0.216216207, 1, 0, 1]
+      FilterMode: 1
+      TilingFactor: 1
+    Rigidbody2DComponent:
+      BodyType: Static
+      FixedRotation: false
+    BoxCollider2DComponent:
+      Offset: [0, 0]
+      Size: [0.5, 0.5]
+      Density: 1
+      Friction: 0.5
+      Restitution: 0
+      RestitutionThreshold: 0.5
+  - Entity: 18036903074937541949
+    TagComponent:
+      Tag: GroundL4
+    TransformComponent:
+      Translation: [-3.68000007, 1.30921113, 0]
+      Rotation: [0.0255415235, -0.004061352, -1.43116999]
+      Scale: [1.50000262, 0.631385446, 0.999916136]
+    SpriteRendererComponent:
+      Color: [0.216216207, 1, 0, 1]
+      FilterMode: 1
+      TilingFactor: 1
+    Rigidbody2DComponent:
+      BodyType: Static
+      FixedRotation: false
+    BoxCollider2DComponent:
+      Offset: [0, 0]
+      Size: [0.5, 0.5]
+      Density: 1
+      Friction: 0.5
+      Restitution: 0
+      RestitutionThreshold: 0.5
+  - Entity: 4179113066879609268
+    TagComponent:
+      Tag: Green Quad
+    TransformComponent:
+      Translation: [2.99045658, 5.29858065, 2.32830644e-10]
+      Rotation: [0, 0, 1.43116999]
+      Scale: [0.49999994, 0.49999994, 1]
+    SpriteRendererComponent:
+      Color: [0, 1, 0.61776042, 1]
+      TexturePath: assets\textures\Checkerboard.png
+      FilterMode: 0
+      TilingFactor: 1
+    Rigidbody2DComponent:
+      BodyType: Dynamic
+      FixedRotation: false
+    BoxCollider2DComponent:
+      Offset: [0, 0]
+      Size: [0.5, 0.5]
+      Density: 1
+      Friction: 0.340000004
+      Restitution: 1
+      RestitutionThreshold: 0.239999995
+  - Entity: 17803083883468670206
+    TagComponent:
+      Tag: Ground
+    TransformComponent:
+      Translation: [3.7252903e-08, -2, 0]
+      Rotation: [0, 0, 0]
+      Scale: [1.10000002, 0.631386161, 1]
+    SpriteRendererComponent:
+      Color: [0.216216207, 1, 0, 1]
+      FilterMode: 1
+      TilingFactor: 1
+    Rigidbody2DComponent:
+      BodyType: Static
+      FixedRotation: false
+    BoxCollider2DComponent:
+      Offset: [0, 0]
+      Size: [0.5, 0.5]
+      Density: 1
+      Friction: 0.5
+      Restitution: 0
+      RestitutionThreshold: 0.5
+  - Entity: 16277925466150019560
+    TagComponent:
+      Tag: Camera
+    TransformComponent:
+      Translation: [0, 0, 10]
+      Rotation: [0, 0, 0]
+      Scale: [1, 1, 1]
+    CameraComponent:
+      Camera:
+        ProjectionType: 0
+        PerspectiveFov: 0.785398185
+        PerspectiveNear: 0.00999999978
+        PerspectiveFar: 1000
+        OrthographicSize: 10
+        OrthographicNear: -1
+        OrthographicFar: 1
+      Primary: true
+      FixedAspectRatio: false
