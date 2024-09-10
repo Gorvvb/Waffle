@@ -21,7 +21,9 @@ namespace Waffle {
 		void OnEvent(Event& e) override;
 	private:
 		bool OnkeyPressed(KeyPressedEvent e);
-		bool OnMouseButton(MouseButtonPressedEvent e);
+		bool OnMouseButtonPressed(MouseButtonPressedEvent e);
+
+		void OnOverlayRender();
 
 		void NewScene();
 		void OpenScene();
@@ -64,6 +66,8 @@ namespace Waffle {
 		glm::vec2 m_ViewportBounds[2];
 
 		int m_GizmoType = -1;
+
+		bool m_ShowPhysicsColliders = false;
 
 		enum class SceneState
 		{

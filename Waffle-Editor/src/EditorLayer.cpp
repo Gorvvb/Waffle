@@ -39,7 +39,8 @@ namespace Waffle {
 		fbSpec.Height = 720;
 		m_Framebuffer = Framebuffer::Create(fbSpec);
 
-		m_ActiveScene = CreateRef<Scene>();
+		m_EditorScene = CreateRef<Scene>();
+		m_ActiveScene = m_EditorScene;
 
 		auto commandLineArgs = Application::Get().GetCommandLineArgs();
 		if (commandLineArgs.Count > 1)
@@ -50,6 +51,7 @@ namespace Waffle {
 		}
 
 		m_EditorCamera = EditorCamera(30.0f, 1.778f, 0.1f, 1000.0f);
+		Renderer2D::SetLineWidth(4.0f);
 		m_SceneHierarchyPanel.SetContext(m_ActiveScene);
 	}
 
@@ -120,6 +122,8 @@ namespace Waffle {
 			int pixelData = m_Framebuffer->ReadPixel(1, mouseX, mouseY);
 			m_HoveredEntity = pixelData == -1 ? Entity() : Entity((entt::entity)pixelData, m_ActiveScene.get());
 		}
+
+		OnOverlayRender();
 
 		m_Framebuffer->Unbind();
 	}
@@ -201,10 +205,6 @@ namespace Waffle {
 
 		// RENDER SETTINGS
 		ImGui::Begin("Stats");
-		
-		// Calculate and display FPS
-		float fps = 1.0f / m_fps;
-		ImGui::Text("FPS: %.1f", fps);
 
 		std::string name = "None";
 		if (m_HoveredEntity)
@@ -219,6 +219,14 @@ namespace Waffle {
 		ImGui::Text("Verticies: %d", stats.GetTotalVertexCount());
 		ImGui::Text("Indices: %d", stats.GetTotalIndexCount());
 
+		ImGui::End();
+
+		ImGui::Begin("Settings");
+
+		float fps = 1.0f / m_fps; // Calculate and display FPS
+		ImGui::Text("FPS: %.1f", fps);
+
+		ImGui::Checkbox("Show physics colliders", &m_ShowPhysicsColliders);
 		ImGui::End();
 
 		ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2{ 0, 0 });
@@ -358,12 +366,11 @@ namespace Waffle {
 
 		EventDispatcher dispacher(e);
 		dispacher.Dispatch<KeyPressedEvent>(WF_BIND_EVENT_FN(EditorLayer::OnkeyPressed));
-		dispacher.Dispatch<MouseButtonPressedEvent>(WF_BIND_EVENT_FN(EditorLayer::OnMouseButton));
+		dispacher.Dispatch<MouseButtonPressedEvent>(WF_BIND_EVENT_FN(EditorLayer::OnMouseButtonPressed));
 	}
 
 	bool EditorLayer::OnkeyPressed(KeyPressedEvent e)
 	{
-		// Shortcuts
 		if (e.GetRepeatCount() > 0)
 			return false;
 
@@ -426,7 +433,7 @@ namespace Waffle {
 		return false;
 	}
 
-	bool EditorLayer::OnMouseButton(MouseButtonPressedEvent e)
+	bool EditorLayer::OnMouseButtonPressed(MouseButtonPressedEvent e)
 	{
 		if (e.GetMouseButton() == Mouse::ButtonLeft && m_ViewportHovered && !ImGuizmo::IsOver() && !Input::IsKeyPressed(Key::LeftControl))
 		{
@@ -437,6 +444,68 @@ namespace Waffle {
 		}
 
 		return false;
+	}
+
+	void EditorLayer::OnOverlayRender()
+	{
+		if (m_SceneState == SceneState::Play)
+		{
+			Entity camera = m_ActiveScene->GetPrimaryCameraEntity();
+			if (!camera)
+				return;
+			Renderer2D::BeginScene(camera.GetComponent<CameraComponent>().Camera, camera.GetComponent<TransformComponent>().GetTransform());
+		}
+		else
+		{
+			Renderer2D::BeginScene(m_EditorCamera);
+		}
+
+		if (m_ShowPhysicsColliders)
+		{
+			// Box Colliders
+			{
+				auto view = m_ActiveScene->GetAllEntitiesWith<TransformComponent, BoxCollider2DComponent>();
+				for (auto entity : view)
+				{
+					auto [tc, bc2d] = view.get<TransformComponent, BoxCollider2DComponent>(entity);
+
+					glm::vec3 translation = tc.Translation + glm::vec3(bc2d.Offset, 0.001f);
+					glm::vec3 scale = tc.Scale * glm::vec3(bc2d.Size * 2.0f, 1.0f);
+
+					glm::mat4 transform = glm::translate(glm::mat4(1.0f), translation)
+						* glm::rotate(glm::mat4(1.0f), tc.Rotation.z, glm::vec3(0.0f, 0.0f, 1.0f))
+						* glm::scale(glm::mat4(1.0f), scale);
+
+					Renderer2D::DrawRect(transform, glm::vec4(0, 1, 0, 1));
+				}
+			}
+
+			// Circle Colliders
+			{
+				auto view = m_ActiveScene->GetAllEntitiesWith<TransformComponent, CircleCollider2DComponent>();
+				for (auto entity : view)
+				{
+					auto [tc, cc2d] = view.get<TransformComponent, CircleCollider2DComponent>(entity);
+
+					glm::vec3 translation = tc.Translation + glm::vec3(cc2d.Offset, 0.001f);
+					glm::vec3 scale = tc.Scale * glm::vec3(cc2d.Radius * 2.0f);
+
+					glm::mat4 transform = glm::translate(glm::mat4(1.0f), translation)
+						* glm::scale(glm::mat4(1.0f), scale);
+
+					Renderer2D::DrawCircle(transform, glm::vec4(0, 1, 0, 1), 0.01f);
+				}
+			}
+		}
+
+		// Draw selected entity outline 
+		if (Entity selectedEntity = m_SceneHierarchyPanel.GetSelectedEntity())
+		{
+			const TransformComponent& transform = selectedEntity.GetComponent<TransformComponent>();
+			Renderer2D::DrawRect(transform.GetTransform(), glm::vec4(1.0f, 1.0f, 0.0f, 1.0f));
+		}
+
+		Renderer2D::EndScene();
 	}
 
 	void EditorLayer::NewScene()
@@ -506,6 +575,11 @@ namespace Waffle {
 	void EditorLayer::OnScenePlay()
 	{
 		m_SceneState = SceneState::Play;
+
+		if (!m_EditorScene) {
+			std::cerr << "Error: m_EditorScene is null." << std::endl;
+			return;
+		}
 
 		m_ActiveScene = Scene::Copy(m_EditorScene);
 		m_ActiveScene->OnRuntimeStart();
