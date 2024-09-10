@@ -240,6 +240,7 @@ namespace Waffle {
 		{
 			DisplayAddComponentEntry<CameraComponent>("Camera");
 			DisplayAddComponentEntry<SpriteRendererComponent>("Sprite Renderer");
+			DisplayAddComponentEntry<CircleRendererComponent>("Circle Renderer");
 			DisplayAddComponentEntry<Rigidbody2DComponent>("Rigidbody 2D");
 			DisplayAddComponentEntry<BoxCollider2DComponent>("Box Collider 2D");
 
@@ -324,6 +325,18 @@ namespace Waffle {
 			if (component.Texture)
 			{
 				ImGui::ImageButton("##Texture", (void*)(intptr_t)component.Texture->GetRendererID(), ImVec2(100.0f, 100.0f), ImVec2(0, 1), ImVec2(1, 0));
+
+				if (ImGui::BeginDragDropTarget())
+				{
+					if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("CONTENT_BROWSER_ITEM"))
+					{
+						const wchar_t* path = (const wchar_t*)payload->Data;
+						std::filesystem::path texturePath = std::filesystem::path(g_AssetPath) / path;
+						component.Texture = Texture2D::Create(texturePath.string(), component.FilterMode);
+					}
+					ImGui::EndDragDropTarget();
+				}
+
 				ImGui::SameLine();
 				if (ImGui::Button("Remove Texture"))
 					component.Texture = nullptr;
@@ -331,17 +344,6 @@ namespace Waffle {
 			else
 			{
 				ImGui::Button("No Texture", ImVec2(100.0f, 0.0f));
-			}
-
-			if (ImGui::BeginDragDropTarget())
-			{
-				if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("CONTENT_BROWSER_ITEM"))
-				{
-					const wchar_t* path = (const wchar_t*)payload->Data;
-					std::filesystem::path texturePath = std::filesystem::path(g_AssetPath) / path;
-					component.Texture = Texture2D::Create(texturePath.string(), component.FilterMode);
-				}
-				ImGui::EndDragDropTarget();
 			}
 
 			const char* filterOptions[] = { "Nearest", "Linear" };
@@ -368,6 +370,13 @@ namespace Waffle {
 			}
 
 			ImGui::DragFloat("Tiling Factor", &component.TilingFactor, 0.1f, 0.0f, 100.0f);
+		});
+
+		DrawComponent<CircleRendererComponent>("Circle Renderer", entity, [](auto& component)
+		{
+			ImGui::ColorEdit4("Color", glm::value_ptr(component.Color));
+			ImGui::DragFloat("Thickness", &component.Thickness, 0.025f, 0.0f, 1.0f);
+			ImGui::DragFloat("Fade", &component.Fade, 0.00025f, 0.0f, 1.0f);
 		});
 
 		DrawComponent<Rigidbody2DComponent>("Rigidbody 2D", entity, [](auto& component)
