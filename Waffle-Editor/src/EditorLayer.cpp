@@ -1,16 +1,14 @@
 #include "EditorLayer.h"
-#include <imgui/imgui.h>
+
+#include "Waffle/Scene/SceneSerializer.h"
+#include "Waffle/Utils/PlatformUtils.h"
+#include "Waffle/Math/Math.h"
 
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
 
-#include "Waffle/Scene/SceneSerializer.h"
-
-#include "Waffle/Utils/PlatformUtils.h"
-
-#include "ImGuizmo/ImGuizmo.h"
-
-#include "Waffle/Math/Math.h"
+#include <imgui/imgui.h>
+#include <ImGuizmo/ImGuizmo.h>
 
 namespace Waffle {
 
@@ -25,13 +23,18 @@ namespace Waffle {
 	{
 		WF_PROFILE_FUNCTION();
 
-		m_CheckerboardTexture = Texture2D::Create("assets/textures/Checkerboard.png");
+		// Editor buttons
 		m_IconPlay = Texture2D::Create("Resources/Icons/PlayButton.png");
 		m_IconStop = Texture2D::Create("Resources/Icons/StopButton.png");
-		m_IconNoGuizmo = Texture2D::Create("Resources/Icons/NoGuizmo.png");
-		m_IconTransformGuizmo = Texture2D::Create("Resources/Icons/TransformGuizmo.png");
-		m_IconRotationGuizmo = Texture2D::Create("Resources/Icons/RotationGuizmo.png");
-		m_IconScaleGuizmo = Texture2D::Create("Resources/Icons/ScaleGuizmo.png");
+		//m_IconSimulate = Texture2D::Create("Resources/Icons/SimulateButton.png"); // MAKE A PHYSICS SIMULATION BUTTON
+		m_IconPause = Texture2D::Create("Resources/Icons/PauseButton.png");
+		m_IconStep = Texture2D::Create("Resources/Icons/StepButton.png");
+
+		// Transform Gizmos
+		m_IconNoGuizmo = Texture2D::Create("Resources/Icons/Gizmos/NoGizmo.png");
+		m_IconTransformGuizmo = Texture2D::Create("Resources/Icons/Gizmos/TransformGizmo.png");
+		m_IconRotationGuizmo = Texture2D::Create("Resources/Icons/Gizmos/RotationGizmo.png");
+		m_IconScaleGuizmo = Texture2D::Create("Resources/Icons/Gizmos/ScaleGizmo.png");
 
 		FramebufferSpecification fbSpec;
 		fbSpec.Attachments = { FramebufferTextureFormat::RGBA8, FramebufferTextureFormat::RED_INTEGER, FramebufferTextureFormat::Depth };
@@ -88,7 +91,6 @@ namespace Waffle {
 
 		m_Framebuffer->Bind();
 
-		//RenderCommand::SetClearColor({ 0.1f, 0.1f, 0.1f, 1.0f });
 		RenderCommand::SetClearColor({ 0.18f, 0.18f, 0.19f, 1.0f });
 		RenderCommand::Clear();
 
@@ -341,21 +343,72 @@ namespace Waffle {
 
 		ImGui::Begin("##toolbar", nullptr, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
 
+		bool toolbarEnabled = (bool)m_ActiveScene;
+
+		ImVec4 tintColor = ImVec4(1, 1, 1, 1);
+		if (!toolbarEnabled)
+			tintColor.w = 0.5f;
+
 		float size = ImGui::GetWindowHeight() - 4.0f;
-		Ref<Texture2D> icon = m_SceneState == SceneState::Edit ? m_IconPlay : m_IconStop;
-		ImGui::SetCursorPosX((ImGui::GetWindowContentRegionMax().x - size) * 0.5f);
-		ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(0, 0));
-		if (ImGui::ImageButton("##", (ImTextureID)(uintptr_t)icon->GetRendererID(), ImVec2(size, size), ImVec2(0, 0), ImVec2(1, 1)))
-		{
-			if (m_SceneState == SceneState::Edit)
-				OnScenePlay();
-			else if (m_SceneState == SceneState::Play)
-				OnSceneStop();
+
+		float totalButtonWidth = 0.0f;
+		int buttonCount = 0;
+
+		bool hasPlayButton = m_SceneState == SceneState::Edit || m_SceneState == SceneState::Play;
+		if (hasPlayButton) {
+			totalButtonWidth += size;
+			buttonCount++;
 		}
 
-		ImGui::PopStyleVar(3);
-		ImGui::PopStyleColor(3);
+		bool hasPauseButton = m_SceneState != SceneState::Edit;
+		if (hasPauseButton) {
+			totalButtonWidth += size;
+			buttonCount++;
+			if (m_ActiveScene->IsPaused()) {
+				totalButtonWidth += size;
+				buttonCount++;
+			}
+		}
+
+		float availableWidth = ImGui::GetWindowContentRegionMax().x;
+		float startX = (availableWidth - totalButtonWidth) * 0.5f;
+		ImGui::SetCursorPosX(startX);
+
+		if (hasPlayButton) {
+			Ref<Texture2D> icon = (m_SceneState == SceneState::Edit) ? m_IconPlay : m_IconStop;
+			if (ImGui::ImageButton("##Play", (ImTextureID)(uintptr_t)icon->GetRendererID(), ImVec2(size, size), ImVec2(0, 0), ImVec2(1, 1), ImVec4(0.0f, 0.0f, 0.0f, 0.0f), tintColor) && toolbarEnabled) {
+				if (m_SceneState == SceneState::Edit)
+					OnScenePlay();
+				else if (m_SceneState == SceneState::Play)
+					OnSceneStop();
+			}
+		}
+
+		if (hasPauseButton) {
+			bool isPaused = m_ActiveScene->IsPaused();
+			ImGui::SameLine();
+			{
+				Ref<Texture2D> icon = (isPaused == false) ? m_IconPause : m_IconPlay;
+				if (ImGui::ImageButton("##Pause", (ImTextureID)(uintptr_t)icon->GetRendererID(), ImVec2(size, size), ImVec2(0, 0), ImVec2(1, 1), ImVec4(0.0f, 0.0f, 0.0f, 0.0f), tintColor) && toolbarEnabled) {
+					m_ActiveScene->SetPaused(!isPaused);
+				}
+			}
+
+			// Step button
+			if (isPaused) {
+				ImGui::SameLine();
+				{
+					Ref<Texture2D> icon = m_IconStep;
+					if (ImGui::ImageButton("##Step", (ImTextureID)(uintptr_t)icon->GetRendererID(), ImVec2(size, size), ImVec2(0, 0), ImVec2(1, 1), ImVec4(0.0f, 0.0f, 0.0f, 0.0f), tintColor) && toolbarEnabled) {
+						m_ActiveScene->Step();
+					}
+				}
+			}
+		}
+
 		ImGui::End();
+		ImGui::PopStyleColor(3);
+		ImGui::PopStyleVar(2);
 	}
 
 	void EditorLayer::OnEvent(Waffle::Event& e)
@@ -438,9 +491,7 @@ namespace Waffle {
 		if (e.GetMouseButton() == Mouse::ButtonLeft && m_ViewportHovered && !ImGuizmo::IsOver() && !Input::IsKeyPressed(Key::LeftControl))
 		{
 			if (m_HoveredEntity)
-			{
 				m_SceneHierarchyPanel.SetSelectedEntity(m_HoveredEntity);
-			}
 		}
 
 		return false;
@@ -595,6 +646,14 @@ namespace Waffle {
 		m_ActiveScene = m_EditorScene;
 
 		m_SceneHierarchyPanel.SetContext(m_ActiveScene);
+	}
+
+	void EditorLayer::OnScenePause()
+	{
+		if (m_SceneState == SceneState::Edit)
+			return;
+
+		m_ActiveScene->SetPaused(true);
 	}
 
 	void EditorLayer::OnDuplicateEntity()

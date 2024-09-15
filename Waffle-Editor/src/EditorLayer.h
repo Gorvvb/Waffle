@@ -35,6 +35,7 @@ namespace Waffle {
 
 		void OnScenePlay();
 		void OnSceneStop();
+		void OnScenePause();
 
 		void OnDuplicateEntity();
 
@@ -83,7 +84,7 @@ namespace Waffle {
 		bool m_ClickedOnButton = false;
 
 		// Editor resources
-		Ref<Texture2D> m_IconPlay, m_IconStop;
+		Ref<Texture2D> m_IconPlay, m_IconStop, m_IconPause, m_IconStep;
 		Ref<Texture2D> m_IconNoGuizmo, m_IconTransformGuizmo, m_IconRotationGuizmo, m_IconScaleGuizmo;
 	};
 }
