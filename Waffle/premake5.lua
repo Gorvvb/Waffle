@@ -96,6 +96,7 @@ project "Waffle"
 		defines "WF_DIST"
 		runtime "Release"
 		optimize "on"
+		symbols "off"
 		linkoptions { "/IGNORE:4099", "/IGNORE:4006" }
 
 		links
