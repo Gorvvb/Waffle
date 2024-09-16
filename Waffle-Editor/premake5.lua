@@ -10,7 +10,8 @@ project "Waffle-Editor"
 		files
 		{
 			"src/**.h",
-			"src/**.cpp"
+			"src/**.cpp",
+			"Resources/Icons/icon.ico"
 		}
 
 		includedirs

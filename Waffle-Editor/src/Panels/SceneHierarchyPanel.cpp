@@ -326,26 +326,26 @@ namespace Waffle {
 			if (component.Texture)
 			{
 				ImGui::ImageButton("##Texture", (void*)(intptr_t)component.Texture->GetRendererID(), ImVec2(100.0f, 100.0f), ImVec2(0, 1), ImVec2(1, 0));
-
-				if (ImGui::BeginDragDropTarget())
-				{
-					if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("CONTENT_BROWSER_ITEM"))
-					{
-						const wchar_t* path = (const wchar_t*)payload->Data;
-						std::filesystem::path texturePath = std::filesystem::path(g_AssetPath) / path;
-						component.Texture = Texture2D::Create(texturePath.string(), component.FilterMode);
-					}
-					ImGui::EndDragDropTarget();
-				}
-
-				ImGui::SameLine();
-				if (ImGui::Button("Remove Texture"))
-					component.Texture = nullptr;
 			}
 			else
 			{
 				ImGui::Button("No Texture", ImVec2(100.0f, 0.0f));
 			}
+
+			if (ImGui::BeginDragDropTarget())
+			{
+				if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("CONTENT_BROWSER_ITEM"))
+				{
+					const wchar_t* path = (const wchar_t*)payload->Data;
+					std::filesystem::path texturePath = std::filesystem::path(g_AssetPath) / path;
+					component.Texture = Texture2D::Create(texturePath.string(), component.FilterMode);
+				}
+				ImGui::EndDragDropTarget();
+			}
+
+			ImGui::SameLine();
+			if (ImGui::Button("Remove Texture"))
+				component.Texture = nullptr;
 
 			const char* filterOptions[] = { "Nearest", "Linear" };
 			const char* currentFilter = filterOptions[static_cast<int>(component.FilterMode)];

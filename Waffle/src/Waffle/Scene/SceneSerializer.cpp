@@ -302,11 +302,17 @@ namespace Waffle {
 	{
 		// THIS DESERIALIZES EVERYTHING INVERSED FROM THE SERIALIZER SO FIX THAT
 
-		std::ifstream stream(filepath);
-		std::stringstream strStream;
-		strStream << stream.rdbuf();
+		YAML::Node data;
+		try
+		{
+			data = YAML::LoadFile(filepath);
+		}
+		catch (YAML::ParserException e)
+		{
+			WF_CORE_ERROR("Failed to load .hazel file '{0}'\n     {1}", filepath, e.what());
+			return false;
+		}
 
-		YAML::Node data = YAML::Load(strStream.str());
 		if (!data["Scene"])
 			return false;
 

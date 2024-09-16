@@ -1,0 +1,26 @@
+Scene: Untitled
+Entities:
+  - Entity: 752947430654262990
+    TagComponent:
+      Tag: W
+    TransformComponent:
+      Translation: [0, 7.4505806e-09, -2.13181877]
+      Rotation: [0, 0, 0]
+      Scale: [1, 1, 1]
+    SpriteRendererComponent:
+      Color: [1, 1, 1, 1]
+      TexturePath: assets\textures\logo.png
+      FilterMode: 0
+      TilingFactor: 1
+  - Entity: 3545349171469340237
+    TagComponent:
+      Tag: BG
+    TransformComponent:
+      Translation: [0, 0, -2.5]
+      Rotation: [0, 0, 0]
+      Scale: [10, 10, 1]
+    SpriteRendererComponent:
+      Color: [1, 1, 1, 1]
+      TexturePath: assets\textures\Checkerboard.png
+      FilterMode: 0
+      TilingFactor: 10
