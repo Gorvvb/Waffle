@@ -9,7 +9,7 @@
 #include <chrono>
 
 Sandbox2D::Sandbox2D()
-	: Layer("Sandbox2D"), m_CameraController(1280.0f / 720.0f, true)
+	: Layer("Sandbox2D"), m_CameraController(1280.0f / 720.0f)
 {
 }
 
@@ -17,7 +17,7 @@ void Sandbox2D::OnAttach()
 {
 	WF_PROFILE_FUNCTION();
 
-	m_CheckerboardTexture = Waffle::Texture2D::Create("assets/textures/Checkerboard.png");
+	m_CheckerboardTexture = Waffle::Texture2D::Create("assets/textures/Checkerboard.png", Waffle::TextureFilter::Nearest);
 }
 
 void Sandbox2D::OnDetach()

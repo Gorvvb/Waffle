@@ -85,6 +85,8 @@ namespace Waffle {
 
 		// Editor resources
 		Ref<Texture2D> m_IconPlay, m_IconStop, m_IconPause, m_IconStep;
-		Ref<Texture2D> m_IconNoGuizmo, m_IconTransformGuizmo, m_IconRotationGuizmo, m_IconScaleGuizmo;
+		Ref<Texture2D> m_IconPauseInactive, m_IconStepInactive;
+		Ref<Texture2D> m_IconNoGizmo, m_IconTransformGizmo, m_IconRotationGizmo, m_IconScaleGizmo;
+		Ref<Texture2D> m_IconNoGizmoActive, m_IconTransformGizmoActive, m_IconRotationGizmoActive, m_IconScaleGizmoActive;
 	};
 }

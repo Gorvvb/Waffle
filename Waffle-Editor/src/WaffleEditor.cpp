@@ -15,8 +15,8 @@ namespace Waffle {
 	class WaffleEditor : public Application
 	{
 	public:
-		WaffleEditor(ApplicationCommandLineArgs args)
-			: Application("Waffle Editor", args)
+		WaffleEditor(const ApplicationSpecification& specification)
+			: Application(specification)
 		{
 			PushLayer(new EditorLayer());
 		}
@@ -28,6 +28,9 @@ namespace Waffle {
 
 	Application* CreateApplication(ApplicationCommandLineArgs args)
 	{
-		return new WaffleEditor(args);
+		ApplicationSpecification spec;
+		spec.Name = "Sandbox";
+		spec.CommandLineArgs = args;
+		return new WaffleEditor(spec);
 	}
 }

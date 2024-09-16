@@ -25,6 +25,13 @@ namespace Waffle {
 		}
 	};
 
+	struct ApplicationSpecification
+	{
+		std::string Name = "Waffle Application";
+		std::string WorkingDirectory;
+		ApplicationCommandLineArgs CommandLineArgs;
+	};
+
 	class Application
 	{
 	private:
@@ -36,12 +43,12 @@ namespace Waffle {
 
 		float m_lastFrameTime = 0.0f;
 
-		ApplicationCommandLineArgs m_CommandLineArgs;
+		ApplicationSpecification m_Specification;
 
 		static Application* s_Instance;
 		friend int main(int argc, char** argv);
 	public:
-		Application(const std::string& name = "Waffle Engine", ApplicationCommandLineArgs args = ApplicationCommandLineArgs());
+		Application(const ApplicationSpecification& specification);
 		virtual ~Application();
 
 		void Run();
@@ -59,7 +66,7 @@ namespace Waffle {
 
 		static Application& Get() { return *s_Instance; }
 
-		ApplicationCommandLineArgs GetCommandLineArgs() const { return m_CommandLineArgs; }
+		const ApplicationSpecification& GetSpecification() const { return m_Specification; }
 	private:
 		bool OnWindowClose(WindowCloseEvent& e);
 		bool OnWindowRisize(WindowResizeEvent& e);

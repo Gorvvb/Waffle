@@ -14,7 +14,8 @@
 class Sandbox : public Waffle::Application
 {
 public:
-	Sandbox()
+	Sandbox(const Waffle::ApplicationSpecification& specification)
+		: Waffle::Application(specification)
 	{
 		//PushLayer(new ExampleLayer());
 		PushLayer(new Sandbox2D());
@@ -27,5 +28,9 @@ public:
 
 Waffle::Application* Waffle::CreateApplication(ApplicationCommandLineArgs args)
 {
-	return new Sandbox();
+	ApplicationSpecification spec;
+	spec.Name = "Sandbox";
+	spec.CommandLineArgs = args;
+	spec.WorkingDirectory = "../Waffle-Editor";
+	return new Sandbox(spec);
 }

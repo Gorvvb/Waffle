@@ -30,14 +30,28 @@ namespace Waffle {
 		m_IconPause = Texture2D::Create("Resources/Icons/PauseButton.png");
 		m_IconStep = Texture2D::Create("Resources/Icons/StepButton.png");
 
+		// Inactive icons
+		m_IconPauseInactive = Texture2D::Create("Resources/Icons/PauseButtonInactive.png");
+		m_IconStepInactive = Texture2D::Create("Resources/Icons/StepButtonInactive.png");
+
 		// Transform Gizmos
-		m_IconNoGuizmo = Texture2D::Create("Resources/Icons/Gizmos/NoGizmo.png");
-		m_IconTransformGuizmo = Texture2D::Create("Resources/Icons/Gizmos/TransformGizmo.png");
-		m_IconRotationGuizmo = Texture2D::Create("Resources/Icons/Gizmos/RotationGizmo.png");
-		m_IconScaleGuizmo = Texture2D::Create("Resources/Icons/Gizmos/ScaleGizmo.png");
+		m_IconNoGizmo = Texture2D::Create("Resources/Icons/Gizmos/NoGizmo.png");
+		m_IconTransformGizmo = Texture2D::Create("Resources/Icons/Gizmos/TransformGizmo.png");
+		m_IconRotationGizmo = Texture2D::Create("Resources/Icons/Gizmos/RotationGizmo.png");
+		m_IconScaleGizmo = Texture2D::Create("Resources/Icons/Gizmos/ScaleGizmo.png");
+
+		// Active Gizmo icons
+		m_IconNoGizmoActive = Texture2D::Create("Resources/Icons/Gizmos/NoGizmoActive.png");
+		m_IconTransformGizmoActive = Texture2D::Create("Resources/Icons/Gizmos/TransformGizmoActive.png");
+		m_IconRotationGizmoActive = Texture2D::Create("Resources/Icons/Gizmos/RotationGizmoActive.png");
+		m_IconScaleGizmoActive = Texture2D::Create("Resources/Icons/Gizmos/ScaleGizmoActive.png");
 
 		FramebufferSpecification fbSpec;
-		fbSpec.Attachments = { FramebufferTextureFormat::RGBA8, FramebufferTextureFormat::RED_INTEGER, FramebufferTextureFormat::Depth };
+		fbSpec.Attachments = {
+			FramebufferTextureFormat::RGBA8,
+			FramebufferTextureFormat::RED_INTEGER,
+			FramebufferTextureFormat::Depth
+		};
 		fbSpec.Width = 1280;
 		fbSpec.Height = 720;
 		m_Framebuffer = Framebuffer::Create(fbSpec);
@@ -45,7 +59,7 @@ namespace Waffle {
 		m_EditorScene = CreateRef<Scene>();
 		m_ActiveScene = m_EditorScene;
 
-		auto commandLineArgs = Application::Get().GetCommandLineArgs();
+		auto commandLineArgs = Application::Get().GetSpecification().CommandLineArgs;
 		if (commandLineArgs.Count > 1)
 		{
 			auto sceneFilePath = commandLineArgs[1];
@@ -260,25 +274,50 @@ namespace Waffle {
 			ImGui::EndDragDropTarget();
 		}
 
-		// Display Gizmo Toolbar with Images in the Viewport
+		// Display the gizmos
 		float iconSize = 20.0f;
 
 		ImGui::SetCursorPosY(5.0f);
 		ImGui::SetCursorPosX(5.0f);
-		if (ImGui::ImageButton("##NoGizmo", (ImTextureID)(uintptr_t)m_IconNoGuizmo->GetRendererID(), ImVec2(iconSize, iconSize), ImVec2(0, 0), ImVec2(1, 1)))
+
+		ImGui::BeginGroup();
+
+		ImVec4 backgroundColor = ImVec4(0.1f, 0.1f, 0.1f, 0.8f);
+		float rounding = 10.0f;
+		float backgroundWidth = 2.0f * iconSize;
+		float backgroundHeight = 4 * (iconSize * 2.0f) - 10.0f;
+
+		ImDrawList* drawList = ImGui::GetWindowDrawList();
+		ImVec2 toolbarPos = ImGui::GetCursorScreenPos();
+		ImVec2 toolbarSize = ImVec2(backgroundWidth, backgroundHeight);
+
+		drawList->AddRectFilled(toolbarPos, ImVec2(toolbarPos.x + toolbarSize.x, toolbarPos.y + toolbarSize.y), ImGui::ColorConvertFloat4ToU32(backgroundColor), rounding);
+
+		ImTextureID noTranslateIcon = (m_GizmoType == -1) ? (ImTextureID)(uintptr_t)m_IconNoGizmoActive->GetRendererID() : (ImTextureID)(uintptr_t)m_IconNoGizmo->GetRendererID();
+		ImGui::SetCursorPosX(11.25f);
+		ImGui::SetCursorPosY(ImGui::GetCursorPosY() + 10.0f);
+		if (ImGui::ImageButton("##NoGizmo", noTranslateIcon, ImVec2(iconSize, iconSize), ImVec2(0, 0), ImVec2(1, 1)))
 			m_GizmoType = -1;
 
-		ImGui::SetCursorPosX(5.0f);
-		if (ImGui::ImageButton("##TranslateGizmo", (ImTextureID)(uintptr_t)m_IconTransformGuizmo->GetRendererID(), ImVec2(iconSize, iconSize), ImVec2(0, 0), ImVec2(1, 1)))
+		ImTextureID translateIcon = (m_GizmoType == ImGuizmo::OPERATION::TRANSLATE) ? (ImTextureID)(uintptr_t)m_IconTransformGizmoActive->GetRendererID() : (ImTextureID)(uintptr_t)m_IconTransformGizmo->GetRendererID();
+		ImGui::SetCursorPosX(11.25f);
+		ImGui::SetCursorPosY(ImGui::GetCursorPosY() + 5.0f);
+		if (ImGui::ImageButton("##TranslateGizmo", translateIcon, ImVec2(iconSize, iconSize), ImVec2(0, 0), ImVec2(1, 1)))
 			m_GizmoType = ImGuizmo::OPERATION::TRANSLATE;
 
-		ImGui::SetCursorPosX(5.0f);
-		if (ImGui::ImageButton("##RotateGizmo", (ImTextureID)(uintptr_t)m_IconRotationGuizmo->GetRendererID(), ImVec2(iconSize, iconSize), ImVec2(0, 0), ImVec2(1, 1)))
+		ImTextureID rotationIcon = (m_GizmoType == ImGuizmo::OPERATION::ROTATE) ? (ImTextureID)(uintptr_t)m_IconRotationGizmoActive->GetRendererID() : (ImTextureID)(uintptr_t)m_IconRotationGizmo->GetRendererID();
+		ImGui::SetCursorPosX(11.25f);
+		ImGui::SetCursorPosY(ImGui::GetCursorPosY() + 5.0f);
+		if (ImGui::ImageButton("##RotateGizmo", rotationIcon, ImVec2(iconSize, iconSize), ImVec2(0, 0), ImVec2(1, 1)))
 			m_GizmoType = ImGuizmo::OPERATION::ROTATE;
 
-		ImGui::SetCursorPosX(5.0f);
-		if (ImGui::ImageButton("##ScaleGizmo", (ImTextureID)(uintptr_t)m_IconScaleGuizmo->GetRendererID(), ImVec2(iconSize, iconSize), ImVec2(0, 0), ImVec2(1, 1)))
+		ImTextureID scaleIcon = (m_GizmoType == ImGuizmo::OPERATION::SCALE) ? (ImTextureID)(uintptr_t)m_IconScaleGizmoActive->GetRendererID() : (ImTextureID)(uintptr_t)m_IconScaleGizmo->GetRendererID();
+		ImGui::SetCursorPosX(11.25f);
+		ImGui::SetCursorPosY(ImGui::GetCursorPosY() + 5.0f);
+		if (ImGui::ImageButton("##ScaleGizmo", scaleIcon, ImVec2(iconSize, iconSize), ImVec2(0, 0), ImVec2(1, 1)))
 			m_GizmoType = ImGuizmo::OPERATION::SCALE;
+
+		ImGui::EndGroup();
 
 		// Gizmos
 		Entity selectedEntity = m_SceneHierarchyPanel.GetSelectedEntity();
@@ -322,16 +361,18 @@ namespace Waffle {
 			}
 		}
 
+		UI_Toolbar();
+
 		ImGui::End();
 		ImGui::PopStyleVar();
-
-		UI_Toolbar();
 
 		ImGui::End();
 	}
 
 	void EditorLayer::UI_Toolbar()
 	{
+		ImGui::SetCursorPosY(5.0f);
+
 		ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0, 2));
 		ImGui::PushStyleVar(ImGuiStyleVar_ItemInnerSpacing, ImVec2(0, 0));
 		ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0, 0, 0, 0));
@@ -341,72 +382,66 @@ namespace Waffle {
 		ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(buttonHovered.x, buttonHovered.y, buttonHovered.z, 0.5f));
 		ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(buttonActive.x, buttonActive.y, buttonActive.z, 0.5f));
 
-		ImGui::Begin("##toolbar", nullptr, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
-
 		bool toolbarEnabled = (bool)m_ActiveScene;
 
 		ImVec4 tintColor = ImVec4(1, 1, 1, 1);
 		if (!toolbarEnabled)
 			tintColor.w = 0.5f;
 
-		float size = ImGui::GetWindowHeight() - 4.0f;
-
-		float totalButtonWidth = 0.0f;
-		int buttonCount = 0;
-
-		bool hasPlayButton = m_SceneState == SceneState::Edit || m_SceneState == SceneState::Play;
-		if (hasPlayButton) {
-			totalButtonWidth += size;
-			buttonCount++;
-		}
-
-		bool hasPauseButton = m_SceneState != SceneState::Edit;
-		if (hasPauseButton) {
-			totalButtonWidth += size;
-			buttonCount++;
-			if (m_ActiveScene->IsPaused()) {
-				totalButtonWidth += size;
-				buttonCount++;
-			}
-		}
+		float size = 25.0f;
 
 		float availableWidth = ImGui::GetWindowContentRegionMax().x;
-		float startX = (availableWidth - totalButtonWidth) * 0.5f;
+		float startX = (availableWidth - (3.0f * size)) * 0.5f;
+
 		ImGui::SetCursorPosX(startX);
 
-		if (hasPlayButton) {
-			Ref<Texture2D> icon = (m_SceneState == SceneState::Edit) ? m_IconPlay : m_IconStop;
-			if (ImGui::ImageButton("##Play", (ImTextureID)(uintptr_t)icon->GetRendererID(), ImVec2(size, size), ImVec2(0, 0), ImVec2(1, 1), ImVec4(0.0f, 0.0f, 0.0f, 0.0f), tintColor) && toolbarEnabled) {
-				if (m_SceneState == SceneState::Edit)
-					OnScenePlay();
-				else if (m_SceneState == SceneState::Play)
-					OnSceneStop();
-			}
+		ImVec4 backgroundColor = ImVec4(0.1f, 0.1f, 0.1f, 0.8f);
+		float rounding = 10.0f;
+
+		ImDrawList* drawList = ImGui::GetWindowDrawList();
+		ImVec2 toolbarPos = ImGui::GetCursorScreenPos();
+		ImVec2 toolbarSize = ImVec2(4.65f * size, 1.5f * size);
+
+		drawList->AddRectFilled(toolbarPos, ImVec2(toolbarPos.x + toolbarSize.x, toolbarPos.y + toolbarSize.y), ImGui::ColorConvertFloat4ToU32(backgroundColor), rounding);
+
+		ImGui::SetCursorPosY(10.0f);
+		ImGui::SetCursorPosX(startX);
+
+		Ref<Texture2D> icon = (m_SceneState == SceneState::Edit) ? m_IconPlay : m_IconStop;
+		if (ImGui::ImageButton("##Play", (ImTextureID)(uintptr_t)icon->GetRendererID(), ImVec2(size, size), ImVec2(0, 0), ImVec2(1, 1), ImVec4(0.0f, 0.0f, 0.0f, 0.0f), tintColor) && toolbarEnabled) {
+			if (m_SceneState == SceneState::Edit)
+				OnScenePlay();
+			else if (m_SceneState == SceneState::Play)
+				OnSceneStop();
 		}
 
-		if (hasPauseButton) {
-			bool isPaused = m_ActiveScene->IsPaused();
-			ImGui::SameLine();
-			{
-				Ref<Texture2D> icon = (isPaused == false) ? m_IconPause : m_IconPlay;
-				if (ImGui::ImageButton("##Pause", (ImTextureID)(uintptr_t)icon->GetRendererID(), ImVec2(size, size), ImVec2(0, 0), ImVec2(1, 1), ImVec4(0.0f, 0.0f, 0.0f, 0.0f), tintColor) && toolbarEnabled) {
+		bool isPaused = m_ActiveScene->IsPaused();
+		ImGui::SameLine();
+		{
+			Ref<Texture2D> pauseIcon = (isPaused == false) ? m_IconPause : m_IconPlay;
+
+			Ref<Texture2D> buttonIcon = (m_SceneState == SceneState::Play) ? pauseIcon : m_IconPauseInactive;
+
+			if (ImGui::ImageButton("##Pause", (ImTextureID)(uintptr_t)buttonIcon->GetRendererID(), ImVec2(size, size), ImVec2(0, 0), ImVec2(1, 1), ImVec4(0.0f, 0.0f, 0.0f, 0.0f), tintColor)) {
+				if (m_SceneState == SceneState::Play) {
 					m_ActiveScene->SetPaused(!isPaused);
 				}
 			}
+		}
+		ImGui::SameLine();
+		{
+			Ref<Texture2D> stepIcon = m_IconStep;
+			Ref<Texture2D> inactiveStepIcon = m_IconStepInactive;
 
-			// Step button
-			if (isPaused) {
-				ImGui::SameLine();
-				{
-					Ref<Texture2D> icon = m_IconStep;
-					if (ImGui::ImageButton("##Step", (ImTextureID)(uintptr_t)icon->GetRendererID(), ImVec2(size, size), ImVec2(0, 0), ImVec2(1, 1), ImVec4(0.0f, 0.0f, 0.0f, 0.0f), tintColor) && toolbarEnabled) {
-						m_ActiveScene->Step();
-					}
+			Ref<Texture2D> stepButtonIcon = (m_SceneState == SceneState::Play) ? stepIcon : inactiveStepIcon;
+
+			if (ImGui::ImageButton("##Step", (ImTextureID)(uintptr_t)stepButtonIcon->GetRendererID(), ImVec2(size, size), ImVec2(0, 0), ImVec2(1, 1), ImVec4(0.0f, 0.0f, 0.0f, 0.0f), tintColor)) {
+				if (m_SceneState == SceneState::Play) {
+					m_ActiveScene->Step();
 				}
 			}
 		}
 
-		ImGui::End();
 		ImGui::PopStyleColor(3);
 		ImGui::PopStyleVar(2);
 	}
