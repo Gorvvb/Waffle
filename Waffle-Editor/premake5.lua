@@ -29,6 +29,13 @@ project "Waffle-Editor"
 			"Waffle"
 		}
 
+		postbuildcommands
+		{
+			"{COPYDIR} \"%{wks.location}/Waffle-Editor/assets\" \"%{cfg.targetdir}/assets\"",
+			"{COPYDIR} \"%{wks.location}/Waffle-Editor/Resources\" \"%{cfg.targetdir}/Resources\"",
+			"{COPYFILE} \"%{wks.location}/Waffle-Editor/imgui.ini\" \"%{cfg.targetdir}/imgui.ini\""
+		}
+
 		filter "system:windows"
 			systemversion "latest"
 		
@@ -51,3 +58,4 @@ project "Waffle-Editor"
 			optimize "on"
 			linkoptions { "/IGNORE:4099", "/SUBSYSTEM:WINDOWS" }
 			entrypoint "mainCRTStartup"
+

@@ -17,7 +17,7 @@ namespace Waffle {
 		glm::vec4 Color;
 		glm::vec2 TexCoord;
 		float textureIndex;
-		float TilingFactor;
+		glm::vec2 TilingFactor;
 
 		// Editor only
 		int EntityID;
@@ -108,7 +108,7 @@ namespace Waffle {
 			{ ShaderDataType::Float4, "a_Color"			},
 			{ ShaderDataType::Float2, "a_TexCoord"		},
 			{ ShaderDataType::Float,  "a_textureIndex"	},
-			{ ShaderDataType::Float,  "a_TilingFactor"	},
+			{ ShaderDataType::Float2, "a_TilingFactor"	},
 			{ ShaderDataType::Int,    "a_EntityID"		}
 		});
 		s_Data.QuadVertexArray->AddVertexBuffer(s_Data.QuadVertexBuffer);
@@ -322,10 +322,6 @@ namespace Waffle {
 	{
 		WF_PROFILE_FUNCTION();
 
-		// TODO: Make batch rendering work correctly with circles
-		// if (s_Data.QuadIndexCount >= Renderer2DData::MaxIndices)
-		// 	NextBatch();
-
 		for (size_t i = 0; i < 4; i++)
 		{
 			s_Data.CircleVertexBufferPtr->WorldPosition = transform * s_Data.QuadVertexPositions[i];
@@ -385,12 +381,12 @@ namespace Waffle {
 		DrawQuad(transform, color);
 	}
 
-	void Renderer2D::DrawQuad(const glm::vec2& position, const glm::vec2& size, const Ref<Texture2D> texture, float tilingFactor, const glm::vec4& tintColor)
+	void Renderer2D::DrawQuad(const glm::vec2& position, const glm::vec2& size, const Ref<Texture2D>& texture, const glm::vec2& tilingFactor, const glm::vec4& tintColor)
 	{
 		DrawQuad({ position.x, position.y, 0.0f }, size, texture, tilingFactor, tintColor);
 	}
 
-	void Renderer2D::DrawQuad(const glm::vec3& position, const glm::vec2& size, const Ref<Texture2D> texture, float tilingFactor, const glm::vec4& tintColor)
+	void Renderer2D::DrawQuad(const glm::vec3& position, const glm::vec2& size, const Ref<Texture2D>& texture, const glm::vec2& tilingFactor, const glm::vec4& tintColor)
 	{
 		glm::mat4 transform = glm::translate(glm::mat4(1.0f), position)
 			* glm::scale(glm::mat4(1.0f), { size.x, size.y, 1.0f });
@@ -406,7 +402,7 @@ namespace Waffle {
 		constexpr glm::vec2 textureCoords[] = { { 0.0f, 0.0f }, { 1.0f, 0.0f }, { 1.0f, 1.0f }, { 0.0f, 1.0f } };
 
 		const float textureIndex = 0.0f; // White texture
-		const float tilingFactor = 1.0f;
+		const glm::vec2 tilingFactor = glm::vec2(1.0f, 1.0f);
 
 		if (s_Data.QuadIndexCount >= s_Data.MaxIndices)
 			NextBatch();
@@ -427,7 +423,7 @@ namespace Waffle {
 		s_Data.Stats.QuadCount++;
 	}
 
-	void Renderer2D::DrawQuad(const glm::mat4& transform, const Ref<Texture2D> texture, float tilingFactor, const glm::vec4& tintColor, int entityID)
+	void Renderer2D::DrawQuad(const glm::mat4& transform, const Ref<Texture2D>& texture, const glm::vec2& tilingFactor, const glm::vec4& tintColor, int entityID)
 	{
 		WF_PROFILE_FUNCTION();
 
@@ -487,7 +483,7 @@ namespace Waffle {
 		constexpr glm::vec2 textureCoords[] = { { 0.0f, 0.0f }, { 1.0f, 0.0f }, { 1.0f, 1.0f }, { 0.0f, 1.0f } };
 
 		const float textureIndex = 0.0f; // White texture
-		const float tilingFactor = 1.0f;
+		const glm::vec2 tilingFactor = glm::vec2(1.0f, 1.0f);
 
 		if (s_Data.QuadIndexCount >= s_Data.MaxIndices)
 			NextBatch();
@@ -511,12 +507,12 @@ namespace Waffle {
 		s_Data.Stats.QuadCount++;
 	}
 
-	void Renderer2D::DrawRotatedQuad(const glm::vec2& position, const glm::vec2& size, float rotation, const Ref<Texture2D> texture, float tilingFactor, const glm::vec4& tintColor)
+	void Renderer2D::DrawRotatedQuad(const glm::vec2& position, const glm::vec2& size, float rotation, const Ref<Texture2D>& texture, const glm::vec2& tilingFactor, const glm::vec4& tintColor)
 	{
 		DrawRotatedQuad({ position.x, position.y, 0.0f }, size, rotation, texture, tilingFactor, tintColor);
 	}
 
-	void Renderer2D::DrawRotatedQuad(const glm::vec3& position, const glm::vec2& size, float rotation, const Ref<Texture2D> texture, float tilingFactor, const glm::vec4& tintColor)
+	void Renderer2D::DrawRotatedQuad(const glm::vec3& position, const glm::vec2& size, float rotation, const Ref<Texture2D>& texture, const glm::vec2& tilingFactor, const glm::vec4& tintColor)
 	{
 		WF_PROFILE_FUNCTION();
 

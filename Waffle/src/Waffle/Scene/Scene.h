@@ -56,6 +56,8 @@ namespace Waffle {
 
 		void Step(int frames = 1);
 
+		bool IsEntityValid(entt::entity entity) const { return m_Registry.valid(entity); }
+
 		template<typename... Components>
 		auto GetAllEntitiesWith()
 		{

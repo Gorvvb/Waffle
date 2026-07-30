@@ -60,10 +60,16 @@ layout(location = 4) in flat int v_EntityID;
 
 void main()
 {
-	// Calculate distance and fill circle with white
-	float distance = 1.0 - length(Input.LocalPosition);
-	float circle = smoothstep(0.0, Input.Fade, distance);
-	circle *= smoothstep(Input.Thickness + Input.Fade, Input.Thickness, distance);
+	// Calculate distance from center (0,0) to outer edge (1.0)
+	float dist = length(Input.LocalPosition.xy);
+	float fade = max(Input.Fade, 0.0001);
+	float circle = 1.0 - smoothstep(1.0 - fade, 1.0, dist);
+
+	if (Input.Thickness < 1.0)
+	{
+		float innerRadius = 1.0 - Input.Thickness;
+		circle *= smoothstep(innerRadius - fade, innerRadius, dist);
+	}
 
 	if (circle == 0.0)
 		discard;

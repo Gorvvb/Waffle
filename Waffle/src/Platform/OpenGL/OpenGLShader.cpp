@@ -202,18 +202,33 @@ namespace Waffle {
 			std::filesystem::path shaderFilePath = m_FilePath;
 			std::filesystem::path cachedPath = cacheDirectory / (shaderFilePath.filename().string() + Utils::GLShaderStageCachedVulkanFileExtension(stage));
 
-			std::ifstream in(cachedPath, std::ios::in | std::ios::binary);
-			if (in.is_open())
+			bool isCacheValid = false;
+			if (std::filesystem::exists(cachedPath) && std::filesystem::exists(shaderFilePath))
 			{
-				in.seekg(0, std::ios::end);
-				auto size = in.tellg();
-				in.seekg(0, std::ios::beg);
-
-				auto& data = shaderData[stage];
-				data.resize(size / sizeof(uint32_t));
-				in.read((char*)data.data(), size);
+				if (std::filesystem::last_write_time(cachedPath) >= std::filesystem::last_write_time(shaderFilePath))
+					isCacheValid = true;
 			}
-			else
+
+			if (isCacheValid)
+			{
+				std::ifstream in(cachedPath, std::ios::in | std::ios::binary);
+				if (in.is_open())
+				{
+					in.seekg(0, std::ios::end);
+					auto size = in.tellg();
+					in.seekg(0, std::ios::beg);
+
+					auto& data = shaderData[stage];
+					data.resize(size / sizeof(uint32_t));
+					in.read((char*)data.data(), size);
+				}
+				else
+				{
+					isCacheValid = false;
+				}
+			}
+
+			if (!isCacheValid)
 			{
 				shaderc::SpvCompilationResult module = compiler.CompileGlslToSpv(source, Utils::GLShaderStageToShaderC(stage), m_FilePath.c_str(), options);
 				if (module.GetCompilationStatus() != shaderc_compilation_status_success)
@@ -259,18 +274,33 @@ namespace Waffle {
 			std::filesystem::path shaderFilePath = m_FilePath;
 			std::filesystem::path cachedPath = cacheDirectory / (shaderFilePath.filename().string() + Utils::GLShaderStageCachedOpenGLFileExtension(stage));
 
-			std::ifstream in(cachedPath, std::ios::in | std::ios::binary);
-			if (in.is_open())
+			bool isCacheValid = false;
+			if (std::filesystem::exists(cachedPath) && std::filesystem::exists(shaderFilePath))
 			{
-				in.seekg(0, std::ios::end);
-				auto size = in.tellg();
-				in.seekg(0, std::ios::beg);
-
-				auto& data = shaderData[stage];
-				data.resize(size / sizeof(uint32_t));
-				in.read((char*)data.data(), size);
+				if (std::filesystem::last_write_time(cachedPath) >= std::filesystem::last_write_time(shaderFilePath))
+					isCacheValid = true;
 			}
-			else
+
+			if (isCacheValid)
+			{
+				std::ifstream in(cachedPath, std::ios::in | std::ios::binary);
+				if (in.is_open())
+				{
+					in.seekg(0, std::ios::end);
+					auto size = in.tellg();
+					in.seekg(0, std::ios::beg);
+
+					auto& data = shaderData[stage];
+					data.resize(size / sizeof(uint32_t));
+					in.read((char*)data.data(), size);
+				}
+				else
+				{
+					isCacheValid = false;
+				}
+			}
+
+			if (!isCacheValid)
 			{
 				spirv_cross::CompilerGLSL glslCompiler(spirv);
 				m_OpenGLSourceCode[stage] = glslCompiler.compile();

@@ -40,22 +40,40 @@ namespace Waffle {
 				for (length_t j = 0; j < 3; ++j)
 					Row[i][j] = LocalMatrix[i][j];
 
-			// Compute X scale factor and normalize first row.
+			// Compute scale factors
 			scale.x = length(Row[0]);
-			Row[0] = detail::scale(Row[0], static_cast<T>(1));
 			scale.y = length(Row[1]);
-			Row[1] = detail::scale(Row[1], static_cast<T>(1));
 			scale.z = length(Row[2]);
-			Row[2] = detail::scale(Row[2], static_cast<T>(1));
 
-			rotation.y = asin(-Row[0][2]);
-			if (cos(rotation.y) != 0) {
+			const T eps = static_cast<T>(1e-6);
+
+			if (scale.x > eps) Row[0] /= scale.x; else Row[0] = vec3(1, 0, 0);
+			if (scale.y > eps) Row[1] /= scale.y; else Row[1] = vec3(0, 1, 0);
+			if (scale.z > eps) Row[2] /= scale.z; else Row[2] = vec3(0, 0, 1);
+
+			// Clamp scale away from 0 to prevent zero-matrix lockup
+			if (scale.x < 0.0001f) scale.x = 0.0001f;
+			if (scale.y < 0.0001f) scale.y = 0.0001f;
+			if (scale.z < 0.0001f) scale.z = 0.0001f;
+
+			// Clamp value inside [-1, 1] to prevent asin domain NaN errors
+			T sinY = glm::clamp(-Row[0][2], static_cast<T>(-1), static_cast<T>(1));
+			rotation.y = asin(sinY);
+
+			if (abs(cos(rotation.y)) > eps) {
 				rotation.x = atan2(Row[1][2], Row[2][2]);
 				rotation.z = atan2(Row[0][1], Row[0][0]);
 			}
 			else {
 				rotation.x = atan2(-Row[2][0], Row[1][1]);
 				rotation.z = 0;
+			}
+
+			if (std::isnan(translation.x) || std::isnan(translation.y) || std::isnan(translation.z) ||
+				std::isnan(rotation.x) || std::isnan(rotation.y) || std::isnan(rotation.z) ||
+				std::isnan(scale.x) || std::isnan(scale.y) || std::isnan(scale.z))
+			{
+				return false;
 			}
 
 			return true;
