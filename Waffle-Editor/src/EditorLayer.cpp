@@ -136,7 +136,14 @@ namespace Waffle {
 		if (mouseX >= 0 && mouseY >= 0 && mouseX < (int)viewportSize.x && mouseY < (int)viewportSize.y)
 		{
 			int pixelData = m_Framebuffer->ReadPixel(1, mouseX, mouseY);
-			m_HoveredEntity = pixelData == -1 ? Entity() : Entity((entt::entity)pixelData, m_ActiveScene.get());
+			if (pixelData != -1 && m_ActiveScene->IsEntityValid((entt::entity)pixelData))
+				m_HoveredEntity = Entity((entt::entity)pixelData, m_ActiveScene.get());
+			else
+				m_HoveredEntity = Entity();
+		}
+		else
+		{
+			m_HoveredEntity = Entity();
 		}
 
 		OnOverlayRender();
@@ -222,27 +229,29 @@ namespace Waffle {
 		// RENDER SETTINGS
 		ImGui::Begin("Stats");
 
+		float frameTimeMs = m_fps * 1000.0f;
+		float fps = m_fps > 0.0f ? 1.0f / m_fps : 0.0f;
+		ImGui::Text("Performance: %.1f FPS (%.2f ms)", fps, frameTimeMs);
+		ImGui::Separator();
+
 		std::string name = "None";
 		if (m_HoveredEntity)
 			name = m_HoveredEntity.GetComponent<TagComponent>().Tag;
 		
 		ImGui::Text("Hovered Entity: %s", name.c_str());
+		ImGui::Separator();
 
 		auto stats = Renderer2D::GetStats();
 		ImGui::Text("Renderer2D Stats:");
-		ImGui::Text("Draw Calls: %d", stats.DrawCalls);
-		ImGui::Text("Quads: %d", stats.QuadCount);
-		ImGui::Text("Verticies: %d", stats.GetTotalVertexCount());
-		ImGui::Text("Indices: %d", stats.GetTotalIndexCount());
+		ImGui::Text("  Draw Calls: %d", stats.DrawCalls);
+		ImGui::Text("  Quads: %d", stats.QuadCount);
+		ImGui::Text("  Vertices: %d", stats.GetTotalVertexCount());
+		ImGui::Text("  Indices: %d", stats.GetTotalIndexCount());
 
 		ImGui::End();
 
 		ImGui::Begin("Settings");
-
-		float fps = 1.0f / m_fps; // Calculate and display FPS
-		ImGui::Text("FPS: %.1f", fps);
-
-		ImGui::Checkbox("Show physics colliders", &m_ShowPhysicsColliders);
+		ImGui::Checkbox("Show Physics Colliders", &m_ShowPhysicsColliders);
 		ImGui::End();
 
 		ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2{ 0, 0 });
@@ -323,14 +332,14 @@ namespace Waffle {
 		Entity selectedEntity = m_SceneHierarchyPanel.GetSelectedEntity();
 		if (selectedEntity && m_GizmoType != -1)
 		{
-			ImGuizmo::SetOrthographic(false);
-			ImGuizmo::SetDrawlist();
-
-			ImGuizmo::SetRect(m_ViewportBounds[0].x, m_ViewportBounds[0].y, m_ViewportBounds[1].x - m_ViewportBounds[0].x, m_ViewportBounds[1].y - m_ViewportBounds[0].y);
-
-			//Editor camera 
+			// Editor camera 
 			const glm::mat4& cameraProjection = m_EditorCamera.GetProjection();
 			glm::mat4 cameraView = m_EditorCamera.GetViewMatrix();
+
+			bool isOrtho = cameraProjection[3][3] == 1.0f;
+			ImGuizmo::SetOrthographic(isOrtho);
+			ImGuizmo::SetDrawlist();
+			ImGuizmo::SetRect(m_ViewportBounds[0].x, m_ViewportBounds[0].y, m_ViewportBounds[1].x - m_ViewportBounds[0].x, m_ViewportBounds[1].y - m_ViewportBounds[0].y);
 
 			// Entity transform
 			auto& tc = selectedEntity.GetComponent<TransformComponent>();
@@ -350,10 +359,21 @@ namespace Waffle {
 
 				if (ImGuizmo::IsUsing())
 				{
-					glm::vec3 translation, rotation, scale;
-					Math::DecomposeTransform(transform, translation, rotation, scale);
+					glm::vec3 translation, rotationDeg, scale;
+					ImGuizmo::DecomposeMatrixToComponents(glm::value_ptr(transform), glm::value_ptr(translation), glm::value_ptr(rotationDeg), glm::value_ptr(scale));
 
-					glm::vec3 deltaRotation = rotation - tc.Rotation;
+					scale.x = std::max(scale.x, 0.0001f);
+					scale.y = std::max(scale.y, 0.0001f);
+					scale.z = std::max(scale.z, 0.0001f);
+
+					glm::vec3 rotationRad = glm::radians(rotationDeg);
+					glm::vec3 deltaRotation = rotationRad - tc.Rotation;
+					for (int i = 0; i < 3; i++)
+					{
+						while (deltaRotation[i] > glm::pi<float>()) deltaRotation[i] -= glm::two_pi<float>();
+						while (deltaRotation[i] < -glm::pi<float>()) deltaRotation[i] += glm::two_pi<float>();
+					}
+
 					tc.Translation = translation;
 					tc.Rotation += deltaRotation;
 					tc.Scale = scale;
@@ -415,14 +435,14 @@ namespace Waffle {
 				OnSceneStop();
 		}
 
-		bool isPaused = m_ActiveScene->IsPaused();
+		bool isPaused = m_ActiveScene ? m_ActiveScene->IsPaused() : false;
 		ImGui::SameLine();
 		{
 			Ref<Texture2D> pauseIcon = (isPaused == false) ? m_IconPause : m_IconPlay;
 
 			Ref<Texture2D> buttonIcon = (m_SceneState == SceneState::Play) ? pauseIcon : m_IconPauseInactive;
 
-			if (ImGui::ImageButton("##Pause", (ImTextureID)(uintptr_t)buttonIcon->GetRendererID(), ImVec2(size, size), ImVec2(0, 0), ImVec2(1, 1), ImVec4(0.0f, 0.0f, 0.0f, 0.0f), tintColor)) {
+			if (ImGui::ImageButton("##Pause", (ImTextureID)(uintptr_t)buttonIcon->GetRendererID(), ImVec2(size, size), ImVec2(0, 0), ImVec2(1, 1), ImVec4(0.0f, 0.0f, 0.0f, 0.0f), tintColor) && toolbarEnabled) {
 				if (m_SceneState == SceneState::Play) {
 					m_ActiveScene->SetPaused(!isPaused);
 				}
@@ -435,8 +455,8 @@ namespace Waffle {
 
 			Ref<Texture2D> stepButtonIcon = (m_SceneState == SceneState::Play) ? stepIcon : inactiveStepIcon;
 
-			if (ImGui::ImageButton("##Step", (ImTextureID)(uintptr_t)stepButtonIcon->GetRendererID(), ImVec2(size, size), ImVec2(0, 0), ImVec2(1, 1), ImVec4(0.0f, 0.0f, 0.0f, 0.0f), tintColor)) {
-				if (m_SceneState == SceneState::Play) {
+			if (ImGui::ImageButton("##Step", (ImTextureID)(uintptr_t)stepButtonIcon->GetRendererID(), ImVec2(size, size), ImVec2(0, 0), ImVec2(1, 1), ImVec4(0.0f, 0.0f, 0.0f, 0.0f), tintColor) && toolbarEnabled) {
+				if (m_SceneState == SceneState::Play && isPaused) {
 					m_ActiveScene->Step();
 				}
 			}
@@ -668,6 +688,7 @@ namespace Waffle {
 		}
 
 		m_ActiveScene = Scene::Copy(m_EditorScene);
+		m_ActiveScene->OnViewportResize((uint32_t)m_ViewportSize.x, (uint32_t)m_ViewportSize.y);
 		m_ActiveScene->OnRuntimeStart();
 
 		m_SceneHierarchyPanel.SetContext(m_ActiveScene);

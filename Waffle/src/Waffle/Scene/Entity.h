@@ -47,7 +47,7 @@ namespace Waffle {
 		template<typename T>
 		bool HasComponent()
 		{
-			return m_Scene->m_Registry.all_of<T>(m_EntityHandle);
+			return m_Scene && m_Scene->m_Registry.valid(m_EntityHandle) && m_Scene->m_Registry.all_of<T>(m_EntityHandle);
 		}
 
 		template<typename T>
@@ -57,7 +57,7 @@ namespace Waffle {
 			m_Scene->m_Registry.remove<T>(m_EntityHandle);
 		}
 
-		operator bool() const { return m_EntityHandle != entt::null; }
+		operator bool() const { return m_EntityHandle != entt::null && m_Scene != nullptr && m_Scene->m_Registry.valid(m_EntityHandle); }
 		operator entt::entity() const { return m_EntityHandle; }
 		operator uint32_t() const { return (uint32_t)m_EntityHandle; }
 

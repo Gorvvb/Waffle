@@ -88,10 +88,6 @@ namespace Waffle {
 
 		if (opened)
 		{
-			ImGuiTreeNodeFlags flags = ImGuiTreeNodeFlags_OpenOnArrow | ImGuiTreeNodeFlags_SpanAvailWidth;
-			bool opened = ImGui::TreeNodeEx((void*)9817239, flags, tag.c_str());
-			if (opened)
-				ImGui::TreePop();
 			ImGui::TreePop();
 		}
 
@@ -265,14 +261,14 @@ namespace Waffle {
 
 			ImGui::Checkbox("Primary", &component.Primary);
 
-			const char* projectionTypeString[] = { "Persepective", "Orthographic" };
+			const char* projectionTypeString[] = { "Perspective", "Orthographic" };
 			const char* currentProjectionTypeString = projectionTypeString[(int)camera.GetProjectionType()];
 
 			if (ImGui::BeginCombo("Projection", currentProjectionTypeString))
 			{
 				for (int i = 0; i < 2; i++)
 				{
-					bool isSelected = currentProjectionTypeString = projectionTypeString[i];
+					bool isSelected = (currentProjectionTypeString == projectionTypeString[i]);
 					if (ImGui::Selectable(projectionTypeString[i], isSelected))
 					{
 						currentProjectionTypeString = projectionTypeString[i];
@@ -370,7 +366,7 @@ namespace Waffle {
 				ImGui::EndCombo();
 			}
 
-			ImGui::DragFloat("Tiling Factor", &component.TilingFactor, 0.1f, 0.0f, 100.0f);
+			ImGui::DragFloat2("Tiling Factor", glm::value_ptr(component.TilingFactor), 0.1f, 0.0f, 100.0f);
 		});
 
 		DrawComponent<CircleRendererComponent>("Circle Renderer", entity, [](auto& component)
@@ -387,9 +383,9 @@ namespace Waffle {
 
 			if (ImGui::BeginCombo("Body type", currentBodyTypeString))
 			{
-				for (int i = 0; i < 2; i++)
+				for (int i = 0; i < 3; i++)
 				{
-					bool isSelected = currentBodyTypeString = bodyTypeStrings[i];
+					bool isSelected = (currentBodyTypeString == bodyTypeStrings[i]);
 					if (ImGui::Selectable(bodyTypeStrings[i], isSelected))
 					{
 						currentBodyTypeString = bodyTypeStrings[i];

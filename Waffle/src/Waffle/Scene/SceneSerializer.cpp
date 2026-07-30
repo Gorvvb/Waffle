@@ -25,7 +25,15 @@ namespace YAML {
 		static bool decode(const Node& node, glm::vec2& rhs)
 		{
 			if (!node.IsSequence() || node.size() != 2)
+			{
+				if (node.IsScalar())
+				{
+					float val = node.as<float>();
+					rhs = glm::vec2(val);
+					return true;
+				}
 				return false;
+			}
 
 			rhs.x = node[0].as<float>();
 			rhs.y = node[1].as<float>();
@@ -387,8 +395,8 @@ namespace Waffle {
 						}
 					}
 
-					float tilingFactor = spriteRendererComponent["TilingFactor"].as<float>();
-					src.TilingFactor = tilingFactor;
+					if (spriteRendererComponent["TilingFactor"])
+						src.TilingFactor = spriteRendererComponent["TilingFactor"].as<glm::vec2>();
 				}
 
 				auto circleRendererComponent = entity["CircleRendererComponent"];

@@ -10,7 +10,8 @@ PythonRequirements.Validate()
 
 from SetupPremake import PremakeConfiguration as PremakeRequirements
 from SetupVulkan import VulkanConfiguration as VulkanRequirements
-os.chdir('./../') # Change from devtools/scripts directory to root
+# Change working directory to project root
+os.chdir(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 premakeInstalled = PremakeRequirements.Validate()
 VulkanRequirements.Validate()
