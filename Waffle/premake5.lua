@@ -53,7 +53,8 @@ project "Waffle"
 		"GLAD",
 		"ImGui",
 		"opengl32.lib",
-		"yaml-cpp"
+		"yaml-cpp",
+		"%{Library.Vulkan}"
 	}
 
 	filter "files:vendor/ImGuizmo/**.cpp"

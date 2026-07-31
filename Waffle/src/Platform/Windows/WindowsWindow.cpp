@@ -5,8 +5,12 @@
 #include "Waffle/Events/MouseEvent.h"
 #include "Waffle/Events/KeyEvent.h"
 
-#include "Platform/OpenGL/OpenGLContext.h"
+#include "Waffle/Renderer/RendererAPI.h"
 
+#include "Platform/OpenGL/OpenGLContext.h"
+#include "Platform/Vulkan/VulkanContext.h"
+
+// Only include glad for OpenGL builds
 #include <glad/glad.h>
 
 namespace Waffle {
@@ -32,8 +36,8 @@ namespace Waffle {
 	{
 		WF_PROFILE_FUNCTION();
 
-		m_Data.Title = props.Title;
-		m_Data.Width = props.Width;
+		m_Data.Title  = props.Title;
+		m_Data.Width  = props.Width;
 		m_Data.Height = props.Height;
 
 		WF_CORE_INFO("Creating window {0} ({1},{2})", props.Title, props.Width, props.Height);
@@ -49,20 +53,35 @@ namespace Waffle {
 			s_GLFWInitialized = true;
 		}
 
-		m_Window = glfwCreateWindow((int)props.Width, (int)props.Height, m_Data.Title.c_str(), nullptr, nullptr);
-		
-		m_Context = new OpenGLContext(m_Window);
+		// ---- Window creation hints depend on API ----
+		if (RendererAPI::GetAPI() == RendererAPI::API::Vulkan)
+		{
+			// Tell GLFW not to create an OpenGL context
+			glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
+			m_Window = glfwCreateWindow((int)props.Width, (int)props.Height,
+				m_Data.Title.c_str(), nullptr, nullptr);
+
+			m_Context = new VulkanContext(m_Window);
+		}
+		else
+		{
+			// Default: OpenGL
+			m_Window = glfwCreateWindow((int)props.Width, (int)props.Height,
+				m_Data.Title.c_str(), nullptr, nullptr);
+
+			m_Context = new OpenGLContext(m_Window);
+		}
 
 		m_Context->Init();
 
 		glfwSetWindowUserPointer(m_Window, &m_Data);
 		SetVSync(true);
 
-		// Set GLFW callbacks
+		// ---- GLFW callbacks ----
 		glfwSetWindowSizeCallback(m_Window, [](GLFWwindow* window, int width, int height)
 		{
 			WindowData& data = *(WindowData*)glfwGetWindowUserPointer(window);
-			data.Width = width;
+			data.Width  = width;
 			data.Height = height;
 
 			WindowResizeEvent event(width, height);
@@ -165,10 +184,15 @@ namespace Waffle {
 	{
 		WF_PROFILE_FUNCTION();
 
-		if (enabled)
-			glfwSwapInterval(1);
-		else
-			glfwSwapInterval(0);
+		// VSync via glfwSwapInterval only applies to OpenGL
+		if (RendererAPI::GetAPI() != RendererAPI::API::Vulkan)
+		{
+			if (enabled)
+				glfwSwapInterval(1);
+			else
+				glfwSwapInterval(0);
+		}
+		// For Vulkan, VSync is handled by present mode (FIFO = vsync on)
 
 		m_Data.VSync = enabled;
 	}
