@@ -4,6 +4,7 @@
 #include "Waffle/Renderer/Renderer.h"
 
 #include "Platform/OpenGL/OpenGLFramebuffer.h"
+#include "Platform/Vulkan/VulkanFramebuffer.h"
 
 namespace Waffle {
 
@@ -16,6 +17,8 @@ namespace Waffle {
 			return nullptr;
 		case RendererAPI::API::OpenGL:
 			return CreateRef<OpenGLFrameBuffer>(spec);
+		case RendererAPI::API::Vulkan:
+			return CreateRef<VulkanFramebuffer>(spec);
 		}
 
 		WF_CORE_ASSERT(false, "Unknown RendererAPI");
