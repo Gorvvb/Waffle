@@ -24,7 +24,7 @@ namespace Waffle {
 		if (!m_Specification.WorkingDirectory.empty())
 			std::filesystem::current_path(m_Specification.WorkingDirectory);
 
-		m_Window = Window::Create(WindowProps(m_Specification.Name));
+		m_Window = Window::Create(WindowProps(m_Specification.Name, 1600, 900, m_Specification.IconPath));
 		m_Window->SetEventCallback(WF_BIND_EVENT_FN(Application::OnEvent));
 		m_Window->SetVSync(false);
 

@@ -90,9 +90,37 @@ namespace YAML {
 			return true;
 		}
 	};
+	template<>
+	struct convert<glm::uvec2>
+	{
+		static Node encode(const glm::uvec2& rhs)
+		{
+			Node node;
+			node.push_back(rhs.x);
+			node.push_back(rhs.y);
+			node.SetStyle(EmitterStyle::Flow);
+			return node;
+		}
+
+		static bool decode(const Node& node, glm::uvec2& rhs)
+		{
+			if (!node.IsSequence() || node.size() != 2)
+				return false;
+			rhs.x = node[0].as<uint32_t>();
+			rhs.y = node[1].as<uint32_t>();
+			return true;
+		}
+	};
 }
 
 namespace Waffle {
+
+	YAML::Emitter& operator<<(YAML::Emitter& out, const glm::uvec2& v)
+	{
+		out << YAML::Flow;
+		out << YAML::BeginSeq << v.x << v.y << YAML::EndSeq;
+		return out;
+	}
 
 	YAML::Emitter& operator<<(YAML::Emitter& out, const glm::vec2& v)
 	{
@@ -195,6 +223,10 @@ namespace Waffle {
 
 			out << YAML::Key << "Primary" << YAML::Value << cameraComponent.Primary;
 			out << YAML::Key << "FixedAspectRatio" << YAML::Value << cameraComponent.FixedAspectRatio;
+			out << YAML::Key << "BackgroundColor" << YAML::Value << cameraComponent.BackgroundColor;
+			out << YAML::Key << "BackgroundImagePath" << YAML::Value << cameraComponent.BackgroundImagePath;
+			out << YAML::Key << "BackgroundTilingFactor" << YAML::Value << cameraComponent.BackgroundTilingFactor;
+			out << YAML::Key << "BackgroundFilterMode" << YAML::Value << static_cast<int>(cameraComponent.BackgroundFilterMode);
 
 			out << YAML::EndMap; // CameraComponent
 		}
@@ -228,6 +260,37 @@ namespace Waffle {
 			out << YAML::Key << "Fade" << YAML::Value << circleRendererComponent.Fade;
 
 			out << YAML::EndMap; // CircleRendererComponent
+		}
+
+		if (entity.HasComponent<RelationshipComponent>())
+		{
+			out << YAML::Key << "RelationshipComponent";
+			out << YAML::BeginMap;
+			auto& rc = entity.GetComponent<RelationshipComponent>();
+			out << YAML::Key << "Parent" << YAML::Value << rc.Parent;
+			out << YAML::Key << "Children" << YAML::Value << YAML::BeginSeq;
+			for (auto childUUID : rc.Children)
+				out << childUUID;
+			out << YAML::EndSeq;
+			out << YAML::EndMap;
+		}
+
+		if (entity.HasComponent<ScriptComponent>())
+		{
+			out << YAML::Key << "ScriptComponent";
+			out << YAML::BeginMap;
+			auto& sc = entity.GetComponent<ScriptComponent>();
+			out << YAML::Key << "ClassName" << YAML::Value << sc.ClassName;
+			out << YAML::EndMap;
+		}
+
+		if (entity.HasComponent<LifetimeComponent>())
+		{
+			out << YAML::Key << "LifetimeComponent";
+			out << YAML::BeginMap;
+			auto& lc = entity.GetComponent<LifetimeComponent>();
+			out << YAML::Key << "Lifetime" << YAML::Value << lc.Lifetime;
+			out << YAML::EndMap;
 		}
 
 		if (entity.HasComponent<Rigidbody2DComponent>())
@@ -274,6 +337,23 @@ namespace Waffle {
 			out << YAML::EndMap; // CircleCollider2DComponent
 		}
 
+		if (entity.HasComponent<PolygonCollider2DComponent>())
+		{
+			out << YAML::Key << "PolygonCollider2DComponent";
+			out << YAML::BeginMap;
+			auto& pc2dComponent = entity.GetComponent<PolygonCollider2DComponent>();
+			out << YAML::Key << "Offset" << YAML::Value << pc2dComponent.Offset;
+			out << YAML::Key << "Density" << YAML::Value << pc2dComponent.Density;
+			out << YAML::Key << "Friction" << YAML::Value << pc2dComponent.Friction;
+			out << YAML::Key << "Restitution" << YAML::Value << pc2dComponent.Restitution;
+			out << YAML::Key << "RestitutionThreshold" << YAML::Value << pc2dComponent.RestitutionThreshold;
+			out << YAML::Key << "Vertices" << YAML::Value << YAML::BeginSeq;
+			for (const auto& v : pc2dComponent.Vertices)
+				out << v;
+			out << YAML::EndSeq;
+			out << YAML::EndMap;
+		}
+
 		out << YAML::EndMap; // Entity
 	}
 
@@ -281,7 +361,7 @@ namespace Waffle {
 	{
 		YAML::Emitter out;
 		out << YAML::BeginMap; // Scene
-		out << YAML::Key << "Scene" << YAML::Value << "Untitled";
+		out << YAML::Key << "Scene" << YAML::Value << m_Scene->GetName();
 		out << YAML::Key << "Entities" << YAML::Value << YAML::BeginSeq;
 
 		auto view = m_Scene->m_Registry.view<TagComponent>();
@@ -308,8 +388,6 @@ namespace Waffle {
 
 	bool SceneSerializer::Deserialize(const std::string& filepath)
 	{
-		// THIS DESERIALIZES EVERYTHING INVERSED FROM THE SERIALIZER SO FIX THAT
-
 		YAML::Node data;
 		try
 		{
@@ -325,6 +403,7 @@ namespace Waffle {
 			return false;
 
 		std::string sceneName = data["Scene"].as<std::string>();
+		m_Scene->SetName(sceneName);
 		WF_CORE_TRACE("Deserializing scene '{0}'", sceneName);
 
 		auto entities = data["Entities"];
@@ -342,10 +421,37 @@ namespace Waffle {
 
 				Entity deserializedEntity = m_Scene->CreateEntityWithUUID(uuid, name);
 
+				auto relationshipComponent = entity["RelationshipComponent"];
+				if (relationshipComponent)
+				{
+					auto& rc = deserializedEntity.AddComponent<RelationshipComponent>();
+					rc.Parent = relationshipComponent["Parent"].as<uint64_t>();
+					auto children = relationshipComponent["Children"];
+					if (children)
+					{
+						for (auto child : children)
+							rc.Children.push_back(child.as<uint64_t>());
+					}
+				}
+
+				auto scriptComponent = entity["ScriptComponent"];
+				if (scriptComponent)
+				{
+					auto& sc = deserializedEntity.AddComponent<ScriptComponent>();
+					sc.ClassName = scriptComponent["ClassName"].as<std::string>();
+				}
+
+				auto lifetimeComponent = entity["LifetimeComponent"];
+				if (lifetimeComponent)
+				{
+					auto& lc = deserializedEntity.AddComponent<LifetimeComponent>();
+					lc.Lifetime = lifetimeComponent["Lifetime"].as<float>();
+					lc.RemainingTime = lc.Lifetime;
+				}
+
 				auto transformComponent = entity["TransformComponent"];
 				if (transformComponent)
 				{
-					// Entities will always have transforms
 					auto& tc = deserializedEntity.GetComponent<TransformComponent>();
 					tc.Translation = transformComponent["Translation"].as<glm::vec3>();
 					tc.Rotation = transformComponent["Rotation"].as<glm::vec3>();
@@ -365,10 +471,26 @@ namespace Waffle {
 
 					cc.Camera.SetOrthographicSize(cameraProps["OrthographicSize"].as<float>());
 					cc.Camera.SetOrthographicNearClip(cameraProps["OrthographicNear"].as<float>());
-					cc.Camera.SetOrthographicFarClip(cameraProps["OrthographicFar"].as<float>());
-
 					cc.Primary = cameraComponent["Primary"].as<bool>();
 					cc.FixedAspectRatio = cameraComponent["FixedAspectRatio"].as<bool>();
+
+					if (cameraComponent["BackgroundColor"])
+						cc.BackgroundColor = cameraComponent["BackgroundColor"].as<glm::vec4>();
+
+					if (cameraComponent["BackgroundTilingFactor"])
+						cc.BackgroundTilingFactor = cameraComponent["BackgroundTilingFactor"].as<glm::vec2>();
+
+					if (cameraComponent["BackgroundFilterMode"])
+						cc.BackgroundFilterMode = static_cast<TextureFilter>(cameraComponent["BackgroundFilterMode"].as<int>());
+
+					if (cameraComponent["BackgroundImagePath"])
+					{
+						cc.BackgroundImagePath = cameraComponent["BackgroundImagePath"].as<std::string>();
+						if (!cc.BackgroundImagePath.empty() && std::filesystem::exists(cc.BackgroundImagePath))
+						{
+							cc.BackgroundImage = Texture2D::Create(cc.BackgroundImagePath, cc.BackgroundFilterMode);
+						}
+					}
 				}
 
 				auto spriteRendererComponent = entity["SpriteRendererComponent"];
@@ -417,6 +539,9 @@ namespace Waffle {
 				}
 
 				auto boxCollider2DComponent = entity["BoxCollider2DComponent"];
+				if (!boxCollider2DComponent)
+					boxCollider2DComponent = entity["RectCollider2DComponent"]; // Backwards compatibility
+
 				if (boxCollider2DComponent)
 				{
 					auto& bc2d = deserializedEntity.AddComponent<BoxCollider2DComponent>();
@@ -438,6 +563,23 @@ namespace Waffle {
 					cc2d.Friction = circleCollider2DComponent["Friction"].as<float>();
 					cc2d.Restitution = circleCollider2DComponent["Restitution"].as<float>();
 					cc2d.RestitutionThreshold = circleCollider2DComponent["RestitutionThreshold"].as<float>();
+				}
+
+				auto polygonCollider2DComponent = entity["PolygonCollider2DComponent"];
+				if (polygonCollider2DComponent)
+				{
+					auto& pc2d = deserializedEntity.AddComponent<PolygonCollider2DComponent>();
+					pc2d.Offset = polygonCollider2DComponent["Offset"].as<glm::vec2>();
+					pc2d.Density = polygonCollider2DComponent["Density"].as<float>();
+					pc2d.Friction = polygonCollider2DComponent["Friction"].as<float>();
+					pc2d.Restitution = polygonCollider2DComponent["Restitution"].as<float>();
+					pc2d.RestitutionThreshold = polygonCollider2DComponent["RestitutionThreshold"].as<float>();
+					auto vertices = polygonCollider2DComponent["Vertices"];
+					if (vertices)
+					{
+						for (auto v : vertices)
+							pc2d.Vertices.push_back(v.as<glm::vec2>());
+					}
 				}
 			}
 		}

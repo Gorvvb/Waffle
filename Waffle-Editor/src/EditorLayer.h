@@ -22,6 +22,7 @@ namespace Waffle {
 	private:
 		bool OnkeyPressed(KeyPressedEvent& e);
 		bool OnMouseButtonPressed(MouseButtonPressedEvent& e);
+		bool OnWindowDrop(WindowDropEvent& e);
 
 		void OnOverlayRender();
 
@@ -30,6 +31,10 @@ namespace Waffle {
 		void OpenScene(const std::filesystem::path& path);
 		void SaveScene();
 		void SaveSceneAs();
+
+		void NewProject();
+		void OpenProject();
+		void CreateProject(const std::string& projectName);
 
 		void SerializeScene(Ref<Scene> scene, const std::filesystem::path& path);
 
@@ -76,6 +81,12 @@ namespace Waffle {
 		};
 
 		SceneState m_SceneState = SceneState::Edit;
+
+		bool m_ShowNewProjectModal = false;
+		char m_ProjectNameBuffer[128] = "NewProject";
+		std::string m_ProjectName;
+
+		void UpdateWindowTitle();
 
 		SceneHierarchyPanel m_SceneHierarchyPanel;
 		ContentBrowserPanel m_ContentBrowserPanel;

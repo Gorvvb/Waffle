@@ -65,6 +65,7 @@ namespace Waffle {
 	{
 		Ref<Scene> newScene = CreateRef<Scene>();
 
+		newScene->m_Name = other->m_Name;
 		newScene->m_ViewportWidth = other->m_ViewportWidth;
 		newScene->m_ViewportHeight = other->m_ViewportHeight;
 
@@ -83,6 +84,9 @@ namespace Waffle {
 		}
 
 		// Copy components (except IDComponent and TagComponent)
+		CopyComponent<RelationshipComponent>(dstSceneRegistry, srcSceneRegistry, enttMap);
+		CopyComponent<ScriptComponent>(dstSceneRegistry, srcSceneRegistry, enttMap);
+		CopyComponent<LifetimeComponent>(dstSceneRegistry, srcSceneRegistry, enttMap);
 		CopyComponent<TransformComponent>(dstSceneRegistry, srcSceneRegistry, enttMap);
 		CopyComponent<SpriteRendererComponent>(dstSceneRegistry, srcSceneRegistry, enttMap);
 		CopyComponent<CircleRendererComponent>(dstSceneRegistry, srcSceneRegistry, enttMap);
@@ -91,6 +95,7 @@ namespace Waffle {
 		CopyComponent<Rigidbody2DComponent>(dstSceneRegistry, srcSceneRegistry, enttMap);
 		CopyComponent<BoxCollider2DComponent>(dstSceneRegistry, srcSceneRegistry, enttMap);
 		CopyComponent<CircleCollider2DComponent>(dstSceneRegistry, srcSceneRegistry, enttMap);
+		CopyComponent<PolygonCollider2DComponent>(dstSceneRegistry, srcSceneRegistry, enttMap);
 
 		return newScene;
 	}
@@ -106,7 +111,7 @@ namespace Waffle {
 		entity.AddComponent<IDComponent>(uuid);
 		entity.AddComponent<TransformComponent>();
 		auto& tag = entity.AddComponent<TagComponent>();
-		tag.Tag = name.empty() ? "Unnamed Entity" : name;
+		tag.Tag = name.empty() ? "Empty Entity" : name;
 		return entity;
 	}
 
@@ -123,8 +128,64 @@ namespace Waffle {
 		return Entity();
 	}
 
+	void Scene::ParentEntity(Entity child, Entity parent)
+	{
+		if (!child || !parent || child == parent)
+			return;
+
+		// Cycle detection
+		Entity currentParent = parent;
+		while (currentParent && currentParent.HasComponent<RelationshipComponent>())
+		{
+			if (currentParent == child)
+				return;
+			UUID parentUUID = currentParent.GetComponent<RelationshipComponent>().Parent;
+			currentParent = parentUUID != 0 ? GetEntityByUUID(parentUUID) : Entity{};
+		}
+
+		UnparentEntity(child);
+
+		auto& childRel = child.HasComponent<RelationshipComponent>() ? child.GetComponent<RelationshipComponent>() : child.AddComponent<RelationshipComponent>();
+		childRel.Parent = parent.GetUUID();
+
+		auto& parentRel = parent.HasComponent<RelationshipComponent>() ? parent.GetComponent<RelationshipComponent>() : parent.AddComponent<RelationshipComponent>();
+		parentRel.Children.push_back(child.GetUUID());
+	}
+
+	void Scene::UnparentEntity(Entity child)
+	{
+		if (!child || !child.HasComponent<RelationshipComponent>())
+			return;
+
+		auto& childRel = child.GetComponent<RelationshipComponent>();
+		if (childRel.Parent != 0)
+		{
+			Entity parent = GetEntityByUUID(childRel.Parent);
+			if (parent && parent.HasComponent<RelationshipComponent>())
+			{
+				auto& parentRel = parent.GetComponent<RelationshipComponent>();
+				auto it = std::find(parentRel.Children.begin(), parentRel.Children.end(), child.GetUUID());
+				if (it != parentRel.Children.end())
+					parentRel.Children.erase(it);
+			}
+			childRel.Parent = 0;
+		}
+	}
+
 	void Scene::DestroyEntity(Entity entity)
 	{
+		UnparentEntity(entity);
+		if (entity.HasComponent<RelationshipComponent>())
+		{
+			auto children = entity.GetComponent<RelationshipComponent>().Children;
+			for (auto childUUID : children)
+			{
+				Entity child = GetEntityByUUID(childUUID);
+				if (child)
+					UnparentEntity(child);
+			}
+		}
+
 		m_Registry.destroy(entity);
 	}
 
@@ -234,6 +295,7 @@ namespace Waffle {
 		// Render 2D
 		Camera* mainCamera = nullptr;
 		glm::mat4 cameraTransform;
+		CameraComponent* mainCameraComp = nullptr;
 		{
 			auto view = m_Registry.view<TransformComponent, CameraComponent>();
 			for (auto entity : view)
@@ -245,6 +307,7 @@ namespace Waffle {
 				{
 					mainCamera = &camera.Camera;
 					cameraTransform = transform.GetTransform();
+					mainCameraComp = &view.get<CameraComponent>(entity);
 					break;
 				}
 			}
@@ -253,6 +316,16 @@ namespace Waffle {
 		if (mainCamera)
 		{
 			Renderer2D::BeginScene(*mainCamera, cameraTransform);
+
+			if (mainCameraComp && mainCameraComp->BackgroundImage)
+			{
+				float orthoSize = mainCameraComp->Camera.GetOrthographicSize();
+				float aspectRatio = mainCameraComp->Camera.GetAspectRatio();
+				glm::vec3 camPos = cameraTransform[3];
+				glm::mat4 bgTransform = glm::translate(glm::mat4(1.0f), glm::vec3(camPos.x, camPos.y, -0.9f))
+					* glm::scale(glm::mat4(1.0f), glm::vec3(orthoSize * aspectRatio * 2.0f, orthoSize * 2.0f, 1.0f));
+				Renderer2D::DrawQuad(bgTransform, mainCameraComp->BackgroundImage, mainCameraComp->BackgroundTilingFactor);
+			}
 
 			// Draw sprites
 			auto group = m_Registry.group<TransformComponent>(entt::get<SpriteRendererComponent>);
@@ -279,6 +352,21 @@ namespace Waffle {
 	void Scene::OnUpdateEditor(Timestep ts, EditorCamera& camera)
 	{
 		Renderer2D::BeginScene(camera);
+
+		Entity primaryCamEntity = GetPrimaryCameraEntity();
+		if (primaryCamEntity && primaryCamEntity.HasComponent<CameraComponent>())
+		{
+			auto& camComp = primaryCamEntity.GetComponent<CameraComponent>();
+			if (camComp.BackgroundImage)
+			{
+				const auto& transformComp = primaryCamEntity.GetComponent<TransformComponent>();
+				float orthoSize = camComp.Camera.GetOrthographicSize();
+				float aspectRatio = camComp.Camera.GetAspectRatio();
+				glm::mat4 bgTransform = glm::translate(glm::mat4(1.0f), glm::vec3(transformComp.Translation.x, transformComp.Translation.y, -0.9f))
+					* glm::scale(glm::mat4(1.0f), glm::vec3(orthoSize * aspectRatio * 2.0f, orthoSize * 2.0f, 1.0f));
+				Renderer2D::DrawQuad(bgTransform, camComp.BackgroundImage, camComp.BackgroundTilingFactor);
+			}
+		}
 
 		// Draw sprites
 		auto group = m_Registry.group<TransformComponent>(entt::get<SpriteRendererComponent>);
@@ -327,6 +415,9 @@ namespace Waffle {
 		std::string name = entity.GetName();
 		Entity newEntity = CreateEntity(name);
 
+		CopyComponentIfExists<RelationshipComponent>(newEntity, entity);
+		CopyComponentIfExists<ScriptComponent>(newEntity, entity);
+		CopyComponentIfExists<LifetimeComponent>(newEntity, entity);
 		CopyComponentIfExists<TransformComponent>(newEntity, entity);
 		CopyComponentIfExists<SpriteRendererComponent>(newEntity, entity);
 		CopyComponentIfExists<CircleRendererComponent>(newEntity, entity);
@@ -335,6 +426,7 @@ namespace Waffle {
 		CopyComponentIfExists<Rigidbody2DComponent>(newEntity, entity);
 		CopyComponentIfExists<BoxCollider2DComponent>(newEntity, entity);
 		CopyComponentIfExists<CircleCollider2DComponent>(newEntity, entity);
+		CopyComponentIfExists<PolygonCollider2DComponent>(newEntity, entity);
 	}
 
 	Entity Scene::GetPrimaryCameraEntity()
@@ -356,24 +448,25 @@ namespace Waffle {
 	}
 
 	template<>
-	void Scene::OnComponentAdded<IDComponent>(Entity entity, IDComponent& component)
-	{
-	}
+	void Scene::OnComponentAdded<IDComponent>(Entity entity, IDComponent& component) {}
 
 	template<>
-	void Scene::OnComponentAdded<TransformComponent>(Entity entity, TransformComponent& component)
-	{
-	}
+	void Scene::OnComponentAdded<RelationshipComponent>(Entity entity, RelationshipComponent& component) {}
 
 	template<>
-	void Scene::OnComponentAdded<SpriteRendererComponent>(Entity entity, SpriteRendererComponent& component)
-	{
-	}
+	void Scene::OnComponentAdded<ScriptComponent>(Entity entity, ScriptComponent& component) {}
 
 	template<>
-	void Scene::OnComponentAdded<CircleRendererComponent>(Entity entity, CircleRendererComponent& component)
-	{
-	}
+	void Scene::OnComponentAdded<LifetimeComponent>(Entity entity, LifetimeComponent& component) {}
+
+	template<>
+	void Scene::OnComponentAdded<TransformComponent>(Entity entity, TransformComponent& component) {}
+
+	template<>
+	void Scene::OnComponentAdded<SpriteRendererComponent>(Entity entity, SpriteRendererComponent& component) {}
+
+	template<>
+	void Scene::OnComponentAdded<CircleRendererComponent>(Entity entity, CircleRendererComponent& component) {}
 
 	template<>
 	void Scene::OnComponentAdded<CameraComponent>(Entity entity, CameraComponent& component)
@@ -383,27 +476,20 @@ namespace Waffle {
 	}
 
 	template<>
-	void Scene::OnComponentAdded<TagComponent>(Entity entity, TagComponent& component)
-	{
-	}
+	void Scene::OnComponentAdded<TagComponent>(Entity entity, TagComponent& component) {}
 
 	template<>
-	void Scene::OnComponentAdded<NativeScriptComponent>(Entity entity, NativeScriptComponent& component)
-	{
-	}
+	void Scene::OnComponentAdded<NativeScriptComponent>(Entity entity, NativeScriptComponent& component) {}
 
 	template<>
-	void Scene::OnComponentAdded<Rigidbody2DComponent>(Entity entity, Rigidbody2DComponent& component)
-	{
-	}
+	void Scene::OnComponentAdded<Rigidbody2DComponent>(Entity entity, Rigidbody2DComponent& component) {}
 
 	template<>
-	void Scene::OnComponentAdded<BoxCollider2DComponent>(Entity entity, BoxCollider2DComponent& component)
-	{
-	}
+	void Scene::OnComponentAdded<BoxCollider2DComponent>(Entity entity, BoxCollider2DComponent& component) {}
 
 	template<>
-	void Scene::OnComponentAdded<CircleCollider2DComponent>(Entity entity, CircleCollider2DComponent& component)
-	{
-	}
+	void Scene::OnComponentAdded<CircleCollider2DComponent>(Entity entity, CircleCollider2DComponent& component) {}
+
+	template<>
+	void Scene::OnComponentAdded<PolygonCollider2DComponent>(Entity entity, PolygonCollider2DComponent& component) {}
 }

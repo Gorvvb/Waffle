@@ -23,6 +23,9 @@ namespace Waffle {
 		void SetVSync(bool enabled) override;
 		bool IsVSync() const override;
 
+		void SetTitle(const std::string& title) override;
+		void SetIcon(const std::string& path) override;
+
 		virtual void* GetNativeWindow() const { return m_Window; }
 	private:
 		virtual void Init(const WindowProps& props);

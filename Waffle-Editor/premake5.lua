@@ -31,7 +31,7 @@ project "Waffle-Editor"
 
 		postbuildcommands
 		{
-			"{COPYDIR} \"%{wks.location}/Waffle-Editor/assets\" \"%{cfg.targetdir}/assets\"",
+			"{COPYDIR} \"%{wks.location}/Waffle-Editor/Assets\" \"%{cfg.targetdir}/Assets\"",
 			"{COPYDIR} \"%{wks.location}/Waffle-Editor/Resources\" \"%{cfg.targetdir}/Resources\"",
 			"{COPYFILE} \"%{wks.location}/Waffle-Editor/imgui.ini\" \"%{cfg.targetdir}/imgui.ini\""
 		}

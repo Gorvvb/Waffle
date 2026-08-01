@@ -29,7 +29,8 @@ namespace Waffle {
 	Application* CreateApplication(ApplicationCommandLineArgs args)
 	{
 		ApplicationSpecification spec;
-		spec.Name = "Sandbox";
+		spec.Name = "Waffle Editor";
+		spec.IconPath = "Assets/textures/logo.png";
 		spec.CommandLineArgs = args;
 		return new WaffleEditor(spec);
 	}

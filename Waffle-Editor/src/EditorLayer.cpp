@@ -12,7 +12,7 @@
 
 namespace Waffle {
 
-	extern const std::filesystem::path g_AssetPath;
+	extern std::filesystem::path g_AssetPath;
 
 	EditorLayer::EditorLayer()
 		: Layer("EditorLayer"), m_CameraController(1280.0f / 720.0f)
@@ -70,6 +70,8 @@ namespace Waffle {
 		m_EditorCamera = EditorCamera(30.0f, 1.778f, 0.1f, 1000.0f);
 		Renderer2D::SetLineWidth(4.0f);
 		m_SceneHierarchyPanel.SetContext(m_ActiveScene);
+
+		m_ContentBrowserPanel.SetOpenSceneCallback([this](const std::filesystem::path& path) { OpenScene(path); });
 	}
 
 	void EditorLayer::OnDetach()
@@ -103,7 +105,12 @@ namespace Waffle {
 		// Render
 		Renderer2D::ResetStats();
 
-		RenderCommand::SetClearColor({ 0.18f, 0.18f, 0.19f, 1.0f });
+		glm::vec4 clearColor = { 0.18f, 0.18f, 0.19f, 1.0f };
+		Entity primaryCam = m_ActiveScene->GetPrimaryCameraEntity();
+		if (primaryCam)
+			clearColor = primaryCam.GetComponent<CameraComponent>().BackgroundColor;
+
+		RenderCommand::SetClearColor(clearColor);
 		m_Framebuffer->Bind();
 		RenderCommand::Clear();
 
@@ -203,17 +210,27 @@ namespace Waffle {
 		{
 			if (ImGui::BeginMenu("File"))
 			{
-				if (ImGui::MenuItem("New", "Ctrl+N"))
+				if (ImGui::MenuItem("New Project..."))
+					NewProject();
+
+				if (ImGui::MenuItem("Open Project..."))
+					OpenProject();
+
+				ImGui::Separator();
+
+				if (ImGui::MenuItem("New Scene", "Ctrl+N"))
 					NewScene();
 
-				if (ImGui::MenuItem("Open...", "Ctrl+O"))
+				if (ImGui::MenuItem("Open Scene...", "Ctrl+O"))
 					OpenScene();
 
-				if(ImGui::MenuItem("Save Scene", "Ctrl+S"))
+				if (ImGui::MenuItem("Save Scene", "Ctrl+S"))
 					SaveScene();
 
-				if (ImGui::MenuItem("Save As..." , "Ctrl+Shift+S"))
+				if (ImGui::MenuItem("Save As...", "Ctrl+Shift+S"))
 					SaveSceneAs();
+
+				ImGui::Separator();
 
 				if (ImGui::MenuItem("Exit")) Application::Get().Close();
 				ImGui::EndMenu();
@@ -222,8 +239,34 @@ namespace Waffle {
 			ImGui::EndMenuBar();
 		}
 
-		m_SceneHierarchyPanel.OnImGuiRender();
-		m_ContentBrowserPanel.OnImGuiRender();
+		// New Project Modal Popup
+		if (m_ShowNewProjectModal)
+		{
+			ImGui::OpenPopup("New Project");
+			m_ShowNewProjectModal = false;
+		}
+
+		if (ImGui::BeginPopupModal("New Project", NULL, ImGuiWindowFlags_AlwaysAutoResize))
+		{
+			ImGui::Text("Enter Project Name:");
+			ImGui::InputText("##ProjectNameInput", m_ProjectNameBuffer, sizeof(m_ProjectNameBuffer));
+
+			if (ImGui::Button("Create Project", ImVec2(140, 0)) || ImGui::IsKeyPressed(ImGuiKey_Enter))
+			{
+				std::string projName = m_ProjectNameBuffer;
+				if (projName.empty())
+					projName = "NewProject";
+				CreateProject(projName);
+				ImGui::CloseCurrentPopup();
+			}
+			ImGui::SetItemDefaultFocus();
+			ImGui::SameLine();
+			if (ImGui::Button("Cancel", ImVec2(120, 0)))
+			{
+				ImGui::CloseCurrentPopup();
+			}
+			ImGui::EndPopup();
+		}
 
 		// RENDER SETTINGS
 		ImGui::Begin("Stats");
@@ -248,6 +291,9 @@ namespace Waffle {
 		ImGui::Text("  Indices: %d", stats.GetTotalIndexCount());
 
 		ImGui::End();
+
+		m_SceneHierarchyPanel.OnImGuiRender();
+		m_ContentBrowserPanel.OnImGuiRender();
 
 		ImGui::Begin("Settings");
 		ImGui::Checkbox("Show Physics Colliders", &m_ShowPhysicsColliders);
@@ -276,8 +322,39 @@ namespace Waffle {
 		{
 			if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("CONTENT_BROWSER_ITEM"))
 			{
-				const wchar_t* path = (const wchar_t*)payload->Data;
-				OpenScene(std::filesystem::path(g_AssetPath) / path);
+				const wchar_t* pathStr = (const wchar_t*)payload->Data;
+				std::filesystem::path path = std::filesystem::path(g_AssetPath) / pathStr;
+				std::string ext = path.extension().string();
+				for (auto& c : ext) c = (char)tolower(c);
+
+				if (ext == ".waffle")
+				{
+					OpenScene(path);
+				}
+				else if (ext == ".png" || ext == ".jpg" || ext == ".jpeg")
+				{
+					Entity targetEntity = m_HoveredEntity ? m_HoveredEntity : m_SceneHierarchyPanel.GetSelectedEntity();
+					if (targetEntity)
+					{
+						if (!targetEntity.HasComponent<SpriteRendererComponent>())
+							targetEntity.AddComponent<SpriteRendererComponent>();
+
+						auto& src = targetEntity.GetComponent<SpriteRendererComponent>();
+						src.Texture = Texture2D::Create(path.string(), src.FilterMode);
+					}
+				}
+				else if (ext == ".h" || ext == ".cpp")
+				{
+					Entity targetEntity = m_HoveredEntity ? m_HoveredEntity : m_SceneHierarchyPanel.GetSelectedEntity();
+					if (targetEntity)
+					{
+						if (!targetEntity.HasComponent<ScriptComponent>())
+							targetEntity.AddComponent<ScriptComponent>();
+
+						auto& sc = targetEntity.GetComponent<ScriptComponent>();
+						sc.ClassName = path.stem().string();
+					}
+				}
 			}
 			ImGui::EndDragDropTarget();
 		}
@@ -474,6 +551,25 @@ namespace Waffle {
 		EventDispatcher dispacher(e);
 		dispacher.Dispatch<KeyPressedEvent>(WF_BIND_EVENT_FN(EditorLayer::OnkeyPressed));
 		dispacher.Dispatch<MouseButtonPressedEvent>(WF_BIND_EVENT_FN(EditorLayer::OnMouseButtonPressed));
+		dispacher.Dispatch<WindowDropEvent>(WF_BIND_EVENT_FN(EditorLayer::OnWindowDrop));
+	}
+
+	bool EditorLayer::OnWindowDrop(WindowDropEvent& e)
+	{
+		const auto& targetDir = m_ContentBrowserPanel.GetCurrentDirectory();
+		if (!std::filesystem::exists(targetDir))
+			return false;
+
+		for (const auto& path : e.GetPaths())
+		{
+			if (std::filesystem::exists(path))
+			{
+				std::filesystem::path destPath = targetDir / path.filename();
+				std::error_code ec;
+				std::filesystem::copy(path, destPath, std::filesystem::copy_options::overwrite_existing | std::filesystem::copy_options::recursive, ec);
+			}
+		}
+		return true;
 	}
 
 	bool EditorLayer::OnkeyPressed(KeyPressedEvent& e)
@@ -622,10 +718,64 @@ namespace Waffle {
 		Renderer2D::EndScene();
 	}
 
+	void EditorLayer::NewProject()
+	{
+		strcpy_s(m_ProjectNameBuffer, sizeof(m_ProjectNameBuffer), "NewProject");
+		m_ShowNewProjectModal = true;
+	}
+
+	void EditorLayer::UpdateWindowTitle()
+	{
+		std::string title = "Waffle Editor";
+		if (!m_ProjectName.empty())
+			title += " - " + m_ProjectName;
+		Application::Get().GetWindow().SetTitle(title);
+	}
+
+	void EditorLayer::CreateProject(const std::string& projectName)
+	{
+		std::filesystem::path projectsDir = "Projects";
+		std::filesystem::path projectPath = projectsDir / projectName;
+		std::filesystem::path assetsPath = projectPath / "Assets";
+
+		std::filesystem::create_directories(assetsPath / "Scenes");
+		std::filesystem::create_directories(assetsPath / "Textures");
+		std::filesystem::create_directories(assetsPath / "Scripts");
+		std::filesystem::create_directories(projectPath / "Exports");
+
+		m_ProjectName = projectName;
+		UpdateWindowTitle();
+
+		m_ContentBrowserPanel.SetAssetDirectory(assetsPath);
+		NewScene();
+	}
+
+	void EditorLayer::OpenProject()
+	{
+		std::string folderpath = FileDialogs::OpenFolder();
+		if (!folderpath.empty())
+		{
+			std::filesystem::path projectPath(folderpath);
+			std::filesystem::path assetsPath = projectPath / "Assets";
+			if (!std::filesystem::exists(assetsPath))
+				assetsPath = projectPath / "assets";
+			if (!std::filesystem::exists(assetsPath))
+				assetsPath = projectPath;
+
+			m_ProjectName = projectPath.filename().string();
+			UpdateWindowTitle();
+
+			m_ContentBrowserPanel.SetAssetDirectory(assetsPath);
+			NewScene();
+		}
+	}
+
 	void EditorLayer::NewScene()
 	{
-		m_ActiveScene = CreateRef<Scene>();
-		m_ActiveScene->OnViewportResize((uint32_t)m_ViewportSize.x, (uint32_t)m_ViewportSize.y);
+		m_EditorScene = CreateRef<Scene>();
+		m_EditorScene->SetName("Untitled");
+		m_EditorScene->OnViewportResize((uint32_t)m_ViewportSize.x, (uint32_t)m_ViewportSize.y);
+		m_ActiveScene = m_EditorScene;
 		m_SceneHierarchyPanel.SetContext(m_ActiveScene);
 
 		m_EditorScenePath = std::filesystem::path();
@@ -654,6 +804,8 @@ namespace Waffle {
 		if (serializer.Deserialize(path.string()))
 		{
 			m_EditorScene = newScene;
+			if (m_EditorScene->GetName() == "Untitled" || m_EditorScene->GetName().empty())
+				m_EditorScene->SetName(path.stem().string());
 			m_EditorScene->OnViewportResize((uint32_t)m_ViewportSize.x, (uint32_t)m_ViewportSize.y);
 			m_SceneHierarchyPanel.SetContext(m_EditorScene);
 
@@ -675,6 +827,8 @@ namespace Waffle {
 		std::string filepath = FileDialogs::SaveFile("Waffle Scene (*.waffle)\0*.waffle\0");
 		if (!filepath.empty())
 		{
+			std::filesystem::path path(filepath);
+			m_ActiveScene->SetName(path.stem().string());
 			SerializeScene(m_ActiveScene, filepath);
 			m_EditorScenePath = filepath;
 		}

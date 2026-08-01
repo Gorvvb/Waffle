@@ -1,6 +1,7 @@
 #include "SceneHierarchyPanel.h"
 
 #include "Waffle/Scene/Components.h"
+#include "Waffle/Utils/PlatformUtils.h"
 
 #include <imgui/imgui.h>
 #include <imgui/imgui_internal.h>
@@ -9,7 +10,7 @@
 
 namespace Waffle {
 
-	extern const std::filesystem::path g_AssetPath;
+	extern std::filesystem::path g_AssetPath;
 
 	SceneHierarchyPanel::SceneHierarchyPanel(const Ref<Scene>& context)
 	{
@@ -24,26 +25,58 @@ namespace Waffle {
 
 	void SceneHierarchyPanel::OnImGuiRender()
 	{
-        ImGui::Begin("Scene Hierarchy");
+		ImGui::Begin("Scene Hierarchy");
 
 		if (m_Context)
 		{
+			std::string sceneName = m_Context->GetName();
+			if (sceneName.empty())
+				sceneName = "Untitled";
+			ImGui::Text("Active Scene: %s", sceneName.c_str());
+			ImGui::Separator();
+
 			auto view = m_Context->m_Registry.view<TagComponent>();
 
 			for (auto entityID : view)
 			{
 				Entity entity{ entityID, m_Context.get() };
-				DrawEntityNode(entity);
+				if (!entity.HasComponent<RelationshipComponent>() || entity.GetComponent<RelationshipComponent>().Parent == 0)
+				{
+					DrawEntityNode(entity);
+				}
+			}
+
+			if (m_SelectionContext && ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows) && ImGui::IsKeyPressed(ImGuiKey_Delete))
+			{
+				m_Context->DestroyEntity(m_SelectionContext);
+				m_SelectionContext = {};
 			}
 
 			if (ImGui::IsMouseDown(0) && ImGui::IsWindowHovered())
 				m_SelectionContext = {};
 
+			// Drag and drop onto empty hierarchy space to unparent
+			ImGui::Dummy(ImGui::GetContentRegionAvail());
+			if (ImGui::BeginDragDropTarget())
+			{
+				if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("SCENE_HIERARCHY_ENTITY"))
+				{
+					UUID droppedEntityUUID = *(const UUID*)payload->Data;
+					Entity droppedEntity = m_Context->GetEntityByUUID(droppedEntityUUID);
+					if (droppedEntity)
+						m_Context->UnparentEntity(droppedEntity);
+				}
+				ImGui::EndDragDropTarget();
+			}
+
 			// Right-click on a blank space
 			if (ImGui::BeginPopupContextWindow(0, 1 | ImGuiPopupFlags_NoOpenOverItems))
 			{
 				if (ImGui::MenuItem("Create Empty Entity"))
-					m_Context->CreateEntity();
+				{
+					Entity newEntity = m_Context->CreateEntity("Empty Entity");
+					m_SelectionContext = newEntity;
+				}
 				ImGui::EndPopup();
 			}
 
@@ -66,28 +99,135 @@ namespace Waffle {
 	void SceneHierarchyPanel::DrawEntityNode(Entity entity)
 	{
 		auto& tag = entity.GetComponent<TagComponent>().Tag;
+		
+		bool hasChildren = entity.HasComponent<RelationshipComponent>() && !entity.GetComponent<RelationshipComponent>().Children.empty();
 		ImGuiTreeNodeFlags flags = ((m_SelectionContext == entity) ? ImGuiTreeNodeFlags_Selected : 0) | ImGuiTreeNodeFlags_OpenOnArrow;
 		flags |= ImGuiTreeNodeFlags_SpanAvailWidth;
-		bool opened = ImGui::TreeNodeEx((void*)(uint64_t)(uint32_t)entity, flags, tag.c_str());
+		if (!hasChildren)
+			flags |= ImGuiTreeNodeFlags_Leaf;
 
-		if (ImGui::IsItemClicked())
+		bool isRenaming = (m_RenamingEntity == entity);
+		bool opened = false;
+
+		if (isRenaming)
+		{
+			ImGui::PushID((void*)(uint64_t)(uint32_t)entity);
+			ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x);
+			if (ImGui::InputText("##TagInlineRename", m_RenameBuffer, sizeof(m_RenameBuffer), ImGuiInputTextFlags_EnterReturnsTrue | ImGuiInputTextFlags_AutoSelectAll))
+			{
+				std::string newTag = std::string(m_RenameBuffer);
+				tag = newTag.empty() ? "Empty Entity" : newTag;
+				m_RenamingEntity = {};
+			}
+
+			if (ImGui::IsItemDeactivated() && !ImGui::IsKeyPressed(ImGuiKey_Escape))
+			{
+				std::string newTag = std::string(m_RenameBuffer);
+				tag = newTag.empty() ? "Empty Entity" : newTag;
+				m_RenamingEntity = {};
+			}
+
+			if (ImGui::IsKeyPressed(ImGuiKey_Escape))
+			{
+				m_RenamingEntity = {};
+			}
+
+			ImGui::PopID();
+		}
+		else
+		{
+			opened = ImGui::TreeNodeEx((void*)(uint64_t)(uint32_t)entity, flags, tag.c_str());
+		}
+
+		if (!isRenaming && ImGui::IsItemClicked())
 		{
 			m_SelectionContext = entity;
+		}
+
+		if (!isRenaming && ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left))
+		{
+			m_RenamingEntity = entity;
+			memset(m_RenameBuffer, 0, sizeof(m_RenameBuffer));
+			strcpy_s(m_RenameBuffer, sizeof(m_RenameBuffer), tag.c_str());
+		}
+
+		// Drag Source
+		if (ImGui::BeginDragDropSource())
+		{
+			UUID uuid = entity.GetUUID();
+			ImGui::SetDragDropPayload("SCENE_HIERARCHY_ENTITY", &uuid, sizeof(UUID));
+			ImGui::Text("%s", tag.c_str());
+			ImGui::EndDragDropSource();
+		}
+
+		// Drag Target (Parenting & Assets)
+		if (ImGui::BeginDragDropTarget())
+		{
+			if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("SCENE_HIERARCHY_ENTITY"))
+			{
+				UUID droppedEntityUUID = *(const UUID*)payload->Data;
+				Entity droppedEntity = m_Context->GetEntityByUUID(droppedEntityUUID);
+				if (droppedEntity && droppedEntity != entity)
+				{
+					m_Context->ParentEntity(droppedEntity, entity);
+				}
+			}
+			if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("CONTENT_BROWSER_ITEM"))
+			{
+				const wchar_t* pathStr = (const wchar_t*)payload->Data;
+				std::filesystem::path path = std::filesystem::path(g_AssetPath) / pathStr;
+				std::string ext = path.extension().string();
+				for (auto& c : ext) c = (char)tolower(c);
+
+				if (ext == ".png" || ext == ".jpg" || ext == ".jpeg")
+				{
+					if (!entity.HasComponent<SpriteRendererComponent>())
+						entity.AddComponent<SpriteRendererComponent>();
+
+					auto& src = entity.GetComponent<SpriteRendererComponent>();
+					src.Texture = Texture2D::Create(path.string(), src.FilterMode);
+				}
+				else if (ext == ".h" || ext == ".cpp")
+				{
+					if (!entity.HasComponent<ScriptComponent>())
+						entity.AddComponent<ScriptComponent>();
+
+					auto& sc = entity.GetComponent<ScriptComponent>();
+					sc.ClassName = path.stem().string();
+				}
+			}
+			ImGui::EndDragDropTarget();
 		}
 
 		bool entityDeleted = false;
 		bool entityDuplicated = false;
 		if (ImGui::BeginPopupContextItem())
 		{
-			if (ImGui::MenuItem("Delete Entity"))
-				entityDeleted = true;
+			if (ImGui::MenuItem("Rename"))
+			{
+				m_RenamingEntity = entity;
+				memset(m_RenameBuffer, 0, sizeof(m_RenameBuffer));
+				strcpy_s(m_RenameBuffer, sizeof(m_RenameBuffer), tag.c_str());
+			}
 			if (ImGui::MenuItem("Duplicate Entity"))
 				entityDuplicated = true;
+			if (ImGui::MenuItem("Delete Entity"))
+				entityDeleted = true;
 			ImGui::EndPopup();
 		}
 
 		if (opened)
 		{
+			if (hasChildren)
+			{
+				auto children = entity.GetComponent<RelationshipComponent>().Children;
+				for (auto childUUID : children)
+				{
+					Entity child = m_Context->GetEntityByUUID(childUUID);
+					if (child)
+						DrawEntityNode(child);
+				}
+			}
 			ImGui::TreePop();
 		}
 
@@ -224,6 +364,8 @@ namespace Waffle {
 			if (ImGui::InputText("##Tag", buffer, sizeof(buffer)))
 			{
 				tag = std::string(buffer);
+				if (tag.empty())
+					tag = "Empty Entity";
 			}
 		}
 
@@ -235,11 +377,14 @@ namespace Waffle {
 		if (ImGui::BeginPopup("AddComponent"))
 		{
 			DisplayAddComponentEntry<CameraComponent>("Camera");
-			DisplayAddComponentEntry<SpriteRendererComponent>("Sprite Renderer");
-			DisplayAddComponentEntry<CircleRendererComponent>("Circle Renderer");
-			DisplayAddComponentEntry<Rigidbody2DComponent>("Rigidbody 2D");
-			DisplayAddComponentEntry<BoxCollider2DComponent>("Box Collider 2D");
-			DisplayAddComponentEntry<CircleCollider2DComponent>("Circle Collider 2D");
+			DisplayAddComponentEntry<ScriptComponent>("Script");
+			DisplayAddComponentEntry<LifetimeComponent>("Lifetime");
+			DisplayAddComponentEntry<SpriteRendererComponent>("Sprite Renderer (2D)");
+			DisplayAddComponentEntry<CircleRendererComponent>("Circle Renderer (2D)");
+			DisplayAddComponentEntry<Rigidbody2DComponent>("Rigidbody (2D)");
+			DisplayAddComponentEntry<BoxCollider2DComponent>("Box Collider (2D)");
+			DisplayAddComponentEntry<CircleCollider2DComponent>("Circle Collider (2D)");
+			DisplayAddComponentEntry<PolygonCollider2DComponent>("Polygon Collider (2D)");
 
 			ImGui::EndPopup();
 		}
@@ -313,9 +458,117 @@ namespace Waffle {
 
 				ImGui::Checkbox("Fixed Aspect Ratio", &component.FixedAspectRatio);
 			}
+
+			ImGui::ColorEdit4("Background Color", glm::value_ptr(component.BackgroundColor));
+
+			ImGui::Text("Background Image (Unfinished)");
+			if (component.BackgroundImage)
+			{
+				if (component.BackgroundFilterMode == TextureFilter::Nearest)
+					ImGui::GetWindowDrawList()->AddCallback(ImGui::GetPlatformIO().DrawCallback_SetSamplerNearest, nullptr);
+				else
+					ImGui::GetWindowDrawList()->AddCallback(ImGui::GetPlatformIO().DrawCallback_SetSamplerLinear, nullptr);
+
+				ImGui::ImageButton("##BgTexture", (void*)(intptr_t)component.BackgroundImage->GetRendererID(), ImVec2(100.0f, 100.0f), ImVec2(0, 1), ImVec2(1, 0));
+
+				ImGui::GetWindowDrawList()->AddCallback(ImGui::GetPlatformIO().DrawCallback_SetSamplerLinear, nullptr);
+			}
+			else
+			{
+				ImGui::Button("No Texture##Bg", ImVec2(100.0f, 0.0f));
+			}
+
+			if (ImGui::BeginDragDropTarget())
+			{
+				if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("CONTENT_BROWSER_ITEM"))
+				{
+					const wchar_t* path = (const wchar_t*)payload->Data;
+					std::filesystem::path texturePath = std::filesystem::path(g_AssetPath) / path;
+					component.BackgroundImagePath = texturePath.string();
+					component.BackgroundImage = Texture2D::Create(texturePath.string(), component.BackgroundFilterMode);
+				}
+				ImGui::EndDragDropTarget();
+			}
+
+			ImGui::SameLine();
+			if (ImGui::Button("Browse##BgImage"))
+			{
+				std::string filepath = FileDialogs::OpenFile("Texture Files (*.png;*.jpg;*.jpeg)\0*.png;*.jpg;*.jpeg\0All Files (*.*)\0*.*\0");
+				if (!filepath.empty())
+				{
+					component.BackgroundImagePath = filepath;
+					component.BackgroundImage = Texture2D::Create(filepath, component.BackgroundFilterMode);
+				}
+			}
+
+			if (component.BackgroundImage)
+			{
+				ImGui::SameLine();
+				if (ImGui::Button("Remove Texture##Bg"))
+				{
+					component.BackgroundImagePath = "";
+					component.BackgroundImage = nullptr;
+				}
+			}
+
+			const char* filterOptions[] = { "Nearest", "Linear" };
+			const char* currentFilter = filterOptions[static_cast<int>(component.BackgroundFilterMode)];
+			if (ImGui::BeginCombo("Filter Mode##Bg", currentFilter))
+			{
+				for (int i = 0; i < IM_ARRAYSIZE(filterOptions); i++)
+				{
+					bool isSelected = (currentFilter == filterOptions[i]);
+					if (ImGui::Selectable(filterOptions[i], isSelected))
+					{
+						component.BackgroundFilterMode = static_cast<Waffle::TextureFilter>(i);
+
+						if (component.BackgroundImage)
+						{
+							component.BackgroundImage->SetFilter(component.BackgroundFilterMode);
+						}
+					}
+					if (isSelected)
+						ImGui::SetItemDefaultFocus();
+				}
+				ImGui::EndCombo();
+			}
+
+			ImGui::DragFloat2("Tiling Factor##Bg", glm::value_ptr(component.BackgroundTilingFactor), 0.1f, 0.0f, 100.0f);
 		});
 
-		DrawComponent<SpriteRendererComponent>("Sprite Renderer", entity, [](auto& component)
+		DrawComponent<ScriptComponent>("Script", entity, [](auto& component)
+		{
+			char buffer[256];
+			memset(buffer, 0, sizeof(buffer));
+			strcpy_s(buffer, sizeof(buffer), component.ClassName.c_str());
+			if (ImGui::InputText("Class Name", buffer, sizeof(buffer)))
+			{
+				component.ClassName = std::string(buffer);
+			}
+
+			if (ImGui::BeginDragDropTarget())
+			{
+				if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("CONTENT_BROWSER_ITEM"))
+				{
+					const wchar_t* pathStr = (const wchar_t*)payload->Data;
+					std::filesystem::path path = std::filesystem::path(g_AssetPath) / pathStr;
+					std::string ext = path.extension().string();
+					for (auto& c : ext) c = (char)tolower(c);
+					if (ext == ".h" || ext == ".cpp")
+					{
+						component.ClassName = path.stem().string();
+					}
+				}
+				ImGui::EndDragDropTarget();
+			}
+		});
+
+		DrawComponent<LifetimeComponent>("Lifetime", entity, [](auto& component)
+		{
+			ImGui::DragFloat("Lifetime", &component.Lifetime, 0.1f, 0.0f, 1000.0f);
+		});
+
+		DrawComponent<SpriteRendererComponent>("Sprite Renderer (2D)", entity, [](auto& component)
 		{
 			ImGui::ColorEdit4("Color", glm::value_ptr(component.Color));
 
@@ -375,14 +628,14 @@ namespace Waffle {
 			ImGui::DragFloat2("Tiling Factor", glm::value_ptr(component.TilingFactor), 0.1f, 0.0f, 100.0f);
 		});
 
-		DrawComponent<CircleRendererComponent>("Circle Renderer", entity, [](auto& component)
+		DrawComponent<CircleRendererComponent>("Circle Renderer (2D)", entity, [](auto& component)
 		{
 			ImGui::ColorEdit4("Color", glm::value_ptr(component.Color));
 			ImGui::DragFloat("Thickness", &component.Thickness, 0.025f, 0.0f, 1.0f);
 			ImGui::DragFloat("Fade", &component.Fade, 0.00025f, 0.0f, 1.0f);
 		});
 
-		DrawComponent<Rigidbody2DComponent>("Rigidbody 2D", entity, [](auto& component)
+		DrawComponent<Rigidbody2DComponent>("Rigidbody (2D)", entity, [](auto& component)
 		{
 			const char* bodyTypeStrings[] = { "Static", "Dynamic", "Kinematic" };
 			const char* currentBodyTypeString = bodyTypeStrings[(int)component.Type];
@@ -408,7 +661,7 @@ namespace Waffle {
 			ImGui::Checkbox("Fixed Rotation", &component.FixedRotation);
 		});
 
-		DrawComponent<BoxCollider2DComponent>("Box Collider 2D", entity, [](auto& component)
+		DrawComponent<BoxCollider2DComponent>("Box Collider (2D)", entity, [](auto& component)
 		{
 			ImGui::DragFloat2("Offset", glm::value_ptr(component.Offset));
 			ImGui::DragFloat2("Size", glm::value_ptr(component.Size));
@@ -418,7 +671,7 @@ namespace Waffle {
 			ImGui::DragFloat("Restitution Threshold", &component.RestitutionThreshold, 0.01f, 0.0f);
 		});
 
-		DrawComponent<CircleCollider2DComponent>("Circle Collider 2D", entity, [](auto& component)
+		DrawComponent<CircleCollider2DComponent>("Circle Collider (2D)", entity, [](auto& component)
 		{
 			ImGui::DragFloat2("Offset", glm::value_ptr(component.Offset));
 			ImGui::DragFloat("Radius", &component.Radius);
@@ -426,6 +679,18 @@ namespace Waffle {
 			ImGui::DragFloat("Friction", &component.Friction, 0.01f, 0.0f, 1.0f);
 			ImGui::DragFloat("Restitution", &component.Restitution, 0.01f, 0.0f, 1.0f);
 			ImGui::DragFloat("Restitution Threshold", &component.RestitutionThreshold, 0.01f, 0.0f);
+		});
+
+		DrawComponent<PolygonCollider2DComponent>("Polygon Collider (2D)", entity, [](auto& component)
+		{
+			ImGui::DragFloat2("Offset", glm::value_ptr(component.Offset));
+			ImGui::DragFloat("Density", &component.Density, 0.01f, 0.0f, 5.0f);
+			ImGui::DragFloat("Friction", &component.Friction, 0.01f, 0.0f, 1.0f);
+			ImGui::DragFloat("Restitution", &component.Restitution, 0.01f, 0.0f, 1.0f);
+			ImGui::DragFloat("Restitution Threshold", &component.RestitutionThreshold, 0.01f, 0.0f);
+			ImGui::Text("Vertices Count: %zu", component.Vertices.size());
+			if (ImGui::Button("Add Vertex"))
+				component.Vertices.push_back({ 0.0f, 0.0f });
 		});
 	}
 

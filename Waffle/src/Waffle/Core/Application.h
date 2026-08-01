@@ -28,6 +28,7 @@ namespace Waffle {
 	struct ApplicationSpecification
 	{
 		std::string Name = "Waffle Application";
+		std::string IconPath = "";
 		std::string WorkingDirectory;
 		ApplicationCommandLineArgs CommandLineArgs;
 	};
