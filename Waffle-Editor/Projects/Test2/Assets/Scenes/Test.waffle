@@ -1,0 +1,13 @@
+Scene: Test
+Entities:
+  - Entity: 16065282496490436124
+    TagComponent:
+      Tag: Red square
+    TransformComponent:
+      Translation: [0, 0, 0]
+      Rotation: [0, 0, 0]
+      Scale: [1, 1, 1]
+    SpriteRendererComponent:
+      Color: [0.899641573, 0.0322452225, 0.0322452225, 1]
+      FilterMode: 1
+      TilingFactor: [1, 1]

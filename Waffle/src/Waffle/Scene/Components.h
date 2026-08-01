@@ -4,6 +4,10 @@
 #include "Waffle/Core/UUID.h"
 #include "Waffle/Renderer/Texture.h"
 
+#include <string>
+#include <vector>
+#include <unordered_map>
+
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 
@@ -51,6 +55,36 @@ namespace Waffle {
 		}
 	};
 
+	struct RelationshipComponent
+	{
+		UUID Parent = 0;
+		std::vector<UUID> Children;
+
+		RelationshipComponent() = default;
+		RelationshipComponent(const RelationshipComponent&) = default;
+		RelationshipComponent(UUID parent)
+			: Parent(parent) {}
+	};
+
+	struct ScriptComponent
+	{
+		std::string ClassName;
+
+		ScriptComponent() = default;
+		ScriptComponent(const ScriptComponent&) = default;
+	};
+
+	struct LifetimeComponent
+	{
+		float Lifetime = 5.0f;
+		float RemainingTime = 5.0f;
+
+		LifetimeComponent() = default;
+		LifetimeComponent(const LifetimeComponent&) = default;
+		LifetimeComponent(float lifetime)
+			: Lifetime(lifetime), RemainingTime(lifetime) {}
+	};
+
 	struct SpriteRendererComponent
 	{
 		glm::vec4 Color{ 1.0f, 1.0f, 1.0f, 1.0f };
@@ -80,6 +114,12 @@ namespace Waffle {
 		Waffle::SceneCamera Camera;
 		bool Primary = true;
 		bool FixedAspectRatio = false;
+
+		glm::vec4 BackgroundColor{ 0.1f, 0.1f, 0.1f, 1.0f };
+		Ref<Texture2D> BackgroundImage = nullptr;
+		std::string BackgroundImagePath = "";
+		glm::vec2 BackgroundTilingFactor = { 1.0f, 1.0f };
+		TextureFilter BackgroundFilterMode = TextureFilter::Linear;
 
 		CameraComponent() = default;
 		CameraComponent(const CameraComponent&) = default;
@@ -151,5 +191,22 @@ namespace Waffle {
 
 		CircleCollider2DComponent() = default;
 		CircleCollider2DComponent(const CircleCollider2DComponent&) = default;
+	};
+
+	struct PolygonCollider2DComponent
+	{
+		glm::vec2 Offset = { 0.0f, 0.0f };
+		std::vector<glm::vec2> Vertices;
+
+		float Density = 1.0f;
+		float Friction = 0.5f;
+		float Restitution = 0.0f;
+		float RestitutionThreshold = 0.5f;
+
+		// Storage for runtime
+		void* RuntimeFixture = nullptr;
+
+		PolygonCollider2DComponent() = default;
+		PolygonCollider2DComponent(const PolygonCollider2DComponent&) = default;
 	};
 }

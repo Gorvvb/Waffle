@@ -12,6 +12,9 @@ namespace Waffle {
 	private:
 		Ref<Scene> m_Context;
 		Entity m_SelectionContext;
+
+		Entity m_RenamingEntity;
+		char m_RenameBuffer[256] = "";
 	public:
 		SceneHierarchyPanel() = default;
 		SceneHierarchyPanel(const Ref<Scene>& context);

@@ -30,8 +30,11 @@ set DIR=%~1
 echo Deploying to %DIR%...
 if not exist "%DIR%" mkdir "%DIR%"
 
+if exist "Waffle-Editor\Assets" (
+    xcopy /E /I /Y "Waffle-Editor\Assets" "%DIR%\Assets" >nul
+)
 if exist "Waffle-Editor\assets" (
-    xcopy /E /I /Y "Waffle-Editor\assets" "%DIR%\assets" >nul
+    xcopy /E /I /Y "Waffle-Editor\assets" "%DIR%\Assets" >nul
 )
 
 if exist "Waffle-Editor\Resources" (

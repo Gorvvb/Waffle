@@ -12,11 +12,13 @@ namespace Waffle {
 		std::string Title;
 		uint32_t Width;
 		uint32_t Height;
+		std::string IconPath;
 
 		WindowProps(const std::string& title = "Waffle Engine",
 			uint32_t width = 1600,
-			uint32_t height = 900)
-			: Title(title), Width(width), Height(height)
+			uint32_t height = 900,
+			const std::string& iconPath = "")
+			: Title(title), Width(width), Height(height), IconPath(iconPath)
 		{
 		}
 	};
@@ -37,6 +39,9 @@ namespace Waffle {
 		virtual void SetEventCallback(const EventCallbackFn& callback) = 0;
 		virtual void SetVSync(bool enabled) = 0;
 		virtual bool IsVSync() const = 0;
+
+		virtual void SetTitle(const std::string& title) = 0;
+		virtual void SetIcon(const std::string& path) = 0;
 
 		virtual void* GetNativeWindow() const = 0;
 

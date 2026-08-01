@@ -15,6 +15,7 @@ namespace Waffle {
 	class Scene
 	{
 	private:
+		std::string m_Name = "Untitled";
 		entt::registry m_Registry;
 		uint32_t m_ViewportWidth = 0, m_ViewportHeight = 0;
 
@@ -46,8 +47,13 @@ namespace Waffle {
 		void OnViewportResize(uint32_t width, uint32_t height);
 
 		void DuplicateEntity(Entity entity);
+		void ParentEntity(Entity child, Entity parent);
+		void UnparentEntity(Entity child);
 
 		Entity GetPrimaryCameraEntity();
+
+		const std::string& GetName() const { return m_Name; }
+		void SetName(const std::string& name) { m_Name = name; }
 
 		bool IsRunning() const { return m_IsRunning; }
 		bool IsPaused() const { return m_IsPaused; }

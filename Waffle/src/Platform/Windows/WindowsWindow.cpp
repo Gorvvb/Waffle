@@ -10,6 +10,8 @@
 #include "Platform/OpenGL/OpenGLContext.h"
 #include "Platform/Vulkan/VulkanContext.h"
 
+#include "stb_image.h"
+
 // Only include glad for OpenGL builds
 #include <glad/glad.h>
 
@@ -76,6 +78,9 @@ namespace Waffle {
 
 		glfwSetWindowUserPointer(m_Window, &m_Data);
 		SetVSync(true);
+
+		if (!props.IconPath.empty())
+			SetIcon(props.IconPath);
 
 		// ---- GLFW callbacks ----
 		glfwSetWindowSizeCallback(m_Window, [](GLFWwindow* window, int width, int height)
@@ -165,6 +170,19 @@ namespace Waffle {
 			MouseMovedEvent event((float)xPos, (float)yPos);
 			data.EventCallback(event);
 		});
+
+		glfwSetDropCallback(m_Window, [](GLFWwindow* window, int count, const char** paths)
+		{
+			WindowData& data = *(WindowData*)glfwGetWindowUserPointer(window);
+
+			std::vector<std::filesystem::path> droppedPaths;
+			droppedPaths.reserve(count);
+			for (int i = 0; i < count; i++)
+				droppedPaths.emplace_back(paths[i]);
+
+			WindowDropEvent event(droppedPaths);
+			data.EventCallback(event);
+		});
 	}
 
 	void WindowsWindow::Shutdown()
@@ -200,5 +218,41 @@ namespace Waffle {
 	bool WindowsWindow::IsVSync() const
 	{
 		return m_Data.VSync;
+	}
+
+	void WindowsWindow::SetTitle(const std::string& title)
+	{
+		m_Data.Title = title;
+		glfwSetWindowTitle(m_Window, m_Data.Title.c_str());
+	}
+
+	void WindowsWindow::SetIcon(const std::string& path)
+	{
+		std::string iconPath = path;
+		if (!std::filesystem::exists(iconPath))
+		{
+			if (std::filesystem::exists("assets/textures/logo.png"))
+				iconPath = "assets/textures/logo.png";
+			else if (std::filesystem::exists("Waffle-Editor/assets/textures/logo.png"))
+				iconPath = "Waffle-Editor/assets/textures/logo.png";
+			else if (std::filesystem::exists("C:\\Dev\\Waffle\\Waffle-Editor\\assets\\textures\\logo.png"))
+				iconPath = "C:\\Dev\\Waffle\\Waffle-Editor\\assets\\textures\\logo.png";
+		}
+
+		int width, height, channels;
+		stbi_uc* pixels = stbi_load(iconPath.c_str(), &width, &height, &channels, 4);
+		if (pixels)
+		{
+			GLFWimage image;
+			image.width = width;
+			image.height = height;
+			image.pixels = pixels;
+			glfwSetWindowIcon(m_Window, 1, &image);
+			stbi_image_free(pixels);
+		}
+		else
+		{
+			WF_CORE_WARN("Failed to load window icon from {0}", path);
+		}
 	}
 }
