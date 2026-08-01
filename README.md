@@ -1,4 +1,4 @@
-![Waffle Logo](Waffle-Editor/Assets/textures/logo.png)
+![Waffle Logo](https://raw.githubusercontent.com/Gorvvb/Waffle/main/Waffle-Editor/assets/textures/logo.png)
 # Waffle
 
 Waffle is a 2D game engine under active development, targeting Windows.
