@@ -3,6 +3,7 @@ project "Waffle"
 	language "C++"
 	cppdialect "C++20"
 	staticruntime "off"
+	buildoptions { "/utf-8" }
 
 	targetdir ("%{wks.location}/bin/" .. outputdir .. "/%{prj.name}")
 	objdir ("%{wks.location}/bin-int/" .. outputdir .. "/%{prj.name}")
@@ -19,8 +20,8 @@ project "Waffle"
 		"vendor/glm/glm/**.hpp",
 		"vendor/glm/glm/**.inl",
 
-		"vendor/ImGuizmo/ImGuizmo.h",
-		"vendor/ImGuizmo/ImGuizmo.cpp",
+		"vendor/ImGuizmo/src/ImGuizmo.h",
+		"vendor/ImGuizmo/src/ImGuizmo.cpp",
 	}
 
 	defines
@@ -60,7 +61,7 @@ project "Waffle"
 		"%{Library.Vulkan}"
 	}
 
-	filter "files:vendor/ImGuizmo/**.cpp"
+	filter "files:vendor/ImGuizmo/src/**.cpp"
 	enablepch "Off"
 
 	filter "files:vendor/lua/**.c"
