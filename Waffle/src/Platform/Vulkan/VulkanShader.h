@@ -3,7 +3,10 @@
 #include "Waffle/Renderer/Shader.h"
 #include "VulkanVertexArray.h"
 
-#include <vulkan/vulkan.h>
+#ifndef VK_NO_PROTOTYPES
+#define VK_NO_PROTOTYPES
+#endif
+#include <Volk/volk.h>
 #include <glm/glm.hpp>
 #include <string>
 #include <unordered_map>

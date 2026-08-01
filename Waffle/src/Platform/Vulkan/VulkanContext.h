@@ -3,7 +3,11 @@
 #include "Waffle/Renderer/GraphicsContext.h"
 #include "Waffle/Core/Base.h"
 
-#include <vulkan/vulkan.h>
+#ifndef VK_NO_PROTOTYPES
+#define VK_NO_PROTOTYPES
+#endif
+#include <Volk/volk.h>
+#include <vma/vk_mem_alloc.h>
 #include <GLFW/glfw3.h>
 #include <vector>
 #include <optional>
@@ -43,6 +47,8 @@ namespace Waffle {
 		uint32_t          GetGraphicsQueueFamily() const { return m_GraphicsQueueFamily; }
 		VkDescriptorPool  GetDescriptorPool()    const { return m_DescriptorPool; }
 		VkSurfaceKHR      GetSurface()           const { return m_Surface; }
+		VmaAllocator      GetVmaAllocator()      const { return m_VmaAllocator; }
+		VkSemaphore       GetTimelineSemaphore() const { return m_TimelineSemaphore; }
 
 		// ---- Swap chain info ------------------------------------------------
 		VkFormat          GetSwapChainImageFormat() const { return m_SwapChainImageFormat; }
@@ -209,13 +215,20 @@ namespace Waffle {
 		VkFormat                 m_SwapChainImageFormat = VK_FORMAT_UNDEFINED;
 		VkExtent2D               m_SwapChainExtent      = {};
 
-		// Depth attachment (for the default swap-chain target)
-		VkImage        m_DepthImage       = VK_NULL_HANDLE;
-		VkDeviceMemory m_DepthImageMemory = VK_NULL_HANDLE;
-		VkImageView    m_DepthImageView   = VK_NULL_HANDLE;
-		VkFormat       m_DepthFormat      = VK_FORMAT_UNDEFINED;
+		// VMA Allocator
+		VmaAllocator m_VmaAllocator = VK_NULL_HANDLE;
 
-		// Per-frame data
+		// Depth attachment (for the default swap-chain target)
+		VkImage       m_DepthImage           = VK_NULL_HANDLE;
+		VmaAllocation m_DepthImageAllocation = VK_NULL_HANDLE;
+		VkImageView   m_DepthImageView       = VK_NULL_HANDLE;
+		VkFormat      m_DepthFormat          = VK_FORMAT_UNDEFINED;
+
+		// Per-frame data & sync
+		VkSemaphore m_TimelineSemaphore = VK_NULL_HANDLE;
+		uint64_t    m_TimelineSignalValue = 0;
+		uint64_t    m_FrameCounter = 0;
+
 		struct FrameData {
 			VkCommandPool   CommandPool   = VK_NULL_HANDLE;
 			VkCommandBuffer CommandBuffer = VK_NULL_HANDLE;

@@ -1,14 +1,19 @@
 #pragma once
 
 #include "Waffle/Renderer/Framebuffer.h"
-#include <vulkan/vulkan.h>
+
+#ifndef VK_NO_PROTOTYPES
+#define VK_NO_PROTOTYPES
+#endif
+#include <Volk/volk.h>
+#include <vma/vk_mem_alloc.h>
 #include <vector>
 
 namespace Waffle {
 
 	// -------------------------------------------------------------------------
 	// VulkanFramebuffer
-	// Off-screen render target using Vulkan 1.3 dynamic rendering.
+	// Off-screen render target using Vulkan dynamic rendering.
 	// Owns VkImage/VkImageView for each attachment (color + depth).
 	// Bind() begins dynamic rendering; Unbind() ends it.
 	// -------------------------------------------------------------------------
@@ -40,7 +45,7 @@ namespace Waffle {
 	private:
 		void CreateAttachment(uint32_t width, uint32_t height,
 			VkFormat format, VkImageUsageFlags usage,
-			VkImage& outImage, VkDeviceMemory& outMemory, VkImageView& outView);
+			VkImage& outImage, VmaAllocation& outAllocation, VkImageView& outView);
 		void RegisterImGuiDescriptorSets();
 		void CleanupAttachments();
 
@@ -50,18 +55,18 @@ namespace Waffle {
 		FramebufferTextureSpecification              m_DepthAttachmentSpec;
 
 		// Color attachments
-		std::vector<VkImage>        m_ColorImages;
-		std::vector<VkDeviceMemory> m_ColorMemories;
-		std::vector<VkImageView>    m_ColorImageViews;
-		std::vector<VkSampler>      m_ColorSamplers;
+		std::vector<VkImage>       m_ColorImages;
+		std::vector<VmaAllocation> m_ColorAllocations;
+		std::vector<VkImageView>   m_ColorImageViews;
+		std::vector<VkSampler>     m_ColorSamplers;
 
 		// ImGui descriptor sets (returned by GetColorAttachmentRendererID)
 		std::vector<VkDescriptorSet> m_ColorImGuiDescriptorSets;
 
 		// Depth attachment
-		VkImage        m_DepthImage  = VK_NULL_HANDLE;
-		VkDeviceMemory m_DepthMemory = VK_NULL_HANDLE;
-		VkImageView    m_DepthView   = VK_NULL_HANDLE;
+		VkImage       m_DepthImage      = VK_NULL_HANDLE;
+		VmaAllocation m_DepthAllocation = VK_NULL_HANDLE;
+		VkImageView   m_DepthView       = VK_NULL_HANDLE;
 
 		VkFormat m_ColorFormat = VK_FORMAT_R8G8B8A8_SRGB;
 		std::vector<VkFormat> m_ColorFormats;

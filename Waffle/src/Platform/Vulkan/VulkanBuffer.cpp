@@ -14,13 +14,19 @@ namespace Waffle {
 	{
 		WF_PROFILE_FUNCTION();
 		auto* ctx = VulkanContext::Get();
+		VmaAllocator allocator = ctx->GetVmaAllocator();
 
-		// Host-visible (dynamic) buffer — mapped persistently
-		AllocateBuffer(size,
+		// Host-visible (dynamic) buffer — mapped persistently via VMA
+		VulkanUtils::CreateBuffer(allocator,
+			size,
 			VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
-			VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+			VMA_MEMORY_USAGE_AUTO,
+			m_Buffer, m_Allocation,
+			VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT);
 
-		vkMapMemory(ctx->GetDevice(), m_Memory, 0, size, 0, &m_MappedPtr);
+		VmaAllocationInfo allocInfo{};
+		vmaGetAllocationInfo(allocator, m_Allocation, &allocInfo);
+		m_MappedPtr = allocInfo.pMappedData;
 	}
 
 	VulkanVertexBuffer::VulkanVertexBuffer(float* vertices, uint32_t size)
@@ -28,50 +34,45 @@ namespace Waffle {
 	{
 		WF_PROFILE_FUNCTION();
 		auto* ctx = VulkanContext::Get();
-		VkDevice device = ctx->GetDevice();
+		VmaAllocator allocator = ctx->GetVmaAllocator();
 
-		// Create staging buffer
-		VkBuffer       stagingBuffer;
-		VkDeviceMemory stagingMemory;
-		VulkanUtils::CreateBuffer(device, ctx->GetPhysicalDevice(),
+		// Create staging buffer via VMA
+		VkBuffer      stagingBuffer;
+		VmaAllocation stagingAllocation;
+		VulkanUtils::CreateBuffer(allocator,
 			size,
 			VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-			VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-			stagingBuffer, stagingMemory);
+			VMA_MEMORY_USAGE_AUTO,
+			stagingBuffer, stagingAllocation,
+			VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT);
 
-		void* data;
-		vkMapMemory(device, stagingMemory, 0, size, 0, &data);
-		memcpy(data, vertices, size);
-		vkUnmapMemory(device, stagingMemory);
+		VmaAllocationInfo stagingAllocInfo{};
+		vmaGetAllocationInfo(allocator, stagingAllocation, &stagingAllocInfo);
+		memcpy(stagingAllocInfo.pMappedData, vertices, size);
 
 		// Device-local vertex buffer
-		AllocateBuffer(size,
+		VulkanUtils::CreateBuffer(allocator,
+			size,
 			VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
-			VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+			VMA_MEMORY_USAGE_AUTO,
+			m_Buffer, m_Allocation);
 
 		ctx->CopyBuffer(stagingBuffer, m_Buffer, size);
 
-		vkDestroyBuffer(device, stagingBuffer, nullptr);
-		vkFreeMemory(device, stagingMemory, nullptr);
+		vmaDestroyBuffer(allocator, stagingBuffer, stagingAllocation);
 	}
 
 	VulkanVertexBuffer::~VulkanVertexBuffer()
 	{
-		auto* ctx    = VulkanContext::Get();
-		VkDevice dev = ctx->GetDevice();
+		auto* ctx = VulkanContext::Get();
+		if (!ctx) return;
 
-		if (m_MappedPtr)
-			vkUnmapMemory(dev, m_Memory);
-
-		vkDestroyBuffer(dev, m_Buffer, nullptr);
-		vkFreeMemory(dev, m_Memory, nullptr);
+		vmaDestroyBuffer(ctx->GetVmaAllocator(), m_Buffer, m_Allocation);
+		m_Buffer = VK_NULL_HANDLE;
+		m_Allocation = VK_NULL_HANDLE;
 	}
 
-	void VulkanVertexBuffer::Bind() const
-	{
-		// Recording happens in VulkanRendererAPI::DrawIndexed.
-		// We just mark ourselves as the current vertex array's buffer (done via VulkanVertexArray).
-	}
+	void VulkanVertexBuffer::Bind() const {}
 
 	void VulkanVertexBuffer::Unbind() const {}
 
@@ -79,14 +80,6 @@ namespace Waffle {
 	{
 		WF_CORE_ASSERT(m_HostVisible && m_MappedPtr, "SetData called on non-dynamic vertex buffer!");
 		memcpy(m_MappedPtr, data, size);
-	}
-
-	void VulkanVertexBuffer::AllocateBuffer(VkDeviceSize size,
-		VkBufferUsageFlags usage, VkMemoryPropertyFlags memProps)
-	{
-		auto* ctx = VulkanContext::Get();
-		VulkanUtils::CreateBuffer(ctx->GetDevice(), ctx->GetPhysicalDevice(),
-			size, usage, memProps, m_Buffer, m_Memory);
 	}
 
 	// =========================================================================
@@ -97,43 +90,45 @@ namespace Waffle {
 		: m_Count(count)
 	{
 		WF_PROFILE_FUNCTION();
-		auto* ctx    = VulkanContext::Get();
-		VkDevice dev = ctx->GetDevice();
+		auto* ctx = VulkanContext::Get();
+		VmaAllocator allocator = ctx->GetVmaAllocator();
 
 		VkDeviceSize size = count * sizeof(uint32_t);
 
-		// Staging
-		VkBuffer       stagingBuffer;
-		VkDeviceMemory stagingMemory;
-		VulkanUtils::CreateBuffer(dev, ctx->GetPhysicalDevice(),
+		// Staging buffer via VMA
+		VkBuffer      stagingBuffer;
+		VmaAllocation stagingAllocation;
+		VulkanUtils::CreateBuffer(allocator,
 			size,
 			VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-			VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-			stagingBuffer, stagingMemory);
+			VMA_MEMORY_USAGE_AUTO,
+			stagingBuffer, stagingAllocation,
+			VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT);
 
-		void* data;
-		vkMapMemory(dev, stagingMemory, 0, size, 0, &data);
-		memcpy(data, indices, (size_t)size);
-		vkUnmapMemory(dev, stagingMemory);
+		VmaAllocationInfo stagingAllocInfo{};
+		vmaGetAllocationInfo(allocator, stagingAllocation, &stagingAllocInfo);
+		memcpy(stagingAllocInfo.pMappedData, indices, static_cast<size_t>(size));
 
 		// Device-local index buffer
-		VulkanUtils::CreateBuffer(dev, ctx->GetPhysicalDevice(),
+		VulkanUtils::CreateBuffer(allocator,
 			size,
 			VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
-			VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-			m_Buffer, m_Memory);
+			VMA_MEMORY_USAGE_AUTO,
+			m_Buffer, m_Allocation);
 
 		ctx->CopyBuffer(stagingBuffer, m_Buffer, size);
 
-		vkDestroyBuffer(dev, stagingBuffer, nullptr);
-		vkFreeMemory(dev, stagingMemory, nullptr);
+		vmaDestroyBuffer(allocator, stagingBuffer, stagingAllocation);
 	}
 
 	VulkanIndexBuffer::~VulkanIndexBuffer()
 	{
 		auto* ctx = VulkanContext::Get();
-		vkDestroyBuffer(ctx->GetDevice(), m_Buffer, nullptr);
-		vkFreeMemory(ctx->GetDevice(), m_Memory, nullptr);
+		if (!ctx) return;
+
+		vmaDestroyBuffer(ctx->GetVmaAllocator(), m_Buffer, m_Allocation);
+		m_Buffer = VK_NULL_HANDLE;
+		m_Allocation = VK_NULL_HANDLE;
 	}
 
 	void VulkanIndexBuffer::Bind()   const {}

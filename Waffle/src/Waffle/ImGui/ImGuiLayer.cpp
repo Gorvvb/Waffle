@@ -65,17 +65,19 @@ namespace Waffle {
 
 			ImGui_ImplGlfw_InitForVulkan(window, true);
 
-			ImGui_ImplVulkan_InitInfo initInfo{};
-			initInfo.ApiVersion = VK_API_VERSION_1_3;
-			initInfo.Instance = ctx->GetInstance();
-			initInfo.PhysicalDevice = ctx->GetPhysicalDevice();
-			initInfo.Device = ctx->GetDevice();
-			initInfo.QueueFamily = ctx->GetGraphicsQueueFamily();
-			initInfo.Queue = ctx->GetGraphicsQueue();
-			initInfo.DescriptorPool = ctx->GetDescriptorPool();
-			initInfo.MinImageCount = ctx->GetFramesInFlight();
-			initInfo.ImageCount = ctx->GetSwapChainImageCount();
-			initInfo.UseDynamicRendering = true;
+			ImGui_ImplVulkan_InitInfo initInfo
+			{
+				.ApiVersion = VK_API_VERSION_1_4,
+				.Instance = ctx->GetInstance(),
+				.PhysicalDevice = ctx->GetPhysicalDevice(),
+				.Device = ctx->GetDevice(),
+				.QueueFamily = ctx->GetGraphicsQueueFamily(),
+				.Queue = ctx->GetGraphicsQueue(),
+				.DescriptorPool = ctx->GetDescriptorPool(),
+				.MinImageCount = ctx->GetFramesInFlight(),
+				.ImageCount = ctx->GetSwapChainImageCount(),
+				.UseDynamicRendering = true
+			};
 
 			// Pipeline info now lives in PipelineInfoMain
 			initInfo.PipelineInfoMain.RenderPass = VK_NULL_HANDLE;  // dynamic rendering, no render pass
@@ -83,11 +85,22 @@ namespace Waffle {
 
 #ifdef IMGUI_IMPL_VULKAN_HAS_DYNAMIC_RENDERING
 			VkFormat colorFmt = ctx->GetSwapChainImageFormat();
-			initInfo.PipelineInfoMain.PipelineRenderingCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO_KHR;
-			initInfo.PipelineInfoMain.PipelineRenderingCreateInfo.colorAttachmentCount = 1;
-			initInfo.PipelineInfoMain.PipelineRenderingCreateInfo.pColorAttachmentFormats = &colorFmt;
-			initInfo.PipelineInfoMain.PipelineRenderingCreateInfo.depthAttachmentFormat = ctx->GetDepthFormat();
+			initInfo.PipelineInfoMain.PipelineRenderingCreateInfo =
+			{
+				.sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO,
+				.colorAttachmentCount = 1,
+				.pColorAttachmentFormats = &colorFmt,
+				.depthAttachmentFormat = ctx->GetDepthFormat()
+			};
 #endif
+
+			ImGui_ImplVulkan_LoadFunctions(
+				VK_API_VERSION_1_4,
+				[](const char* function_name, void* user_data) -> PFN_vkVoidFunction {
+					return vkGetInstanceProcAddr(static_cast<VkInstance>(user_data), function_name);
+				},
+				static_cast<void*>(ctx->GetInstance())
+			);
 
 			ImGui_ImplVulkan_Init(&initInfo);
 		}

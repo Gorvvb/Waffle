@@ -1,7 +1,12 @@
 #pragma once
 
 #include "Waffle/Renderer/UniformBuffer.h"
-#include <vulkan/vulkan.h>
+
+#ifndef VK_NO_PROTOTYPES
+#define VK_NO_PROTOTYPES
+#endif
+#include <Volk/volk.h>
+#include <vma/vk_mem_alloc.h>
 
 namespace Waffle {
 
@@ -24,7 +29,7 @@ namespace Waffle {
 
 	private:
 		VkBuffer              m_Buffer         = VK_NULL_HANDLE;
-		VkDeviceMemory        m_Memory         = VK_NULL_HANDLE;
+		VmaAllocation         m_Allocation     = VK_NULL_HANDLE;
 		void*                 m_MappedPtr      = nullptr;
 		uint32_t              m_Size           = 0;
 		uint32_t              m_Binding        = 0;

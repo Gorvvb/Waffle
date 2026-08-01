@@ -1,7 +1,10 @@
 #pragma once
 
 #include "Waffle/Renderer/VertexArray.h"
-#include <vulkan/vulkan.h>
+#ifndef VK_NO_PROTOTYPES
+#define VK_NO_PROTOTYPES
+#endif
+#include <Volk/volk.h>
 #include <vector>
 
 namespace Waffle {

@@ -26,6 +26,7 @@ project "Waffle"
 	defines
 	{
 		"_CRT_SECURE_NO_WARNINGS",
+		"VK_NO_PROTOTYPES",
 		"GLFW_INCLUDE_NONE",
 		"YAML_CPP_STATIC_DEFINE"
 	}

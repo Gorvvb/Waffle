@@ -1,4 +1,13 @@
 #include "wfpch.h"
+
+#ifndef VK_NO_PROTOTYPES
+#define VK_NO_PROTOTYPES
+#endif
+#define VOLK_IMPLEMENTATION
+#include <Volk/volk.h>
+#define VMA_IMPLEMENTATION
+#include <vma/vk_mem_alloc.h>
+
 #include "VulkanContext.h"
 #include "VulkanUtils.h"
 
@@ -89,34 +98,53 @@ namespace Waffle {
 
 	VulkanContext::~VulkanContext()
 	{
-		vkDeviceWaitIdle(m_Device);
+		if (m_Device != VK_NULL_HANDLE)
+			vkDeviceWaitIdle(m_Device);
+
+		if (m_TimelineSemaphore != VK_NULL_HANDLE)
+			vkDestroySemaphore(m_Device, m_TimelineSemaphore, nullptr);
 
 		// Depth resources
-		vkDestroyImageView(m_Device, m_DepthImageView, nullptr);
-		vkDestroyImage(m_Device, m_DepthImage, nullptr);
-		vkFreeMemory(m_Device, m_DepthImageMemory, nullptr);
+		if (m_DepthImageView != VK_NULL_HANDLE)
+			vkDestroyImageView(m_Device, m_DepthImageView, nullptr);
+		if (m_DepthImage != VK_NULL_HANDLE)
+			vmaDestroyImage(m_VmaAllocator, m_DepthImage, m_DepthImageAllocation);
 
 		CleanupSwapChain();
 
 		// Per-frame sync objects + command pools
 		for (auto& frame : m_Frames)
 		{
-			vkDestroySemaphore(m_Device, frame.ImageAvailableSemaphore, nullptr);
-			vkDestroySemaphore(m_Device, frame.RenderFinishedSemaphore, nullptr);
-			vkDestroyFence(m_Device, frame.InFlightFence, nullptr);
-			vkDestroyCommandPool(m_Device, frame.CommandPool, nullptr);
+			if (frame.ImageAvailableSemaphore)
+				vkDestroySemaphore(m_Device, frame.ImageAvailableSemaphore, nullptr);
+			if (frame.RenderFinishedSemaphore)
+				vkDestroySemaphore(m_Device, frame.RenderFinishedSemaphore, nullptr);
+			if (frame.InFlightFence)
+				vkDestroyFence(m_Device, frame.InFlightFence, nullptr);
+			if (frame.CommandPool)
+				vkDestroyCommandPool(m_Device, frame.CommandPool, nullptr);
 		}
 
-		vkDestroyDescriptorPool(m_Device, m_DescriptorPool, nullptr);
+		if (m_DescriptorPool)
+			vkDestroyDescriptorPool(m_Device, m_DescriptorPool, nullptr);
 		if (m_CommandPool)
 			vkDestroyCommandPool(m_Device, m_CommandPool, nullptr);
-		vkDestroyDevice(m_Device, nullptr);
 
-		if (s_EnableValidation)
+		if (m_VmaAllocator)
+			vmaDestroyAllocator(m_VmaAllocator);
+
+		if (m_Device)
+			vkDestroyDevice(m_Device, nullptr);
+
+		if (s_EnableValidation && m_DebugMessenger)
 			DestroyDebugUtilsMessengerEXT(m_Instance, m_DebugMessenger, nullptr);
 
-		vkDestroySurfaceKHR(m_Instance, m_Surface, nullptr);
-		vkDestroyInstance(m_Instance, nullptr);
+		if (m_Surface)
+			vkDestroySurfaceKHR(m_Instance, m_Surface, nullptr);
+		if (m_Instance)
+			vkDestroyInstance(m_Instance, nullptr);
+
+		volkFinalize();
 
 		s_Instance = nullptr;
 	}
@@ -139,6 +167,22 @@ namespace Waffle {
 		CreateSurface();
 		PickPhysicalDevice();
 		CreateLogicalDevice();
+
+		// Initialize Vulkan Memory Allocator (VMA) using imported Volk function pointers
+		VmaVulkanFunctions vmaFuncInfo{};
+		VmaAllocatorCreateInfo vmaAllocInfo
+		{
+			.flags = VMA_ALLOCATOR_CREATE_BUFFER_DEVICE_ADDRESS_BIT,
+			.physicalDevice = m_PhysicalDevice,
+			.device = m_Device,
+			.pVulkanFunctions = &vmaFuncInfo,
+			.instance = m_Instance,
+			.vulkanApiVersion = VK_API_VERSION_1_4
+		};
+		vmaImportVulkanFunctionsFromVolk(&vmaAllocInfo, &vmaFuncInfo);
+		VkResult vmaRes = vmaCreateAllocator(&vmaAllocInfo, &m_VmaAllocator);
+		WF_CORE_ASSERT(vmaRes == VK_SUCCESS, "Failed to create Vulkan Memory Allocator (VMA)!");
+
 		CreateSwapChain();
 		CreateSwapChainImageViews();
 		CreateDepthResources();
@@ -183,53 +227,79 @@ namespace Waffle {
 		if (m_IsRenderingActive)
 			EndSwapChainRendering();
 
-		// Transition swap-chain image to present layout
+		// Transition swap-chain image to present layout using Synchronization 2
 		VkCommandBuffer cmd = GetCurrentCommandBuffer();
 
 		VulkanUtils::TransitionImageLayout(cmd,
 			m_SwapChainImages[m_CurrentImageIndex],
 			VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
 			VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
-			VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT, 0,
-			VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
-			VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT);
+			VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT, 0,
+			VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
+			VK_PIPELINE_STAGE_2_NONE);
 
 		// End command buffer
 		VkResult endCmdRes = vkEndCommandBuffer(cmd);
 		WF_CORE_ASSERT(endCmdRes == VK_SUCCESS, "Failed to end command buffer!");
 
-		// Submit
-		VkSubmitInfo submitInfo{};
-		submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+		// Submit using Synchronization 2 (vkQueueSubmit2) & Timeline Semaphore
+		m_FrameCounter++;
+		uint64_t signalValue = ++m_TimelineSignalValue;
 
-		VkSemaphore          waitSemaphores[]  = { m_Frames[m_CurrentFrameIndex].ImageAvailableSemaphore };
-		VkPipelineStageFlags waitStages[]      = { VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT };
-		submitInfo.waitSemaphoreCount          = 1;
-		submitInfo.pWaitSemaphores             = waitSemaphores;
-		submitInfo.pWaitDstStageMask           = waitStages;
-		submitInfo.commandBufferCount          = 1;
-		submitInfo.pCommandBuffers             = &m_Frames[m_CurrentFrameIndex].CommandBuffer;
+		VkSemaphoreSubmitInfo imageAcquireWaitInfo
+		{
+			.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO,
+			.semaphore = m_Frames[m_CurrentFrameIndex].ImageAvailableSemaphore,
+			.stageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT
+		};
 
-		VkSemaphore signalSemaphores[]         = { m_Frames[m_CurrentFrameIndex].RenderFinishedSemaphore };
-		submitInfo.signalSemaphoreCount        = 1;
-		submitInfo.pSignalSemaphores           = signalSemaphores;
+		std::vector<VkSemaphoreSubmitInfo> signalSemaphores
+		{
+			{
+				.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO,
+				.semaphore = m_Frames[m_CurrentFrameIndex].RenderFinishedSemaphore,
+				.stageMask = VK_PIPELINE_STAGE_2_ALL_GRAPHICS_BIT
+			},
+			{
+				.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO,
+				.semaphore = m_TimelineSemaphore,
+				.value = signalValue,
+				.stageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT
+			}
+		};
+
+		VkCommandBufferSubmitInfo cmdSubmitInfo
+		{
+			.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO,
+			.commandBuffer = m_Frames[m_CurrentFrameIndex].CommandBuffer
+		};
+
+		VkSubmitInfo2 submitInfo
+		{
+			.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO_2,
+			.waitSemaphoreInfoCount = 1,
+			.pWaitSemaphoreInfos = &imageAcquireWaitInfo,
+			.commandBufferInfoCount = 1,
+			.pCommandBufferInfos = &cmdSubmitInfo,
+			.signalSemaphoreInfoCount = static_cast<uint32_t>(signalSemaphores.size()),
+			.pSignalSemaphoreInfos = signalSemaphores.data()
+		};
 
 		vkResetFences(m_Device, 1, &m_Frames[m_CurrentFrameIndex].InFlightFence);
-		VkResult submitResult = vkQueueSubmit(m_GraphicsQueue, 1, &submitInfo,
-			m_Frames[m_CurrentFrameIndex].InFlightFence);
+		VkResult submitResult = vkQueueSubmit2(m_GraphicsQueue, 1, &submitInfo, m_Frames[m_CurrentFrameIndex].InFlightFence);
 		if (submitResult != VK_SUCCESS)
-			WF_CORE_ERROR("Vulkan: vkQueueSubmit failed ({0})", (int)submitResult);
+			WF_CORE_ERROR("Vulkan: vkQueueSubmit2 failed ({0})", (int)submitResult);
 
 		// Present
-		VkPresentInfoKHR presentInfo{};
-		presentInfo.sType              = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
-		presentInfo.waitSemaphoreCount = 1;
-		presentInfo.pWaitSemaphores    = signalSemaphores;
-
-		VkSwapchainKHR swapChains[] = { m_SwapChain };
-		presentInfo.swapchainCount  = 1;
-		presentInfo.pSwapchains     = swapChains;
-		presentInfo.pImageIndices   = &m_CurrentImageIndex;
+		VkPresentInfoKHR presentInfo
+		{
+			.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
+			.waitSemaphoreCount = 1,
+			.pWaitSemaphores = &m_Frames[m_CurrentFrameIndex].RenderFinishedSemaphore,
+			.swapchainCount = 1,
+			.pSwapchains = &m_SwapChain,
+			.pImageIndices = &m_CurrentImageIndex
+		};
 
 		VkResult presentResult = vkQueuePresentKHR(m_PresentQueue, &presentInfo);
 		if (presentResult == VK_ERROR_OUT_OF_DATE_KHR || presentResult == VK_SUBOPTIMAL_KHR
@@ -272,9 +342,11 @@ namespace Waffle {
 
 		// Begin the next command buffer
 		vkResetCommandPool(m_Device, m_Frames[m_CurrentFrameIndex].CommandPool, 0);
-		VkCommandBufferBeginInfo beginInfo{};
-		beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-		beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+		VkCommandBufferBeginInfo beginInfo
+		{
+			.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+			.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT
+		};
 		VkResult beginCmdRes = vkBeginCommandBuffer(m_Frames[m_CurrentFrameIndex].CommandBuffer, &beginInfo);
 		WF_CORE_ASSERT(beginCmdRes == VK_SUCCESS, "Failed to begin command buffer!");
 	}
@@ -294,37 +366,63 @@ namespace Waffle {
 			m_SwapChainImages[m_CurrentImageIndex],
 			VK_IMAGE_LAYOUT_UNDEFINED,
 			VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-			0, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
-			VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
-			VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT);
+			0, VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
+			VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT,
+			VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT);
+
+		// Transition depth image to depth-stencil attachment
+		if (m_DepthImage != VK_NULL_HANDLE)
+		{
+			VkImageAspectFlags aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
+			if (VulkanUtils::HasStencilComponent(m_DepthFormat))
+				aspectMask |= VK_IMAGE_ASPECT_STENCIL_BIT;
+
+			VulkanUtils::TransitionImageLayout(cmd,
+				m_DepthImage,
+				VK_IMAGE_LAYOUT_UNDEFINED,
+				VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+				0, VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
+				VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT,
+				VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT,
+				aspectMask);
+		}
 
 		// Color attachment
-		VkRenderingAttachmentInfo colorAttachment{};
-		colorAttachment.sType              = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
-		colorAttachment.imageView          = m_SwapChainImageViews[m_CurrentImageIndex];
-		colorAttachment.imageLayout        = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-		colorAttachment.loadOp             = VK_ATTACHMENT_LOAD_OP_CLEAR;
-		colorAttachment.storeOp            = VK_ATTACHMENT_STORE_OP_STORE;
-		colorAttachment.clearValue.color   = clearColor;
+		VkRenderingAttachmentInfo colorAttachment
+		{
+			.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
+			.imageView = m_SwapChainImageViews[m_CurrentImageIndex],
+			.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+			.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
+			.storeOp = VK_ATTACHMENT_STORE_OP_STORE,
+			.clearValue{.color = clearColor}
+		};
 
 		// Depth attachment
-		VkRenderingAttachmentInfo depthAttachment{};
-		depthAttachment.sType                       = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
-		depthAttachment.imageView                   = m_DepthImageView;
-		depthAttachment.imageLayout                 = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-		depthAttachment.loadOp                      = VK_ATTACHMENT_LOAD_OP_CLEAR;
-		depthAttachment.storeOp                     = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-		depthAttachment.clearValue.depthStencil     = clearDepth;
+		VkRenderingAttachmentInfo depthAttachment
+		{
+			.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
+			.imageView = m_DepthImageView,
+			.imageLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+			.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
+			.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE,
+			.clearValue{.depthStencil = clearDepth}
+		};
 
-		VkRenderingInfo renderingInfo{};
-		renderingInfo.sType                = VK_STRUCTURE_TYPE_RENDERING_INFO;
-		renderingInfo.renderArea.offset    = { 0, 0 };
-		renderingInfo.renderArea.extent    = m_SwapChainExtent;
-		renderingInfo.layerCount           = 1;
-		renderingInfo.colorAttachmentCount = 1;
-		renderingInfo.pColorAttachments    = &colorAttachment;
-		renderingInfo.pDepthAttachment     = &depthAttachment;
-		renderingInfo.pStencilAttachment   = VulkanUtils::HasStencilComponent(m_DepthFormat) ? &depthAttachment : nullptr;
+		VkRenderingInfo renderingInfo
+		{
+			.sType = VK_STRUCTURE_TYPE_RENDERING_INFO,
+			.renderArea
+			{
+				.offset{.x = 0, .y = 0},
+				.extent = m_SwapChainExtent
+			},
+			.layerCount = 1,
+			.colorAttachmentCount = 1,
+			.pColorAttachments = &colorAttachment,
+			.pDepthAttachment = &depthAttachment,
+			.pStencilAttachment = VulkanUtils::HasStencilComponent(m_DepthFormat) ? &depthAttachment : nullptr
+		};
 
 		vkCmdBeginRendering(cmd, &renderingInfo);
 		m_IsRenderingActive = true;
@@ -443,69 +541,68 @@ namespace Waffle {
 
 	void VulkanContext::CreateInstance()
 	{
+		if (volkInitialize() != VK_SUCCESS)
+		{
+			WF_CORE_ERROR("Failed to initialize Volk!");
+			WF_CORE_ASSERT(false, "Volk initialization failed!");
+			return;
+		}
+
 		m_EnableValidation = s_EnableValidation && CheckValidationLayerSupport();
 		if (s_EnableValidation && !m_EnableValidation)
 			WF_CORE_WARN("Vulkan: validation layer 'VK_LAYER_KHRONOS_validation' requested but not available. Disabling validation.");
 
-		VkApplicationInfo appInfo{};
-		appInfo.sType              = VK_STRUCTURE_TYPE_APPLICATION_INFO;
-		appInfo.pApplicationName   = "Waffle Engine";
-		appInfo.applicationVersion = VK_MAKE_VERSION(1, 0, 0);
-		appInfo.pEngineName        = "Waffle";
-		appInfo.engineVersion      = VK_MAKE_VERSION(1, 0, 0);
-		appInfo.apiVersion         = VK_API_VERSION_1_3;
+		VkApplicationInfo appInfo
+		{
+			.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO,
+			.pApplicationName = "Waffle Engine",
+			.applicationVersion = VK_MAKE_VERSION(1, 0, 0),
+			.pEngineName = "Waffle",
+			.engineVersion = VK_MAKE_VERSION(1, 0, 0),
+			.apiVersion = VK_API_VERSION_1_4
+		};
 
 		auto extensions = GetRequiredInstanceExtensions();
 
-		VkInstanceCreateInfo createInfo{};
-		createInfo.sType                   = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
-		createInfo.pApplicationInfo        = &appInfo;
-		createInfo.enabledExtensionCount   = (uint32_t)extensions.size();
-		createInfo.ppEnabledExtensionNames = extensions.data();
-
-		VkDebugUtilsMessengerCreateInfoEXT debugCreateInfo{};
-		if (m_EnableValidation)
+		VkDebugUtilsMessengerCreateInfoEXT debugCreateInfo
 		{
-			createInfo.enabledLayerCount   = (uint32_t)s_ValidationLayers.size();
-			createInfo.ppEnabledLayerNames = s_ValidationLayers.data();
+			.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT,
+			.messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT,
+			.messageType = VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT,
+			.pfnUserCallback = VulkanDebugCallback
+		};
 
-			debugCreateInfo.sType           = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT;
-			debugCreateInfo.messageSeverity =
-				VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT |
-				VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT;
-			debugCreateInfo.messageType     =
-				VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT |
-				VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT |
-				VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT;
-			debugCreateInfo.pfnUserCallback = VulkanDebugCallback;
-			createInfo.pNext = &debugCreateInfo;
-		}
-		else
+		VkInstanceCreateInfo createInfo
 		{
-			createInfo.enabledLayerCount = 0;
-		}
+			.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
+			.pNext = m_EnableValidation ? &debugCreateInfo : nullptr,
+			.pApplicationInfo = &appInfo,
+			.enabledLayerCount = m_EnableValidation ? static_cast<uint32_t>(s_ValidationLayers.size()) : 0,
+			.ppEnabledLayerNames = m_EnableValidation ? s_ValidationLayers.data() : nullptr,
+			.enabledExtensionCount = static_cast<uint32_t>(extensions.size()),
+			.ppEnabledExtensionNames = extensions.data()
+		};
 
 		VkResult res = vkCreateInstance(&createInfo, nullptr, &m_Instance);
 		if (res != VK_SUCCESS)
 		{
 			WF_CORE_ERROR("vkCreateInstance failed with error code: {0}", (int)res);
 			WF_CORE_ASSERT(false, "Failed to create Vulkan instance!");
+			return;
 		}
+
+		volkLoadInstance(m_Instance);
 	}
 
 	void VulkanContext::SetupDebugMessenger()
 	{
-		VkDebugUtilsMessengerCreateInfoEXT createInfo{};
-		createInfo.sType           = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT;
-		createInfo.messageSeverity =
-			VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT |
-			VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT |
-			VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT;
-		createInfo.messageType     =
-			VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT |
-			VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT |
-			VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT;
-		createInfo.pfnUserCallback = VulkanDebugCallback;
+		VkDebugUtilsMessengerCreateInfoEXT createInfo
+		{
+			.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT,
+			.messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT,
+			.messageType = VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT,
+			.pfnUserCallback = VulkanDebugCallback
+		};
 
 		WF_CORE_ASSERT(
 			CreateDebugUtilsMessengerEXT(m_Instance, &createInfo, nullptr, &m_DebugMessenger) == VK_SUCCESS,
@@ -567,38 +664,59 @@ namespace Waffle {
 		std::vector<VkDeviceQueueCreateInfo> queueCreateInfos;
 		for (uint32_t queueFamily : uniqueQueueFamilies)
 		{
-			VkDeviceQueueCreateInfo queueInfo{};
-			queueInfo.sType            = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
-			queueInfo.queueFamilyIndex = queueFamily;
-			queueInfo.queueCount       = 1;
-			queueInfo.pQueuePriorities = &queuePriority;
+			VkDeviceQueueCreateInfo queueInfo
+			{
+				.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
+				.queueFamilyIndex = queueFamily,
+				.queueCount = 1,
+				.pQueuePriorities = &queuePriority
+			};
 			queueCreateInfos.push_back(queueInfo);
 		}
 
-		// Enable Vulkan 1.3 features
-		VkPhysicalDeviceVulkan13Features features13{};
-		features13.sType            = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES;
-		features13.dynamicRendering = VK_TRUE;
-		features13.synchronization2 = VK_TRUE;
+		// Vulkan 1.4 feature chain using C++20 designated initializers
+		VkPhysicalDeviceVulkan14Features features14
+		{
+			.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_4_FEATURES,
+			.pNext = nullptr
+		};
+		VkPhysicalDeviceVulkan13Features features13
+		{
+			.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES,
+			.pNext = &features14,
+			.shaderDemoteToHelperInvocation = VK_TRUE,
+			.synchronization2 = VK_TRUE,
+			.dynamicRendering = VK_TRUE
+		};
+		VkPhysicalDeviceVulkan12Features features12
+		{
+			.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES,
+			.pNext = &features13,
+			.timelineSemaphore = VK_TRUE,
+			.bufferDeviceAddress = VK_TRUE
+		};
+		VkPhysicalDeviceFeatures2 deviceFeatures2
+		{
+			.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2,
+			.pNext = &features12,
+			.features
+			{
+				.independentBlend = VK_TRUE,
+				.fillModeNonSolid = VK_TRUE,
+				.wideLines = VK_TRUE,
+				.samplerAnisotropy = VK_TRUE
+			}
+		};
 
-		VkPhysicalDeviceFeatures2 deviceFeatures2{};
-		deviceFeatures2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
-		deviceFeatures2.pNext = &features13;
-		deviceFeatures2.features.samplerAnisotropy = VK_TRUE;
-		deviceFeatures2.features.wideLines          = VK_TRUE;
-		deviceFeatures2.features.fillModeNonSolid   = VK_TRUE;
-		deviceFeatures2.features.independentBlend   = VK_TRUE;
-
-		VkDeviceCreateInfo createInfo{};
-		createInfo.sType                   = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
-		createInfo.pNext                   = &deviceFeatures2;
-		createInfo.queueCreateInfoCount    = (uint32_t)queueCreateInfos.size();
-		createInfo.pQueueCreateInfos       = queueCreateInfos.data();
-		createInfo.enabledExtensionCount   = (uint32_t)s_DeviceExtensions.size();
-		createInfo.ppEnabledExtensionNames = s_DeviceExtensions.data();
-
-		createInfo.enabledLayerCount   = 0;
-		createInfo.ppEnabledLayerNames = nullptr;
+		VkDeviceCreateInfo createInfo
+		{
+			.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
+			.pNext = &deviceFeatures2,
+			.queueCreateInfoCount = static_cast<uint32_t>(queueCreateInfos.size()),
+			.pQueueCreateInfos = queueCreateInfos.data(),
+			.enabledExtensionCount = static_cast<uint32_t>(s_DeviceExtensions.size()),
+			.ppEnabledExtensionNames = s_DeviceExtensions.data()
+		};
 
 		VkResult res = vkCreateDevice(m_PhysicalDevice, &createInfo, nullptr, &m_Device);
 		if (res != VK_SUCCESS || m_Device == VK_NULL_HANDLE)
@@ -606,6 +724,8 @@ namespace Waffle {
 			WF_CORE_ERROR("vkCreateDevice failed with error code: {0}", (int)res);
 			WF_CORE_ASSERT(false, "Failed to create Vulkan logical device!");
 		}
+
+		volkLoadDevice(m_Device);
 
 		vkGetDeviceQueue(m_Device, m_GraphicsQueueFamily, 0, &m_GraphicsQueue);
 		vkGetDeviceQueue(m_Device, m_PresentQueueFamily,  0, &m_PresentQueue);
@@ -711,12 +831,13 @@ namespace Waffle {
 			VK_IMAGE_TILING_OPTIMAL,
 			VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT);
 
-		VulkanUtils::CreateImage(m_Device, m_PhysicalDevice,
+		VulkanUtils::CreateImage(m_VmaAllocator,
 			m_SwapChainExtent.width, m_SwapChainExtent.height,
 			m_DepthFormat, VK_IMAGE_TILING_OPTIMAL,
 			VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT,
-			VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-			m_DepthImage, m_DepthImageMemory);
+			VMA_MEMORY_USAGE_AUTO,
+			m_DepthImage, m_DepthImageAllocation,
+			VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT);
 
 		VkImageAspectFlags aspectFlags = VK_IMAGE_ASPECT_DEPTH_BIT;
 		if (VulkanUtils::HasStencilComponent(m_DepthFormat))
@@ -728,10 +849,12 @@ namespace Waffle {
 
 	void VulkanContext::CreateCommandPool()
 	{
-		VkCommandPoolCreateInfo poolInfo{};
-		poolInfo.sType            = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
-		poolInfo.queueFamilyIndex = m_GraphicsQueueFamily;
-		poolInfo.flags            = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT | VK_COMMAND_POOL_CREATE_TRANSIENT_BIT;
+		VkCommandPoolCreateInfo poolInfo
+		{
+			.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
+			.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT | VK_COMMAND_POOL_CREATE_TRANSIENT_BIT,
+			.queueFamilyIndex = m_GraphicsQueueFamily
+		};
 
 		VkResult res = vkCreateCommandPool(m_Device, &poolInfo, nullptr, &m_CommandPool);
 		if (res != VK_SUCCESS || m_CommandPool == VK_NULL_HANDLE)
@@ -749,27 +872,33 @@ namespace Waffle {
 		for (auto& frame : m_Frames)
 		{
 			// Command pool
-			VkCommandPoolCreateInfo poolInfo{};
-			poolInfo.sType            = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
-			poolInfo.queueFamilyIndex = m_GraphicsQueueFamily;
-			poolInfo.flags            = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
+			VkCommandPoolCreateInfo poolInfo
+			{
+				.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
+				.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT,
+				.queueFamilyIndex = m_GraphicsQueueFamily
+			};
 			VkResult cpRes = vkCreateCommandPool(m_Device, &poolInfo, nullptr, &frame.CommandPool);
 			WF_CORE_ASSERT(cpRes == VK_SUCCESS, "Failed to create command pool!");
 
 			// Command buffer
-			VkCommandBufferAllocateInfo allocInfo{};
-			allocInfo.sType              = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-			allocInfo.commandPool        = frame.CommandPool;
-			allocInfo.level              = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-			allocInfo.commandBufferCount = 1;
+			VkCommandBufferAllocateInfo allocInfo
+			{
+				.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+				.commandPool = frame.CommandPool,
+				.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
+				.commandBufferCount = 1
+			};
 			VkResult cbRes = vkAllocateCommandBuffers(m_Device, &allocInfo, &frame.CommandBuffer);
 			WF_CORE_ASSERT(cbRes == VK_SUCCESS, "Failed to allocate command buffer!");
 		}
 
 		// Begin the first command buffer immediately so Init() callers can use it
-		VkCommandBufferBeginInfo beginInfo{};
-		beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-		beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+		VkCommandBufferBeginInfo beginInfo
+		{
+			.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+			.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT
+		};
 
 		// Acquire first image and signal the first frame's ImageAvailableSemaphore
 		VkResult acqRes = vkAcquireNextImageKHR(m_Device, m_SwapChain, UINT64_MAX,
@@ -785,9 +914,29 @@ namespace Waffle {
 	{
 		if (m_Frames.empty())
 			m_Frames.resize(m_FramesInFlight);
-		VkSemaphoreCreateInfo semaphoreInfo{ VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO };
-		VkFenceCreateInfo     fenceInfo{ VK_STRUCTURE_TYPE_FENCE_CREATE_INFO };
-		fenceInfo.flags = VK_FENCE_CREATE_SIGNALED_BIT; // start signalled so first wait passes
+
+		// Create timeline semaphore for frame synchronization
+		m_TimelineSignalValue = m_FramesInFlight;
+		VkSemaphoreTypeCreateInfo semaphoreTypeInfo
+		{
+			.sType = VK_STRUCTURE_TYPE_SEMAPHORE_TYPE_CREATE_INFO,
+			.semaphoreType = VK_SEMAPHORE_TYPE_TIMELINE,
+			.initialValue = m_FramesInFlight
+		};
+		VkSemaphoreCreateInfo timelineCreateInfo
+		{
+			.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO,
+			.pNext = &semaphoreTypeInfo
+		};
+		VkResult tsRes = vkCreateSemaphore(m_Device, &timelineCreateInfo, nullptr, &m_TimelineSemaphore);
+		WF_CORE_ASSERT(tsRes == VK_SUCCESS, "Failed to create timeline semaphore!");
+
+		VkSemaphoreCreateInfo semaphoreInfo{ .sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO };
+		VkFenceCreateInfo fenceInfo
+		{
+			.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO,
+			.flags = VK_FENCE_CREATE_SIGNALED_BIT
+		};
 
 		for (auto& frame : m_Frames)
 		{
@@ -805,15 +954,19 @@ namespace Waffle {
 		std::vector<VkDescriptorPoolSize> poolSizes = {
 			{ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,          1000 },
 			{ VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,  1000 },
+			{ VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,           1000 },
+			{ VK_DESCRIPTOR_TYPE_SAMPLER,                 1000 },
 			{ VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,          100  },
 		};
 
-		VkDescriptorPoolCreateInfo poolInfo{};
-		poolInfo.sType         = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
-		poolInfo.flags         = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
-		poolInfo.maxSets       = 2000;
-		poolInfo.poolSizeCount = (uint32_t)poolSizes.size();
-		poolInfo.pPoolSizes    = poolSizes.data();
+		VkDescriptorPoolCreateInfo poolInfo
+		{
+			.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
+			.flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT,
+			.maxSets = 2000,
+			.poolSizeCount = static_cast<uint32_t>(poolSizes.size()),
+			.pPoolSizes = poolSizes.data()
+		};
 
 		VkResult res = vkCreateDescriptorPool(m_Device, &poolInfo, nullptr, &m_DescriptorPool);
 		if (res != VK_SUCCESS || m_DescriptorPool == VK_NULL_HANDLE)
@@ -848,9 +1001,17 @@ namespace Waffle {
 		vkDeviceWaitIdle(m_Device);
 
 		// Cleanup old depth
-		vkDestroyImageView(m_Device, m_DepthImageView, nullptr);
-		vkDestroyImage(m_Device, m_DepthImage, nullptr);
-		vkFreeMemory(m_Device, m_DepthImageMemory, nullptr);
+		if (m_DepthImageView)
+		{
+			vkDestroyImageView(m_Device, m_DepthImageView, nullptr);
+			m_DepthImageView = VK_NULL_HANDLE;
+		}
+		if (m_DepthImage)
+		{
+			vmaDestroyImage(m_VmaAllocator, m_DepthImage, m_DepthImageAllocation);
+			m_DepthImage = VK_NULL_HANDLE;
+			m_DepthImageAllocation = VK_NULL_HANDLE;
+		}
 
 		CleanupSwapChain();
 

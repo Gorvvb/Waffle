@@ -59,8 +59,8 @@ class VulkanConfiguration:
                 return
             permissionGranted = (reply == 'y')
 
-        vulkanInstallURL = "https://sdk.lunarg.com/sdk/download/1.3.290.0/windows/VulkanSDK-1.3.290.0-Installer.exe"
-        vulkanPath = f"{cls.vulkanDirectory}/VulkanSDK-1.3.290.0-Installer.exe"
+        vulkanInstallURL = "https://sdk.lunarg.com/sdk/download/1.4.357.0/windows/vulkansdk-windows-X64-1.4.357.0.exe"
+        vulkanPath = f"{cls.vulkanDirectory}/vulkansdk-windows-X64-1.4.357.0.exe"
         print(f"Downloading {vulkanInstallURL} to {vulkanPath}")
         Utils.DownloadFile(vulkanInstallURL, vulkanPath)
         print("Running Vulkan SDK installer...")
