@@ -13,6 +13,7 @@ Includedir["stb_image"] = "%{wks.location}/Waffle/vendor/stb_image"
 Includedir["entt"] = "%{wks.location}/Waffle/vendor/entt/include"
 Includedir["yaml_cpp"] = "%{wks.location}/Waffle/vendor/yaml-cpp/include"
 Includedir["ImGuizmo"] = "%{wks.location}/Waffle/vendor/ImGuizmo"
+Includedir["Lua"] = "%{wks.location}/Waffle/vendor/lua"
 
 Includedir["VulkanSDK"] = "%{VULKAN_SDK}/Include"
 Includedir["shaderc"] = "%{VULKAN_SDK}/Include/shaderc/"

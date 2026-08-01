@@ -97,10 +97,13 @@ namespace Waffle {
 		}
 
 		// Update
-		if (m_ViewportFocused)
-			m_CameraController.OnUpdate(ts);
+		if (m_SceneState == SceneState::Edit)
+		{
+			if (m_ViewportFocused)
+				m_CameraController.OnUpdate(ts);
 
-		m_EditorCamera.OnUpdate(ts);
+			m_EditorCamera.OnUpdate(ts);
+		}
 
 		// Render
 		Renderer2D::ResetStats();
@@ -343,7 +346,7 @@ namespace Waffle {
 						src.Texture = Texture2D::Create(path.string(), src.FilterMode);
 					}
 				}
-				else if (ext == ".h" || ext == ".cpp")
+				else if (ext == ".lua")
 				{
 					Entity targetEntity = m_HoveredEntity ? m_HoveredEntity : m_SceneHierarchyPanel.GetSelectedEntity();
 					if (targetEntity)
@@ -352,7 +355,7 @@ namespace Waffle {
 							targetEntity.AddComponent<ScriptComponent>();
 
 						auto& sc = targetEntity.GetComponent<ScriptComponent>();
-						sc.ClassName = path.stem().string();
+						sc.ScriptPaths.push_back(path.string());
 					}
 				}
 			}
@@ -574,6 +577,9 @@ namespace Waffle {
 
 	bool EditorLayer::OnkeyPressed(KeyPressedEvent& e)
 	{
+		if (m_SceneState == SceneState::Play)
+			return false;
+
 		if (e.GetRepeatCount() > 0)
 			return false;
 

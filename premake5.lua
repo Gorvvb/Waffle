@@ -28,6 +28,7 @@ group "Dependencies"
 	include "Waffle/vendor/GLAD"
 	include "Waffle/vendor/imgui"
 	include "Waffle/vendor/yaml-cpp"
+	include "Waffle/vendor/lua"
 group ""
 
 include "Waffle"

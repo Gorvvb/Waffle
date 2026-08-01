@@ -281,6 +281,12 @@ namespace Waffle {
 			out << YAML::BeginMap;
 			auto& sc = entity.GetComponent<ScriptComponent>();
 			out << YAML::Key << "ClassName" << YAML::Value << sc.ClassName;
+			out << YAML::Key << "ScriptPaths" << YAML::Value << YAML::BeginSeq;
+			for (const auto& path : sc.ScriptPaths)
+			{
+				out << path;
+			}
+			out << YAML::EndSeq;
 			out << YAML::EndMap;
 		}
 
@@ -438,7 +444,20 @@ namespace Waffle {
 				if (scriptComponent)
 				{
 					auto& sc = deserializedEntity.AddComponent<ScriptComponent>();
-					sc.ClassName = scriptComponent["ClassName"].as<std::string>();
+					if (scriptComponent["ClassName"])
+						sc.ClassName = scriptComponent["ClassName"].as<std::string>();
+					auto scriptPaths = scriptComponent["ScriptPaths"];
+					if (scriptPaths)
+					{
+						for (auto pathNode : scriptPaths)
+						{
+							sc.ScriptPaths.push_back(pathNode.as<std::string>());
+						}
+					}
+					if (sc.ScriptPaths.empty() && !sc.ClassName.empty())
+					{
+						sc.ScriptPaths.push_back(sc.ClassName);
+					}
 				}
 
 				auto lifetimeComponent = entity["LifetimeComponent"];

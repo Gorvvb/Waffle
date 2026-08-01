@@ -20,7 +20,7 @@ project "Waffle"
 		"vendor/glm/glm/**.inl",
 
 		"vendor/ImGuizmo/ImGuizmo.h",
-		"vendor/ImGuizmo/ImGuizmo.cpp"
+		"vendor/ImGuizmo/ImGuizmo.cpp",
 	}
 
 	defines
@@ -44,6 +44,7 @@ project "Waffle"
 		"%{Includedir.entt}",
 		"%{Includedir.yaml_cpp}",
 		"%{Includedir.ImGuizmo}",
+		"%{Includedir.Lua}",
 		"%{Includedir.VulkanSDK}"
 	}
 
@@ -53,12 +54,16 @@ project "Waffle"
 		"GLFW",
 		"GLAD",
 		"ImGui",
+		"Lua",
 		"opengl32.lib",
 		"yaml-cpp",
 		"%{Library.Vulkan}"
 	}
 
 	filter "files:vendor/ImGuizmo/**.cpp"
+	enablepch "Off"
+
+	filter "files:vendor/lua/**.c"
 	enablepch "Off"
 
 	filter "system:windows"

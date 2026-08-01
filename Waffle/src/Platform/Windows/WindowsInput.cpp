@@ -1,17 +1,44 @@
 #include "wfpch.h"
 #include "Waffle/Core/Input.h"
 #include "Waffle/Core/Application.h"
+#include "Waffle/Core/KeyCodes.h"
+#include "Waffle/Core/MouseCodes.h"
 
 #include <GLFW/glfw3.h>
+#include <imgui.h>
 
 namespace Waffle {
 
 	bool Input::IsKeyPressed(const KeyCode key)
 	{
 		auto window = static_cast<GLFWwindow*>(Application::Get().GetWindow().GetNativeWindow());
+		if (window)
+		{
+			auto state = glfwGetKey(window, static_cast<int32_t>(key));
+			if (state == GLFW_PRESS || state == GLFW_REPEAT)
+				return true;
+		}
 
-		auto state = glfwGetKey(window, static_cast<int32_t>(key));
-		return state == GLFW_PRESS || state == GLFW_REPEAT;
+		if (ImGui::GetCurrentContext())
+		{
+			ImGuiKey imguiKey = ImGuiKey_None;
+			if (key >= Key::A && key <= Key::Z)
+				imguiKey = (ImGuiKey)(ImGuiKey_A + (key - Key::A));
+			else if (key >= Key::D0 && key <= Key::D9)
+				imguiKey = (ImGuiKey)(ImGuiKey_0 + (key - Key::D0));
+			else if (key == Key::Space) imguiKey = ImGuiKey_Space;
+			else if (key == Key::Left) imguiKey = ImGuiKey_LeftArrow;
+			else if (key == Key::Right) imguiKey = ImGuiKey_RightArrow;
+			else if (key == Key::Up) imguiKey = ImGuiKey_UpArrow;
+			else if (key == Key::Down) imguiKey = ImGuiKey_DownArrow;
+			else if (key == Key::Escape) imguiKey = ImGuiKey_Escape;
+			else if (key == Key::Enter) imguiKey = ImGuiKey_Enter;
+
+			if (imguiKey != ImGuiKey_None && ImGui::IsKeyDown(imguiKey))
+				return true;
+		}
+
+		return false;
 	}
 
 	glm::vec2 Input::GetMousePosition()
@@ -25,8 +52,20 @@ namespace Waffle {
 	bool Input::IsMouseButtonPressed(const MouseCode button)
 	{
 		auto* window = static_cast<GLFWwindow*>(Application::Get().GetWindow().GetNativeWindow());
-		auto state = glfwGetMouseButton(window, static_cast<int32_t>(button));
-		return state == GLFW_PRESS;
+		if (window)
+		{
+			auto state = glfwGetMouseButton(window, static_cast<int32_t>(button));
+			if (state == GLFW_PRESS)
+				return true;
+		}
+
+		if (ImGui::GetCurrentContext())
+		{
+			if (ImGui::IsMouseDown((ImGuiMouseButton)button))
+				return true;
+		}
+
+		return false;
 	}
 
 	float Input::GetMouseX()

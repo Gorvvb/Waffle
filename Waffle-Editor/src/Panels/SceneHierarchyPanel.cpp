@@ -187,13 +187,13 @@ namespace Waffle {
 					auto& src = entity.GetComponent<SpriteRendererComponent>();
 					src.Texture = Texture2D::Create(path.string(), src.FilterMode);
 				}
-				else if (ext == ".h" || ext == ".cpp")
+				else if (ext == ".lua")
 				{
 					if (!entity.HasComponent<ScriptComponent>())
 						entity.AddComponent<ScriptComponent>();
 
 					auto& sc = entity.GetComponent<ScriptComponent>();
-					sc.ClassName = path.stem().string();
+					sc.ScriptPaths.push_back(path.string());
 				}
 			}
 			ImGui::EndDragDropTarget();
@@ -538,28 +538,113 @@ namespace Waffle {
 
 		DrawComponent<ScriptComponent>("Script", entity, [](auto& component)
 		{
-			char buffer[256];
-			memset(buffer, 0, sizeof(buffer));
-			strcpy_s(buffer, sizeof(buffer), component.ClassName.c_str());
-			if (ImGui::InputText("Class Name", buffer, sizeof(buffer)))
+			if (component.ScriptPaths.empty() && !component.ClassName.empty())
 			{
-				component.ClassName = std::string(buffer);
+				component.ScriptPaths.push_back(component.ClassName);
+			}
+			if (component.ScriptPaths.empty())
+			{
+				component.ScriptPaths.push_back("");
 			}
 
-			if (ImGui::BeginDragDropTarget())
+			// Gather all .lua files from Assets directory for the dropdown
+			std::vector<std::filesystem::path> luaFiles;
+			if (std::filesystem::exists(g_AssetPath))
 			{
-				if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("CONTENT_BROWSER_ITEM"))
+				for (auto& entry : std::filesystem::recursive_directory_iterator(g_AssetPath))
 				{
-					const wchar_t* pathStr = (const wchar_t*)payload->Data;
-					std::filesystem::path path = std::filesystem::path(g_AssetPath) / pathStr;
-					std::string ext = path.extension().string();
-					for (auto& c : ext) c = (char)tolower(c);
-					if (ext == ".h" || ext == ".cpp")
+					if (entry.is_regular_file() && entry.path().extension() == ".lua")
 					{
-						component.ClassName = path.stem().string();
+						luaFiles.push_back(std::filesystem::relative(entry.path(), g_AssetPath));
 					}
 				}
-				ImGui::EndDragDropTarget();
+			}
+
+			for (size_t i = 0; i < component.ScriptPaths.size(); i++)
+			{
+				ImGui::PushID((int)i);
+				std::string label = "##Script" + std::to_string(i + 1);
+
+				std::string currentScript = component.ScriptPaths[i];
+				std::string filenameOnly = currentScript.empty() ? "None (Select .lua Script)" : std::filesystem::path(currentScript).filename().string();
+
+				ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x - 120.0f);
+				if (ImGui::BeginCombo(label.c_str(), filenameOnly.c_str()))
+				{
+					if (ImGui::Selectable("None", currentScript.empty()))
+					{
+						component.ScriptPaths[i] = "";
+					}
+
+					for (const auto& luaFile : luaFiles)
+					{
+						std::string fileStr = luaFile.string();
+						std::string nameStr = luaFile.filename().string();
+						bool isSelected = (currentScript == fileStr || currentScript == nameStr);
+						if (ImGui::Selectable(nameStr.c_str(), isSelected))
+						{
+							component.ScriptPaths[i] = fileStr;
+						}
+						if (isSelected)
+							ImGui::SetItemDefaultFocus();
+					}
+					ImGui::EndCombo();
+				}
+
+				if (!currentScript.empty() && ImGui::IsItemHovered())
+				{
+					ImGui::SetTooltip("%s", currentScript.c_str());
+				}
+
+				if (ImGui::BeginDragDropTarget())
+				{
+					if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("CONTENT_BROWSER_ITEM"))
+					{
+						const wchar_t* pathStr = (const wchar_t*)payload->Data;
+						std::filesystem::path path(pathStr);
+						if (path.extension() == ".lua")
+						{
+							component.ScriptPaths[i] = path.filename().string();
+						}
+					}
+					ImGui::EndDragDropTarget();
+				}
+
+				ImGui::SameLine();
+				if (ImGui::Button("Edit"))
+				{
+					if (!component.ScriptPaths[i].empty())
+					{
+						std::filesystem::path fullPath = std::filesystem::path(g_AssetPath) / component.ScriptPaths[i];
+						if (!std::filesystem::exists(fullPath) && std::filesystem::exists(g_AssetPath))
+						{
+							for (auto& entry : std::filesystem::recursive_directory_iterator(g_AssetPath))
+							{
+								if (entry.is_regular_file() && entry.path().filename() == std::filesystem::path(component.ScriptPaths[i]).filename())
+								{
+									fullPath = entry.path();
+									break;
+								}
+							}
+						}
+						PlatformUtils::OpenFileInEditor(fullPath.string());
+					}
+				}
+
+				ImGui::SameLine();
+				if (ImGui::Button("Remove"))
+				{
+					component.ScriptPaths.erase(component.ScriptPaths.begin() + i);
+					ImGui::PopID();
+					break;
+				}
+
+				ImGui::PopID();
+			}
+
+			if (ImGui::Button("+ Add Another Script"))
+			{
+				component.ScriptPaths.push_back("");
 			}
 		});
 
@@ -574,18 +659,11 @@ namespace Waffle {
 
 			if (component.Texture)
 			{
-				if (component.FilterMode == TextureFilter::Nearest)
-					ImGui::GetWindowDrawList()->AddCallback(ImGui::GetPlatformIO().DrawCallback_SetSamplerNearest, nullptr);
-				else
-					ImGui::GetWindowDrawList()->AddCallback(ImGui::GetPlatformIO().DrawCallback_SetSamplerLinear, nullptr);
-
-				ImGui::ImageButton("##Texture", (void*)(intptr_t)component.Texture->GetRendererID(), ImVec2(100.0f, 100.0f), ImVec2(0, 1), ImVec2(1, 0));
-
-				ImGui::GetWindowDrawList()->AddCallback(ImGui::GetPlatformIO().DrawCallback_SetSamplerLinear, nullptr);
+				ImGui::ImageButton("##SpriteTexturePreview", (ImTextureID)(uintptr_t)component.Texture->GetRendererID(), { 64, 64 }, { 0, 1 }, { 1, 0 });
 			}
 			else
 			{
-				ImGui::Button("No Texture", ImVec2(100.0f, 0.0f));
+				ImGui::Button("No Texture", { 64, 64 });
 			}
 
 			if (ImGui::BeginDragDropTarget())
@@ -600,8 +678,23 @@ namespace Waffle {
 			}
 
 			ImGui::SameLine();
-			if (ImGui::Button("Remove Texture"))
-				component.Texture = nullptr;
+			if (ImGui::Button("Browse Texture"))
+			{
+				std::string filepath = FileDialogs::OpenFile("Texture Files (*.png *.jpg *.jpeg)\0*.png;*.jpg;*.jpeg\0All Files (*.*)\0*.*\0");
+				if (!filepath.empty())
+				{
+					component.Texture = Texture2D::Create(filepath, component.FilterMode);
+				}
+			}
+
+			if (component.Texture)
+			{
+				ImGui::SameLine();
+				if (ImGui::Button("Remove Texture"))
+				{
+					component.Texture = nullptr;
+				}
+			}
 
 			const char* filterOptions[] = { "Nearest", "Linear" };
 			const char* currentFilter = filterOptions[static_cast<int>(component.FilterMode)];
@@ -612,13 +705,11 @@ namespace Waffle {
 					bool isSelected = (currentFilter == filterOptions[i]);
 					if (ImGui::Selectable(filterOptions[i], isSelected))
 					{
-						component.FilterMode = static_cast<Waffle::TextureFilter>(i);
-
+						component.FilterMode = static_cast<TextureFilter>(i);
 						if (component.Texture)
-						{
 							component.Texture->SetFilter(component.FilterMode);
-						}
 					}
+
 					if (isSelected)
 						ImGui::SetItemDefaultFocus();
 				}
@@ -696,7 +787,19 @@ namespace Waffle {
 
 	template<typename T>
 	void SceneHierarchyPanel::DisplayAddComponentEntry(const std::string& entryName) {
-		if (!m_SelectionContext.HasComponent<T>())
+		if (std::is_same_v<T, ScriptComponent>)
+		{
+			if (ImGui::MenuItem(entryName.c_str()))
+			{
+				if (!m_SelectionContext.HasComponent<ScriptComponent>())
+					m_SelectionContext.AddComponent<ScriptComponent>();
+
+				auto& sc = m_SelectionContext.GetComponent<ScriptComponent>();
+				sc.ScriptPaths.push_back("");
+				ImGui::CloseCurrentPopup();
+			}
+		}
+		else if (!m_SelectionContext.HasComponent<T>())
 		{
 			if (ImGui::MenuItem(entryName.c_str()))
 			{
