@@ -126,69 +126,16 @@ namespace Waffle {
 	void VulkanTexture2D::Bind(uint32_t slot) const
 	{
 		WF_PROFILE_FUNCTION();
-
-		// Ensure we have a descriptor set for this slot
-		auto it = m_SlotDescriptorSets.find(slot);
-		if (it == m_SlotDescriptorSets.end())
-		{
-			auto* ctx = VulkanContext::Get();
-			VkDevice dev = ctx->GetDevice();
-
-			// Create a combined-image-sampler descriptor set for this slot.
-			// We use a simple 1-binding layout each time.
-			VkDescriptorSetLayoutBinding binding{};
-			binding.binding            = slot;
-			binding.descriptorType     = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-			binding.descriptorCount    = 1;
-			binding.stageFlags         = VK_SHADER_STAGE_FRAGMENT_BIT;
-
-			VkDescriptorSetLayoutCreateInfo layoutInfo{};
-			layoutInfo.sType        = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-			layoutInfo.bindingCount = 1;
-			layoutInfo.pBindings    = &binding;
-
-			VkDescriptorSetLayout layout;
-			vkCreateDescriptorSetLayout(dev, &layoutInfo, nullptr, &layout);
-
-			VkDescriptorSetAllocateInfo allocInfo{};
-			allocInfo.sType              = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-			allocInfo.descriptorPool     = ctx->GetDescriptorPool();
-			allocInfo.descriptorSetCount = 1;
-			allocInfo.pSetLayouts        = &layout;
-
-			VkDescriptorSet ds = VK_NULL_HANDLE;
-			VkResult res = vkAllocateDescriptorSets(dev, &allocInfo, &ds);
-			vkDestroyDescriptorSetLayout(dev, layout, nullptr);
-
-			if (res != VK_SUCCESS || ds == VK_NULL_HANDLE)
-			{
-				WF_CORE_ERROR("vkAllocateDescriptorSets in VulkanTexture2D::Bind failed with error code: {0}", (int)res);
-				return;
-			}
-
-			// Write image info
-			VkDescriptorImageInfo imageInfo{};
-			imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-			imageInfo.imageView   = m_ImageView;
-			imageInfo.sampler     = m_Sampler;
-
-			VkWriteDescriptorSet write{};
-			write.sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-			write.dstSet          = ds;
-			write.dstBinding      = slot;
-			write.dstArrayElement = 0;
-			write.descriptorType  = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-			write.descriptorCount = 1;
-			write.pImageInfo      = &imageInfo;
-
-			vkUpdateDescriptorSets(dev, 1, &write, 0, nullptr);
-			m_SlotDescriptorSets[slot] = ds;
-			it = m_SlotDescriptorSets.find(slot);
-		}
-
-		// Register with the context so RendererAPI can bind it before the next draw
-		VulkanContext::Get()->BindDescriptorSet(1 + slot, it->second);
 		VulkanContext::Get()->RegisterTexture(slot, m_ImageView, m_Sampler);
+	}
+
+	void VulkanTexture2D::SetFilter(TextureFilter filter)
+	{
+		auto* ctx = VulkanContext::Get();
+		if (m_Sampler)
+			vkDestroySampler(ctx->GetDevice(), m_Sampler, nullptr);
+		CreateSampler(filter);
+		m_SlotDescriptorSets.clear();
 	}
 
 	bool VulkanTexture2D::operator==(const Texture& other) const

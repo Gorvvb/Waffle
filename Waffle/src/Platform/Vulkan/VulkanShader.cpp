@@ -325,12 +325,8 @@ namespace Waffle {
 		auto it = m_Pipelines.find(key);
 		if (it != m_Pipelines.end())
 		{
-			WF_CORE_WARN("Pipeline CACHE HIT: formats={0}", key.ColorFormats.size());
-			for (auto f : key.ColorFormats) WF_CORE_WARN("  fmt={0}", (int)f);
 			return it->second;
 		}
-		WF_CORE_WARN("Pipeline CACHE MISS - creating new pipeline");
-		for (auto f : key.ColorFormats) WF_CORE_WARN("  new fmt={0}", (int)f);
 
 		// ---------- Create the pipeline ----------
 		VkDevice dev = ctx->GetDevice();

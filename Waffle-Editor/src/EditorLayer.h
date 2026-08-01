@@ -20,8 +20,8 @@ namespace Waffle {
 		virtual void OnImGuiRender() override;
 		void OnEvent(Event& e) override;
 	private:
-		bool OnkeyPressed(KeyPressedEvent e);
-		bool OnMouseButtonPressed(MouseButtonPressedEvent e);
+		bool OnkeyPressed(KeyPressedEvent& e);
+		bool OnMouseButtonPressed(MouseButtonPressedEvent& e);
 
 		void OnOverlayRender();
 

@@ -172,6 +172,9 @@ namespace Waffle {
 			samplers[i] = i;
 
 		s_Data.QuadShader = Shader::Create("assets/shaders/2DQuadShader.glsl");
+		s_Data.QuadShader->Bind();
+		s_Data.QuadShader->SetIntArray("u_Textures", samplers, s_Data.MaxTextureSlots);
+
 		s_Data.CircleShader = Shader::Create("assets/shaders/2DCircleShader.glsl");
 		s_Data.LineShader = Shader::Create("assets/shaders/2DLineShader.glsl");
 		

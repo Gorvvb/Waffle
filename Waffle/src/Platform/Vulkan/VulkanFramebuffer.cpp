@@ -131,9 +131,6 @@ namespace Waffle {
 	{
 		auto* ctx = VulkanContext::Get();
 		ctx->SetActiveRenderingFormats(m_ColorFormats, m_DepthFormat);
-		WF_CORE_WARN("Framebuffer::Bind: setting {0} color formats", m_ColorFormats.size());
-		for (size_t i = 0; i < m_ColorFormats.size(); i++)
-			WF_CORE_WARN("  ColorFormat[{0}] = {1}", i, (int)m_ColorFormats[i]);
 
 		VkCommandBuffer cmd = ctx->GetCurrentCommandBuffer();
 
@@ -165,10 +162,7 @@ namespace Waffle {
 			colorAttachments[i].imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 			colorAttachments[i].loadOp      = VK_ATTACHMENT_LOAD_OP_CLEAR;
 			colorAttachments[i].storeOp     = VK_ATTACHMENT_STORE_OP_STORE;
-			VkClearColorValue clearVal = ctx->GetClearColor();
-			WF_CORE_WARN("Framebuffer clear color: r={0} g={1} b={2}",
-				clearVal.float32[0], clearVal.float32[1], clearVal.float32[2]);
-			colorAttachments[i].clearValue.color = clearVal;
+			colorAttachments[i].clearValue.color = ctx->GetClearColor();
 		}
 
 		VkRenderingAttachmentInfo depthAttachment{};

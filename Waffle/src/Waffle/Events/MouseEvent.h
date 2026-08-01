@@ -75,7 +75,7 @@ namespace Waffle {
 			return ss.str();
 		}
 
-		EVENT_CLASS_TYPE(MouseButtonPressed)
+		EVENT_CLASS_TYPE(MouseButtonReleased)
 	};
 
 	class MouseButtonPressedEvent : public MouseButtonEvent
@@ -91,6 +91,6 @@ namespace Waffle {
 			return ss.str();
 		}
 
-		EVENT_CLASS_TYPE(MouseButtonReleased)
+		EVENT_CLASS_TYPE(MouseButtonPressed)
 	};
 }

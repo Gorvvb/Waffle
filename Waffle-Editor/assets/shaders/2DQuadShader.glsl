@@ -47,7 +47,7 @@ layout (location = 2) in vec2 v_TilingFactor;
 layout (location = 3) in flat float v_TexIndex;
 layout (location = 4) in flat int v_EntityID;
 
-layout (binding = 1) uniform sampler2D u_Textures[32];
+layout (set = 1, binding = 0) uniform sampler2D u_Textures[32];
 
 void main()
 {

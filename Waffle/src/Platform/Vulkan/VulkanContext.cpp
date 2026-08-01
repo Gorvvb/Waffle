@@ -287,7 +287,6 @@ namespace Waffle {
 	{
 		SetActiveRenderingFormats({ m_SwapChainImageFormat }, m_DepthFormat);
 		m_BoundShader = nullptr;
-		WF_CORE_WARN("BeginSwapChainRendering: swapchain format = {0}", (int)m_SwapChainImageFormat);
 		VkCommandBuffer cmd = GetCurrentCommandBuffer();
 
 		// Transition swap-chain image to color attachment

@@ -63,32 +63,33 @@ namespace Waffle {
 		{
 			auto* ctx = VulkanContext::Get();
 
-			// Vulkan needs VK_KHR_dynamic_rendering compatible pipeline
 			ImGui_ImplGlfw_InitForVulkan(window, true);
 
 			ImGui_ImplVulkan_InitInfo initInfo{};
-			initInfo.Instance        = ctx->GetInstance();
-			initInfo.PhysicalDevice  = ctx->GetPhysicalDevice();
-			initInfo.Device          = ctx->GetDevice();
-			initInfo.QueueFamily     = ctx->GetGraphicsQueueFamily();
-			initInfo.Queue           = ctx->GetGraphicsQueue();
-			initInfo.DescriptorPool  = ctx->GetDescriptorPool();
-			initInfo.MinImageCount   = ctx->GetFramesInFlight();
-			initInfo.ImageCount      = ctx->GetSwapChainImageCount();
-			initInfo.MSAASamples     = VK_SAMPLE_COUNT_1_BIT;
-			initInfo.RenderPass      = VK_NULL_HANDLE; // dynamic rendering — no render pass
+			initInfo.ApiVersion = VK_API_VERSION_1_3;
+			initInfo.Instance = ctx->GetInstance();
+			initInfo.PhysicalDevice = ctx->GetPhysicalDevice();
+			initInfo.Device = ctx->GetDevice();
+			initInfo.QueueFamily = ctx->GetGraphicsQueueFamily();
+			initInfo.Queue = ctx->GetGraphicsQueue();
+			initInfo.DescriptorPool = ctx->GetDescriptorPool();
+			initInfo.MinImageCount = ctx->GetFramesInFlight();
+			initInfo.ImageCount = ctx->GetSwapChainImageCount();
 			initInfo.UseDynamicRendering = true;
 
+			// Pipeline info now lives in PipelineInfoMain
+			initInfo.PipelineInfoMain.RenderPass = VK_NULL_HANDLE;  // dynamic rendering, no render pass
+			initInfo.PipelineInfoMain.MSAASamples = VK_SAMPLE_COUNT_1_BIT;
+
 #ifdef IMGUI_IMPL_VULKAN_HAS_DYNAMIC_RENDERING
-			initInfo.PipelineRenderingCreateInfo.sType                   = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO;
-			initInfo.PipelineRenderingCreateInfo.colorAttachmentCount    = 1;
 			VkFormat colorFmt = ctx->GetSwapChainImageFormat();
-			initInfo.PipelineRenderingCreateInfo.pColorAttachmentFormats = &colorFmt;
-			initInfo.PipelineRenderingCreateInfo.depthAttachmentFormat   = ctx->GetDepthFormat();
+			initInfo.PipelineInfoMain.PipelineRenderingCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO_KHR;
+			initInfo.PipelineInfoMain.PipelineRenderingCreateInfo.colorAttachmentCount = 1;
+			initInfo.PipelineInfoMain.PipelineRenderingCreateInfo.pColorAttachmentFormats = &colorFmt;
+			initInfo.PipelineInfoMain.PipelineRenderingCreateInfo.depthAttachmentFormat = ctx->GetDepthFormat();
 #endif
 
 			ImGui_ImplVulkan_Init(&initInfo);
-			ImGui_ImplVulkan_CreateFontsTexture();
 		}
 		else
 		{
@@ -139,8 +140,8 @@ namespace Waffle {
 		if (m_BlockEvents)
 		{
 			ImGuiIO& io = ImGui::GetIO();
-			e.handled |= e.IsInCategory(EventCategoryMouse)    & io.WantCaptureMouse;
-			e.handled |= e.IsInCategory(EventCategoryKeyboard) & io.WantCaptureKeyboard;
+			e.handled |= e.IsInCategory(EventCategoryMouse)    && io.WantCaptureMouse;
+			e.handled |= e.IsInCategory(EventCategoryKeyboard) && io.WantCaptureKeyboard;
 		}
 	}
 
