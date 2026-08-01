@@ -20,6 +20,8 @@ namespace Waffle {
 		
 		virtual void Bind(uint32_t slot = 0) const = 0;
 
+		virtual void SetFilter(TextureFilter filter) = 0;
+
 		virtual std::string GetPath() const = 0;
 
 		virtual bool operator==(const Texture& other) const = 0;

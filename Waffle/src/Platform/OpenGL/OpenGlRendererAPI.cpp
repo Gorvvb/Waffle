@@ -14,6 +14,9 @@ namespace Waffle {
 		const char* message,
 		const void* userParam)
 	{
+		if (type == GL_DEBUG_TYPE_PERFORMANCE)
+			return;
+
 		switch (severity)
 		{
 		case GL_DEBUG_SEVERITY_HIGH:         WF_CORE_CRITICAL(message); return;

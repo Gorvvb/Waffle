@@ -116,6 +116,18 @@ namespace Waffle {
 	{
 		WF_PROFILE_FUNCTION();
 
+		glBindSampler(slot, 0);
 		glBindTextureUnit(slot, m_RendererID);
+	}
+
+	void OpenGlTexture2D::SetFilter(TextureFilter filter)
+	{
+		WF_PROFILE_FUNCTION();
+
+		GLenum minFilter = (filter == TextureFilter::Nearest) ? GL_NEAREST : GL_LINEAR;
+		GLenum magFilter = (filter == TextureFilter::Nearest) ? GL_NEAREST : GL_LINEAR;
+
+		glTextureParameteri(m_RendererID, GL_TEXTURE_MIN_FILTER, minFilter);
+		glTextureParameteri(m_RendererID, GL_TEXTURE_MAG_FILTER, magFilter);
 	}
 }

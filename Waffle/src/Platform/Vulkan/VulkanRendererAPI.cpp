@@ -38,14 +38,10 @@ namespace Waffle {
 
 	void VulkanRendererAPI::SetClearColor(const glm::vec4& color)
 	{
-		WF_CORE_WARN("SetClearColor called: r={0} g={1} b={2}", color.r, color.g, color.b);
-		auto srgbToLinear = [](float c) {
-			return c <= 0.04045f ? c / 12.92f : std::pow((c + 0.055f) / 1.055f, 2.4f);
-		};
 		VkClearColorValue c{};
-		c.float32[0] = srgbToLinear(color.r);
-		c.float32[1] = srgbToLinear(color.g);
-		c.float32[2] = srgbToLinear(color.b);
+		c.float32[0] = color.r;
+		c.float32[1] = color.g;
+		c.float32[2] = color.b;
 		c.float32[3] = color.a;
 		VulkanContext::Get()->SetClearColor(c);
 	}
@@ -136,13 +132,6 @@ namespace Waffle {
 
 		// ---- Get / create pipeline ----------------------------------------
 		// ADD THESE LOGS:
-        auto activeFormats = ctx->GetActiveColorFormats();
-        WF_CORE_WARN("Draw: IsRenderingActive={0}, ActiveFormats count={1}",
-            ctx->IsRenderingActive(), activeFormats.size());
-        for (size_t i = 0; i < activeFormats.size(); i++)
-            WF_CORE_WARN("  Format[{0}] = {1}", i, (int)activeFormats[i]);
-        WF_CORE_WARN("  DepthFormat = {0}", (int)ctx->GetActiveDepthFormat());
-        // END LOGS
         VkPipeline pipeline = shader->GetOrCreatePipeline(va, topology, ctx->GetActiveColorFormats(), ctx->GetActiveDepthFormat());
 		vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
 

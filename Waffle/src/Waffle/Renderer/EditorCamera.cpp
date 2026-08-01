@@ -20,19 +20,33 @@ namespace Waffle {
 
 	void EditorCamera::OnUpdate(Timestep ts)
 	{
-		if (Input::IsKeyPressed(Key::LeftShift))
-		{
-			const glm::vec2& mouse{ Input::GetMouseX(), Input::GetMouseY() };
-			glm::vec2 delta = (mouse - m_InitialMousePosition) * 0.003f;
-			m_InitialMousePosition = mouse;
+		const glm::vec2& mouse{ Input::GetMouseX(), Input::GetMouseY() };
+		glm::vec2 delta = (mouse - m_InitialMousePosition) * 0.003f;
 
-			if (Input::IsMouseButtonPressed(Mouse::ButtonMiddle))
-				MousePan(delta);
-			else if (Input::IsMouseButtonPressed(Mouse::ButtonLeft))
+		if (Input::IsKeyPressed(Key::LeftControl) || Input::IsKeyPressed(Key::RightControl))
+		{
+			if (Input::IsMouseButtonPressed(Mouse::ButtonRight))
 				MouseRotate(delta);
+			else if (Input::IsMouseButtonPressed(Mouse::ButtonLeft) || Input::IsMouseButtonPressed(Mouse::ButtonMiddle))
+				MousePan(delta);
+		}
+		else if (Input::IsKeyPressed(Key::LeftShift) || Input::IsKeyPressed(Key::RightShift) || Input::IsKeyPressed(Key::LeftAlt))
+		{
+			if (Input::IsMouseButtonPressed(Mouse::ButtonLeft) || Input::IsMouseButtonPressed(Mouse::ButtonMiddle))
+				MousePan(delta);
 			else if (Input::IsMouseButtonPressed(Mouse::ButtonRight))
 				MouseZoom(delta.y);
 		}
+		else if (Input::IsMouseButtonPressed(Mouse::ButtonMiddle))
+		{
+			MousePan(delta);
+		}
+		else if (Input::IsMouseButtonPressed(Mouse::ButtonRight))
+		{
+			MouseRotate(delta);
+		}
+
+		m_InitialMousePosition = mouse;
 
 		UpdateView();
 	}

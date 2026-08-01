@@ -193,7 +193,7 @@ namespace Waffle {
 
 		if (io.ConfigFlags & ImGuiConfigFlags_DockingEnable)
 		{
-			ImGuiID dockspace_id = ImGui::GetID("MyDockSpace");
+			ImGuiID dockspace_id = ImGui::GetID("WaffleDockSpace");
 			ImGui::DockSpace(dockspace_id, ImVec2(0.0f, 0.0f), dockspace_flags);
 		}
 
@@ -234,7 +234,7 @@ namespace Waffle {
 		ImGui::Separator();
 
 		std::string name = "None";
-		if (m_HoveredEntity)
+		if (m_HoveredEntity && m_HoveredEntity.HasComponent<TagComponent>())
 			name = m_HoveredEntity.GetComponent<TagComponent>().Tag;
 		
 		ImGui::Text("Hovered Entity: %s", name.c_str());
@@ -476,7 +476,7 @@ namespace Waffle {
 		dispacher.Dispatch<MouseButtonPressedEvent>(WF_BIND_EVENT_FN(EditorLayer::OnMouseButtonPressed));
 	}
 
-	bool EditorLayer::OnkeyPressed(KeyPressedEvent e)
+	bool EditorLayer::OnkeyPressed(KeyPressedEvent& e)
 	{
 		if (e.GetRepeatCount() > 0)
 			return false;
@@ -536,11 +536,20 @@ namespace Waffle {
 				m_GizmoType = ImGuizmo::OPERATION::SCALE;
 				break;
 			}
+			case Key::F:
+			{
+				Entity selectedEntity = m_SceneHierarchyPanel.GetSelectedEntity();
+				if (selectedEntity && selectedEntity.HasComponent<TransformComponent>())
+				{
+					m_EditorCamera.SetFocalPoint(selectedEntity.GetComponent<TransformComponent>().Translation);
+				}
+				break;
+			}
 		}
 		return false;
 	}
 
-	bool EditorLayer::OnMouseButtonPressed(MouseButtonPressedEvent e)
+	bool EditorLayer::OnMouseButtonPressed(MouseButtonPressedEvent& e)
 	{
 		if (e.GetMouseButton() == Mouse::ButtonLeft && m_ViewportHovered && !ImGuizmo::IsOver() && !Input::IsKeyPressed(Key::LeftControl))
 		{
