@@ -11,7 +11,7 @@ The project is in early development. Features are incomplete and the API is subj
 
 - 2D game development
 - OpenGL and Vulkan rendering backends
-- Native scripting
+- Lua scripting
 - Extensible architecture
 
 ## Building
