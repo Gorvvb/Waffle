@@ -8,7 +8,7 @@
 #include <glm/gtc/type_ptr.hpp>
 
 #include <imgui/imgui.h>
-#include <ImGuizmo/ImGuizmo.h>
+#include <ImGuizmo.h>
 
 namespace Waffle {
 
