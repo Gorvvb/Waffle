@@ -1,26 +1,29 @@
 Scene: Default
 Entities:
-  - Entity: 2073107610401774182
+  - Entity: 1266555749760020966
     TagComponent:
-      Tag: Floor
+      Tag: Player
     TransformComponent:
-      Translation: [0, -3, 0]
+      Translation: [0, 0, 0]
       Rotation: [0, 0, 0]
-      Scale: [4, 1, 1]
+      Scale: [1, 1, 1]
     SpriteRendererComponent:
-      Color: [0.770609319, 0.0165722277, 0, 1]
-      TexturePath: C:\Dev\Waffle\Waffle-Editor\projects\TestingGame1\assets\Textures\Checkerboard.png
-      FilterMode: 0
+      Color: [0, 1, 0.0860214233, 1]
+      FilterMode: 1
       TilingFactor: [1, 1]
+    ScriptComponent:
+      ClassName: Movement
+      ScriptPaths:
+        - C:\Dev\Waffle\Waffle-Editor\Projects\TestingGame1\Assets\Scripts\movement.lua
     Rigidbody2DComponent:
-      BodyType: Static
+      BodyType: Dynamic
       FixedRotation: false
     BoxCollider2DComponent:
       Offset: [0, 0]
       Size: [0.5, 0.5]
       Density: 1
       Friction: 0.5
-      Restitution: 0.349999994
+      Restitution: 0
       RestitutionThreshold: 0.5
   - Entity: 15616650339514566710
     TagComponent:
@@ -44,26 +47,25 @@ Entities:
       BackgroundImagePath: ""
       BackgroundTilingFactor: [1, 1]
       BackgroundFilterMode: 1
-  - Entity: 1266555749760020966
+  - Entity: 2073107610401774182
     TagComponent:
-      Tag: Player
+      Tag: Floor
     TransformComponent:
-      Translation: [0, 0, 0]
-      Rotation: [0, 0, -0.261799395]
-      Scale: [1, 1, 1]
+      Translation: [0, -3, 0]
+      Rotation: [0, 0, 0]
+      Scale: [8, 1, 1]
     SpriteRendererComponent:
-      Color: [0, 1, 0.0860214233, 1]
-      FilterMode: 1
-      TilingFactor: [1, 1]
-    ScriptComponent:
-      ClassName: Movement
+      Color: [0.770609319, 0.0165722277, 0, 1]
+      TexturePath: C:\Dev\Waffle\Waffle-Editor\projects\TestingGame1\assets\Textures\Checkerboard.png
+      FilterMode: 0
+      TilingFactor: [2, 0.5]
     Rigidbody2DComponent:
-      BodyType: Dynamic
+      BodyType: Static
       FixedRotation: false
     BoxCollider2DComponent:
       Offset: [0, 0]
       Size: [0.5, 0.5]
       Density: 1
       Friction: 0.5
-      Restitution: 0
+      Restitution: 0.349999994
       RestitutionThreshold: 0.5

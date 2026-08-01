@@ -12,4 +12,10 @@ namespace Waffle {
 		static std::string SaveFile(const char* filter);
 		static std::string OpenFolder(const char* initialFolder = "");
 	};
+
+	class PlatformUtils
+	{
+	public:
+		static void OpenFileInEditor(const std::string& filepath);
+	};
 }

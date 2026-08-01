@@ -7,6 +7,7 @@
 #include "entt.hpp"
 
 class b2World;
+class b2Body;
 
 namespace Waffle {
 
@@ -24,10 +25,12 @@ namespace Waffle {
 		int m_StepFrames = 0;
 
 		b2World* m_PhysicsWorld = nullptr;
+		std::unordered_map<b2Body*, uint32_t> m_BodyEntityMap;
 
 		friend class Entity;
 		friend class SceneHierarchyPanel;
 		friend class SceneSerializer;
+		friend class LuaScriptEngine;
 	public:
 		Scene();
 		~Scene();
@@ -69,6 +72,9 @@ namespace Waffle {
 		{
 			return m_Registry.view<Components...>();
 		}
+
+		b2World* GetPhysicsWorld() { return m_PhysicsWorld; }
+		std::unordered_map<b2Body*, uint32_t>& GetBodyEntityMap() { return m_BodyEntityMap; }
 	private:
 		template<typename T>
 		void OnComponentAdded(Entity entity, T& component);

@@ -69,6 +69,8 @@ namespace Waffle {
 	struct ScriptComponent
 	{
 		std::string ClassName;
+		std::vector<std::string> ScriptPaths;
+		std::vector<std::string> ScriptTableKeys;
 
 		ScriptComponent() = default;
 		ScriptComponent(const ScriptComponent&) = default;

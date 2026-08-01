@@ -21,3 +21,6 @@
 [submodule "Waffle/vendor/Box2D"]
 	path = Waffle/vendor/Box2D
 	url = https://github.com/Gorvvb/Box2D
+[submodule "Waffle/vendor/lua"]
+	path = Waffle/vendor/lua
+	url = https://github.com/Gorvvb/lua.git

@@ -5,6 +5,7 @@
 #include <commdlg.h>
 #include <shlobj.h>
 #include <shobjidl.h>
+#include <shellapi.h>
 #include <GLFW/glfw3.h>
 #define GLFW_EXPOSE_NATIVE_WIN32
 #include <GLFW/glfw3native.h>
@@ -112,5 +113,17 @@ namespace Waffle {
 		}
 
 		return result;
+	}
+
+	void PlatformUtils::OpenFileInEditor(const std::string& filepath)
+	{
+		std::filesystem::path absPath = std::filesystem::absolute(filepath);
+		std::string pathStr = absPath.string();
+
+		HINSTANCE res = ShellExecuteA(NULL, "open", "code", pathStr.c_str(), NULL, SW_SHOW);
+		if ((INT_PTR)res <= 32)
+		{
+			ShellExecuteA(NULL, "open", "notepad.exe", pathStr.c_str(), NULL, SW_SHOW);
+		}
 	}
 }

@@ -3,6 +3,7 @@
 
 #include "Components.h"
 #include "ScriptableEntity.h"
+#include "Waffle/Scripting/LuaScriptEngine.h"
 #include "Waffle/Renderer/Renderer2D.h"
 
 #include <glm/glm.hpp>
@@ -192,7 +193,8 @@ namespace Waffle {
 	void Scene::OnRuntimeStart()
 	{
 		m_PhysicsWorld = new b2World({ 0.0f, -9.8f });
-		
+		m_BodyEntityMap.clear();
+
 		auto view = m_Registry.view<Rigidbody2DComponent>();
 		for (auto e : view)
 		{
@@ -208,10 +210,12 @@ namespace Waffle {
 			body->SetFixedRotation(rb2d.FixedRotation);
 			rb2d.RuntimeBody = body;
 
+			m_BodyEntityMap[body] = (uint32_t)e;
+
 			if (entity.HasComponent<BoxCollider2DComponent>())
 			{
 				auto& bc2d = entity.GetComponent<BoxCollider2DComponent>();
-				
+
 				b2PolygonShape boxShape;
 				boxShape.SetAsBox(bc2d.Size.x * transform.Scale.x, bc2d.Size.y * transform.Scale.y);
 
@@ -241,10 +245,14 @@ namespace Waffle {
 				body->CreateFixture(&fixtureDef);
 			}
 		}
+
+		LuaScriptEngine::OnRuntimeStart(this);
 	}
 
 	void Scene::OnRuntimeStop()
 	{
+		LuaScriptEngine::OnRuntimeStop(this);
+
 		delete m_PhysicsWorld;
 		m_PhysicsWorld = nullptr;
 	}
@@ -255,6 +263,8 @@ namespace Waffle {
 		{
 			// Update scripts
 			{
+				LuaScriptEngine::OnRuntimeUpdate(this, ts);
+
 				// TODO: MOVE TO SCENE ONSCENEPLAY WHEN YOU MAKE IT
 				m_Registry.view<NativeScriptComponent>().each([=](auto entity, auto& nsc)
 					{

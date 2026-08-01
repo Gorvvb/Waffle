@@ -1,6 +1,7 @@
 #include "wfpch.h"
 #include "ContentBrowserPanel.h"
 #include "Waffle/Scene/SceneSerializer.h"
+#include "Waffle/Utils/PlatformUtils.h"
 
 #include <imgui/imgui.h>
 #include <fstream>
@@ -116,6 +117,10 @@ namespace Waffle {
 						if (m_OpenSceneCallback)
 							m_OpenSceneCallback(path);
 					}
+					else if (path.extension() == ".lua" || path.extension() == ".h" || path.extension() == ".cpp" || path.extension() == ".txt")
+					{
+						PlatformUtils::OpenFileInEditor(path.string());
+					}
 				}
 
 				ImGui::TextWrapped(filenameString.c_str());
@@ -170,69 +175,29 @@ namespace Waffle {
 					serializer.Serialize(scenePath.string());
 				}
 
-				if (ImGui::MenuItem("C++ Script..."))
+				if (ImGui::MenuItem("Lua Script"))
 				{
-					strcpy_s(m_ScriptClassBuffer, sizeof(m_ScriptClassBuffer), "NewScript");
-					m_OpenScriptModal = true;
+					std::filesystem::path scriptPath = m_CurrentDirectory / "NewScript.lua";
+					int counter = 1;
+					while (std::filesystem::exists(scriptPath))
+					{
+						scriptPath = m_CurrentDirectory / ("NewScript" + std::to_string(counter++) + ".lua");
+					}
+
+					std::ofstream scriptFile(scriptPath);
+					scriptFile << "-- Waffle Lua Script\n\n"
+							   << "function OnCreate(entity)\n"
+							   << "    -- Called when the script starts\n"
+							   << "end\n\n"
+							   << "function OnUpdate(entity, ts)\n"
+							   << "    -- Called every frame during gameplay\n"
+							   << "end\n\n"
+							   << "function OnDestroy(entity)\n"
+							   << "    -- Called when the script is destroyed\n"
+							   << "end\n";
+					scriptFile.close();
 				}
 				ImGui::EndMenu();
-			}
-			ImGui::EndPopup();
-		}
-
-		// Modal Dialog: Create C++ Script
-		if (m_OpenScriptModal)
-		{
-			ImGui::OpenPopup("Create C++ Script");
-			m_OpenScriptModal = false;
-		}
-
-		if (ImGui::BeginPopupModal("Create C++ Script", NULL, ImGuiWindowFlags_AlwaysAutoResize))
-		{
-			ImGui::Text("Enter script class name:");
-			ImGui::InputText("##ScriptClassName", m_ScriptClassBuffer, sizeof(m_ScriptClassBuffer));
-
-			if (ImGui::Button("Create", ImVec2(120, 0)) || ImGui::IsKeyPressed(ImGuiKey_Enter))
-			{
-				std::string name = m_ScriptClassBuffer;
-				if (name.empty())
-					name = "NewScript";
-
-				std::filesystem::path headerPath = m_CurrentDirectory / (name + ".h");
-				std::filesystem::path cppPath = m_CurrentDirectory / (name + ".cpp");
-
-				int counter = 1;
-				std::string baseName = name;
-				while (std::filesystem::exists(headerPath) || std::filesystem::exists(cppPath))
-				{
-					name = baseName + std::to_string(counter++);
-					headerPath = m_CurrentDirectory / (name + ".h");
-					cppPath = m_CurrentDirectory / (name + ".cpp");
-				}
-
-				std::ofstream hFile(headerPath);
-				hFile << "#pragma once\n\n"
-					  << "#include <Waffle.h>\n\n"
-					  << "class " << name << " : public Waffle::ScriptableEntity\n"
-					  << "{\n"
-					  << "public:\n"
-					  << "\tvirtual void OnCreate() override\n\t{\n\t}\n\n"
-					  << "\tvirtual void OnDestroy() override\n\t{\n\t}\n\n"
-					  << "\tvirtual void OnUpdate(Waffle::Timestep ts) override\n\t{\n\t}\n"
-					  << "};\n";
-				hFile.close();
-
-				std::ofstream cFile(cppPath);
-				cFile << "#include \"" << name << ".h\"\n";
-				cFile.close();
-
-				ImGui::CloseCurrentPopup();
-			}
-			ImGui::SetItemDefaultFocus();
-			ImGui::SameLine();
-			if (ImGui::Button("Cancel", ImVec2(120, 0)))
-			{
-				ImGui::CloseCurrentPopup();
 			}
 			ImGui::EndPopup();
 		}
