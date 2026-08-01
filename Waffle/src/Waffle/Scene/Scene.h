@@ -75,6 +75,8 @@ namespace Waffle {
 
 		b2World* GetPhysicsWorld() { return m_PhysicsWorld; }
 		std::unordered_map<b2Body*, uint32_t>& GetBodyEntityMap() { return m_BodyEntityMap; }
+
+		entt::registry& GetRegistry() { return m_Registry; }
 	private:
 		template<typename T>
 		void OnComponentAdded(Entity entity, T& component);

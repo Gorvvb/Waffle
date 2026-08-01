@@ -6,6 +6,8 @@
 
 namespace Waffle {
 
+	class LuaContactListener;
+
 	class LuaScriptEngine
 	{
 	public:
@@ -18,9 +20,12 @@ namespace Waffle {
 
 		static Scene* GetSceneContext() { return s_SceneContext; }
 
+		static lua_State* GetLuaState() { return s_LuaState; }
+
 	private:
 		static lua_State* s_LuaState;
 		static Scene* s_SceneContext;
+		static LuaContactListener* s_ContactListener;
 	};
 
 }

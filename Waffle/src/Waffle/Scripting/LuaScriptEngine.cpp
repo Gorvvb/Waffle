@@ -11,6 +11,7 @@
 #include <box2d/b2_fixture.h>
 #include <box2d/b2_world.h>
 #include <box2d/b2_world_callbacks.h>
+#include <box2d/b2_contact.h>
 #include "LuaIncludes.h"
 #include <fstream>
 #include <cctype>
@@ -178,29 +179,50 @@ namespace Waffle {
 		float dz = lua_isnumber(L, 4) ? (float)lua_tonumber(L, 4) : 0.0f;
 
 		Scene* scene = LuaScriptEngine::GetSceneContext();
-		if (!scene)
-			return 0;
+		if (!scene) return 0;
 
 		Entity entity{ (entt::entity)entityID, scene };
-		if (entity && entity.HasComponent<TransformComponent>())
-		{
-			auto& tc = entity.GetComponent<TransformComponent>();
-			tc.Translation.x += dx;
-			tc.Translation.y += dy;
-			tc.Translation.z += dz;
+		if (!entity || !entity.HasComponent<TransformComponent>())
+			return 0;
 
-			if (entity.HasComponent<Rigidbody2DComponent>())
+		auto& tc = entity.GetComponent<TransformComponent>();
+		tc.Translation.x += dx;
+		tc.Translation.y += dy;
+		tc.Translation.z += dz;
+
+		if (entity.HasComponent<Rigidbody2DComponent>())
+		{
+			auto& rb2d = entity.GetComponent<Rigidbody2DComponent>();
+			b2Body* body = (b2Body*)rb2d.RuntimeBody;
+			if (body)
 			{
-				auto& rb2d = entity.GetComponent<Rigidbody2DComponent>();
-				b2Body* body = (b2Body*)rb2d.RuntimeBody;
-				if (body)
+				switch (rb2d.Type)
 				{
-					b2Vec2 vel = body->GetLinearVelocity();
-					if (dx != 0.0f) vel.x = dx * 60.0f;
-					if (dy != 0.0f) vel.y = dy * 60.0f;
-					body->SetLinearVelocity(vel);
-					body->SetTransform(b2Vec2(tc.Translation.x, tc.Translation.y), tc.Rotation.z);
+				case Rigidbody2DComponent::BodyType::Kinematic:
+					// Kinematic: drive position directly, Box2D interpolates
+					body->SetTransform(
+						b2Vec2(tc.Translation.x, tc.Translation.y),
+						tc.Rotation.z);
 					body->SetAwake(true);
+					break;
+
+				case Rigidbody2DComponent::BodyType::Dynamic:
+					// Dynamic: never stomp position — the solver owns it.
+					// Translate on a dynamic body is a misuse; log and skip.
+					WF_CORE_WARN("Lua_Translate: called on Dynamic body (entity {0}). "
+						"Use SetLinearVelocity or ApplyForce instead.", entityID);
+					// Revert the transform change since Box2D won't follow it
+					tc.Translation.x -= dx;
+					tc.Translation.y -= dy;
+					tc.Translation.z -= dz;
+					break;
+
+				case Rigidbody2DComponent::BodyType::Static:
+					// Static bodies don't move; silently ignore
+					tc.Translation.x -= dx;
+					tc.Translation.y -= dy;
+					tc.Translation.z -= dz;
+					break;
 				}
 			}
 		}
@@ -361,6 +383,116 @@ namespace Waffle {
 			}
 		}
 		return 0;
+	}
+
+	static int Lua_GetRotation(lua_State* L)
+	{
+		uint32_t entityID = (uint32_t)lua_tonumber(L, 1);
+		Scene* scene = LuaScriptEngine::GetSceneContext();
+		if (scene) {
+			Entity entity{ (entt::entity)entityID, scene };
+			if (entity && entity.HasComponent<TransformComponent>()) {
+				const auto& tc = entity.GetComponent<TransformComponent>();
+				lua_pushnumber(L, tc.Rotation.x);
+				lua_pushnumber(L, tc.Rotation.y);
+				lua_pushnumber(L, tc.Rotation.z); // Z is what matters for 2D
+				return 3;
+			}
+		}
+		lua_pushnumber(L, 0); lua_pushnumber(L, 0); lua_pushnumber(L, 0);
+		return 3;
+	}
+
+	static int Lua_SetRotation(lua_State* L)
+	{
+		uint32_t entityID = (uint32_t)lua_tonumber(L, 1);
+		Scene* scene = LuaScriptEngine::GetSceneContext();
+		if (!scene) return 0;
+
+		Entity entity{ (entt::entity)entityID, scene };
+		if (entity && entity.HasComponent<TransformComponent>())
+		{
+			auto& tc = entity.GetComponent<TransformComponent>();
+			if (lua_isnumber(L, 3)) {
+				// Full 3-axis form: SetRotation(id, x, y, z)
+				tc.Rotation.x = (float)lua_tonumber(L, 2);
+				tc.Rotation.y = (float)lua_tonumber(L, 3);
+				tc.Rotation.z = (float)lua_tonumber(L, 4);
+			}
+			else {
+				// 2D shorthand: SetRotation(id, z)
+				tc.Rotation.z = (float)lua_tonumber(L, 2);
+			}
+
+			// Sync physics body rotation
+			if (entity.HasComponent<Rigidbody2DComponent>())
+			{
+				auto& rb2d = entity.GetComponent<Rigidbody2DComponent>();
+				b2Body* body = (b2Body*)rb2d.RuntimeBody;
+				if (body)
+					body->SetTransform(body->GetPosition(), tc.Rotation.z);
+			}
+		}
+		return 0;
+	}
+
+	static int Lua_GetScale(lua_State* L)
+	{
+		uint32_t entityID = (uint32_t)lua_tonumber(L, 1);
+		Scene* scene = LuaScriptEngine::GetSceneContext();
+		if (scene) {
+			Entity entity{ (entt::entity)entityID, scene };
+			if (entity && entity.HasComponent<TransformComponent>()) {
+				const auto& tc = entity.GetComponent<TransformComponent>();
+				lua_pushnumber(L, tc.Scale.x);
+				lua_pushnumber(L, tc.Scale.y);
+				lua_pushnumber(L, tc.Scale.z);
+				return 3;
+			}
+		}
+		lua_pushnumber(L, 1); lua_pushnumber(L, 1); lua_pushnumber(L, 1);
+		return 3;
+	}
+
+	static int Lua_SetScale(lua_State* L)
+	{
+		uint32_t entityID = (uint32_t)lua_tonumber(L, 1);
+		Scene* scene = LuaScriptEngine::GetSceneContext();
+		if (!scene) return 0;
+
+		Entity entity{ (entt::entity)entityID, scene };
+		if (entity && entity.HasComponent<TransformComponent>())
+		{
+			auto& tc = entity.GetComponent<TransformComponent>();
+			tc.Scale.x = (float)lua_tonumber(L, 2);
+			tc.Scale.y = (float)lua_tonumber(L, 3);
+			if (lua_isnumber(L, 4))
+				tc.Scale.z = (float)lua_tonumber(L, 4);
+		}
+		return 0;
+	}
+
+	static int Lua_FindEntityByName(lua_State* L)
+	{
+		const char* name = lua_tostring(L, 1);
+		if (!name) { lua_pushnumber(L, -1); return 1; }
+
+		Scene* scene = LuaScriptEngine::GetSceneContext();
+		if (!scene) { lua_pushnumber(L, -1); return 1; }
+
+		auto view = scene->GetRegistry().view<TagComponent>();
+		for (auto entityID : view)
+		{
+			const auto& tag = view.get<TagComponent>(entityID);
+			if (tag.Tag == name)
+			{
+				lua_pushnumber(L, (uint32_t)entityID);
+				return 1;
+			}
+		}
+
+		lua_pushnumber(L, -1); // not found sentinel
+		return 1;
 	}
 
 	// -------------------------------------------------------------------------
@@ -539,6 +671,13 @@ namespace Waffle {
 		lua_pushcfunction(L, Lua_ApplyForce);           lua_setglobal(L, "ApplyForce");
 		lua_pushcfunction(L, Lua_Raycast);              lua_setglobal(L, "Raycast");
 
+		lua_pushcfunction(L, Lua_GetRotation); lua_setglobal(L, "GetRotation");
+		lua_pushcfunction(L, Lua_SetRotation); lua_setglobal(L, "SetRotation");
+		lua_pushcfunction(L, Lua_GetScale);    lua_setglobal(L, "GetScale");
+		lua_pushcfunction(L, Lua_SetScale);    lua_setglobal(L, "SetScale");
+
+		lua_pushcfunction(L, Lua_FindEntityByName); lua_setglobal(L, "FindEntityByName");
+
 		lua_pushcfunction(L, Lua_LogInfo);              lua_setglobal(L, "LogInfo");
 		lua_pushcfunction(L, Lua_LogWarn);              lua_setglobal(L, "LogWarn");
 		lua_pushcfunction(L, Lua_LogError);             lua_setglobal(L, "LogError");
@@ -670,6 +809,69 @@ namespace Waffle {
 		}
 	}
 
+	class LuaContactListener : public b2ContactListener
+	{
+	public:
+		void FireCollision(const char* funcName, b2Contact* contact)
+		{
+			b2Body* bodyA = contact->GetFixtureA()->GetBody();
+			b2Body* bodyB = contact->GetFixtureB()->GetBody();
+
+			Scene* scene = LuaScriptEngine::GetSceneContext();
+			lua_State* L = LuaScriptEngine::GetLuaState(); // you'll need to expose this
+			if (!scene || !L) return;
+
+			auto& bodyMap = scene->GetBodyEntityMap();
+			auto itA = bodyMap.find(bodyA);
+			auto itB = bodyMap.find(bodyB);
+			if (itA == bodyMap.end() || itB == bodyMap.end()) return;
+
+			uint32_t idA = itA->second;
+			uint32_t idB = itB->second;
+
+			// Fire on A's scripts with B as the other
+			FireOnEntity(L, scene, idA, funcName, idA, idB);
+			// Fire on B's scripts with A as the other
+			FireOnEntity(L, scene, idB, funcName, idB, idA);
+		}
+
+		void BeginContact(b2Contact* contact) override { FireCollision("OnCollisionBegin", contact); }
+		void EndContact(b2Contact* contact)   override { FireCollision("OnCollisionEnd", contact); }
+
+	private:
+		void FireOnEntity(lua_State* L, Scene* scene, uint32_t entityID,
+			const char* funcName, uint32_t selfID, uint32_t otherID)
+		{
+			entt::entity enttID = (entt::entity)entityID;
+			if (!scene->GetRegistry().valid(enttID)) return;
+			if (!scene->GetRegistry().all_of<ScriptComponent>(enttID)) return;
+
+			auto& sc = scene->GetRegistry().get<ScriptComponent>(enttID);
+			for (const auto& tableKey : sc.ScriptTableKeys)
+			{
+				lua_getglobal(L, tableKey.c_str());
+				if (!lua_istable(L, -1)) { lua_pop(L, 1); continue; }
+
+				lua_getfield(L, -1, funcName);
+				if (!lua_isfunction(L, -1)) { lua_pop(L, 2); continue; }
+
+				lua_pushnumber(L, selfID);
+				lua_pushnumber(L, otherID);
+
+				if (lua_pcall(L, 2, 0, 0) != LUA_OK)
+				{
+					const char* err = lua_tostring(L, -1);
+					WF_CORE_ERROR("LuaScriptEngine: {0} error on entity {1}: {2}",
+						funcName, entityID, err ? err : "unknown");
+					lua_pop(L, 1);
+				}
+				lua_pop(L, 1); // pop the env table
+			}
+		}
+	};
+
+	LuaContactListener* LuaScriptEngine::s_ContactListener = nullptr;
+
 	void LuaScriptEngine::OnRuntimeStart(Scene* scene)
 	{
 		Init();
@@ -718,6 +920,12 @@ namespace Waffle {
 					});
 			}
 		}
+
+		if (scene->GetPhysicsWorld())
+		{
+			s_ContactListener = new LuaContactListener();
+			scene->GetPhysicsWorld()->SetContactListener(s_ContactListener);
+		}
 	}
 
 	void LuaScriptEngine::OnRuntimeStop(Scene* scene)
@@ -748,6 +956,12 @@ namespace Waffle {
 
 			sc.ScriptTableKeys.clear();
 		}
+
+		if (scene && scene->GetPhysicsWorld())
+			scene->GetPhysicsWorld()->SetContactListener(nullptr);
+
+		delete s_ContactListener;
+		s_ContactListener = nullptr;
 
 		s_SceneContext = nullptr;
 	}
