@@ -1,0 +1,23 @@
+[submodule "Waffle/vendor/GLFW"]
+	path = Waffle/vendor/GLFW
+	url = https://github.com/Gorvvb/glfw
+	branch = master
+[submodule "Waffle/vendor/imgui"]
+	path = Waffle/vendor/imgui
+	url = https://github.com/Gorvvb/imgui.git
+	branch = docking
+[submodule "Waffle/vendor/glm"]
+	path = Waffle/vendor/glm
+	url = https://github.com/Gorvvb/glm
+[submodule "Waffle/vendor/yaml-cpp"]
+	path = Waffle/vendor/yaml-cpp
+	url = https://github.com/Gorvvb/yaml-cpp
+[submodule "Waffle/vendor/ImGuizmo"]
+	path = Waffle/vendor/ImGuizmo
+	url = https://github.com/Gorvvb/ImGuizmo
+[submodule "Waffle/vendor/spdlog"]
+	path = Waffle/vendor/spdlog
+	url = https://github.com/gabime/spdlog
+[submodule "Waffle/vendor/Box2D"]
+	path = Waffle/vendor/Box2D
+	url = https://github.com/Gorvvb/Box2D
