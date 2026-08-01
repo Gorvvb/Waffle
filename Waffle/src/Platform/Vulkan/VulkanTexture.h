@@ -1,8 +1,14 @@
 #pragma once
 
 #include "Waffle/Renderer/Texture.h"
-#include <vulkan/vulkan.h>
+
+#ifndef VK_NO_PROTOTYPES
+#define VK_NO_PROTOTYPES
+#endif
+#include <Volk/volk.h>
+#include <vma/vk_mem_alloc.h>
 #include <string>
+#include <unordered_map>
 
 namespace Waffle {
 
@@ -42,11 +48,11 @@ namespace Waffle {
 		uint32_t    m_Height = 0;
 		uint32_t    m_Channels = 4;
 
-		VkImage        m_Image       = VK_NULL_HANDLE;
-		VkDeviceMemory m_Memory      = VK_NULL_HANDLE;
-		VkImageView    m_ImageView   = VK_NULL_HANDLE;
-		VkSampler      m_Sampler     = VK_NULL_HANDLE;
-		VkFormat       m_Format      = VK_FORMAT_R8G8B8A8_SRGB;
+		VkImage       m_Image       = VK_NULL_HANDLE;
+		VmaAllocation m_Allocation  = VK_NULL_HANDLE;
+		VkImageView   m_ImageView   = VK_NULL_HANDLE;
+		VkSampler     m_Sampler     = VK_NULL_HANDLE;
+		VkFormat      m_Format      = VK_FORMAT_R8G8B8A8_SRGB;
 
 		// Pre-allocated descriptor set for use with ImGui and texture slots
 		VkDescriptorSet m_ImGuiDescriptorSet = VK_NULL_HANDLE;

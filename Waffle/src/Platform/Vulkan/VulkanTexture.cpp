@@ -51,7 +51,8 @@ namespace Waffle {
 		auto* ctx = VulkanContext::Get();
 		if (!ctx) return;
 		VkDevice dev = ctx->GetDevice();
-		vkDeviceWaitIdle(dev);
+		if (dev != VK_NULL_HANDLE)
+			vkDeviceWaitIdle(dev);
 
 		// Free ImGui descriptor set if allocated
 		if (m_ImGuiDescriptorSet)
@@ -68,10 +69,16 @@ namespace Waffle {
 				ctx->SafeFreeDescriptorSet(ds);
 		}
 
-		vkDestroySampler(dev, m_Sampler, nullptr);
-		vkDestroyImageView(dev, m_ImageView, nullptr);
-		vkDestroyImage(dev, m_Image, nullptr);
-		vkFreeMemory(dev, m_Memory, nullptr);
+		if (m_Sampler != VK_NULL_HANDLE)
+			vkDestroySampler(dev, m_Sampler, nullptr);
+		if (m_ImageView != VK_NULL_HANDLE)
+			vkDestroyImageView(dev, m_ImageView, nullptr);
+
+		if (m_Image != VK_NULL_HANDLE)
+			vmaDestroyImage(ctx->GetVmaAllocator(), m_Image, m_Allocation);
+
+		m_Image = VK_NULL_HANDLE;
+		m_Allocation = VK_NULL_HANDLE;
 	}
 
 	// =========================================================================
@@ -83,27 +90,27 @@ namespace Waffle {
 		WF_CORE_ASSERT(size == m_Width * m_Height * m_Channels, "Data must be entire texture!");
 
 		auto* ctx = VulkanContext::Get();
-		VkDevice dev = ctx->GetDevice();
+		VmaAllocator allocator = ctx->GetVmaAllocator();
 
-		VkBuffer       stagingBuffer;
-		VkDeviceMemory stagingMemory;
-		VulkanUtils::CreateBuffer(dev, ctx->GetPhysicalDevice(),
+		VkBuffer      stagingBuffer;
+		VmaAllocation stagingAllocation;
+		VulkanUtils::CreateBuffer(allocator,
 			size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-			VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-			stagingBuffer, stagingMemory);
+			VMA_MEMORY_USAGE_AUTO,
+			stagingBuffer, stagingAllocation,
+			VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT);
 
-		void* mapped;
-		vkMapMemory(dev, stagingMemory, 0, size, 0, &mapped);
-		memcpy(mapped, data, size);
-		vkUnmapMemory(dev, stagingMemory);
+		VmaAllocationInfo stagingAllocInfo{};
+		vmaGetAllocationInfo(allocator, stagingAllocation, &stagingAllocInfo);
+		memcpy(stagingAllocInfo.pMappedData, data, size);
 
 		// Transition → transfer dst, copy, transition → shader read
 		VkCommandBuffer cmd = ctx->BeginSingleTimeCommands();
 		VulkanUtils::TransitionImageLayout(cmd, m_Image,
 			VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
 			VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-			VK_ACCESS_SHADER_READ_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
-			VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT);
+			VK_ACCESS_2_SHADER_READ_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT,
+			VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT, VK_PIPELINE_STAGE_2_TRANSFER_BIT);
 		ctx->EndSingleTimeCommands(cmd);
 
 		ctx->CopyBufferToImage(stagingBuffer, m_Image, m_Width, m_Height);
@@ -112,12 +119,11 @@ namespace Waffle {
 		VulkanUtils::TransitionImageLayout(cmd, m_Image,
 			VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
 			VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-			VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT,
-			VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
+			VK_ACCESS_2_TRANSFER_WRITE_BIT, VK_ACCESS_2_SHADER_READ_BIT,
+			VK_PIPELINE_STAGE_2_TRANSFER_BIT, VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT);
 		ctx->EndSingleTimeCommands(cmd);
 
-		vkDestroyBuffer(dev, stagingBuffer, nullptr);
-		vkFreeMemory(dev, stagingMemory, nullptr);
+		vmaDestroyBuffer(allocator, stagingBuffer, stagingAllocation);
 	}
 
 	// =========================================================================
@@ -151,37 +157,38 @@ namespace Waffle {
 	{
 		auto* ctx = VulkanContext::Get();
 		VkDevice dev = ctx->GetDevice();
+		VmaAllocator allocator = ctx->GetVmaAllocator();
 
 		m_Format = (channels == 4) ? VK_FORMAT_R8G8B8A8_SRGB : VK_FORMAT_R8G8B8_SRGB;
 		VkDeviceSize imageSize = width * height * channels;
 
-		// Upload via staging buffer
-		VkBuffer       stagingBuffer;
-		VkDeviceMemory stagingMemory;
-		VulkanUtils::CreateBuffer(dev, ctx->GetPhysicalDevice(),
+		// Upload via staging buffer using VMA
+		VkBuffer      stagingBuffer;
+		VmaAllocation stagingAllocation;
+		VulkanUtils::CreateBuffer(allocator,
 			imageSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-			VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-			stagingBuffer, stagingMemory);
+			VMA_MEMORY_USAGE_AUTO,
+			stagingBuffer, stagingAllocation,
+			VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT);
 
-		void* mapped;
-		vkMapMemory(dev, stagingMemory, 0, imageSize, 0, &mapped);
-		memcpy(mapped, data, (size_t)imageSize);
-		vkUnmapMemory(dev, stagingMemory);
+		VmaAllocationInfo stagingAllocInfo{};
+		vmaGetAllocationInfo(allocator, stagingAllocation, &stagingAllocInfo);
+		memcpy(stagingAllocInfo.pMappedData, data, static_cast<size_t>(imageSize));
 
-		// Create image
-		VulkanUtils::CreateImage(dev, ctx->GetPhysicalDevice(),
+		// Create image using VMA
+		VulkanUtils::CreateImage(allocator,
 			width, height,
 			m_Format, VK_IMAGE_TILING_OPTIMAL,
 			VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
-			VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-			m_Image, m_Memory);
+			VMA_MEMORY_USAGE_AUTO,
+			m_Image, m_Allocation);
 
 		// Transition → transfer dst
 		VkCommandBuffer cmd = ctx->BeginSingleTimeCommands();
 		VulkanUtils::TransitionImageLayout(cmd, m_Image,
 			VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-			0, VK_ACCESS_TRANSFER_WRITE_BIT,
-			VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT);
+			0, VK_ACCESS_2_TRANSFER_WRITE_BIT,
+			VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_2_TRANSFER_BIT);
 		ctx->EndSingleTimeCommands(cmd);
 
 		ctx->CopyBufferToImage(stagingBuffer, m_Image, width, height);
@@ -190,12 +197,11 @@ namespace Waffle {
 		cmd = ctx->BeginSingleTimeCommands();
 		VulkanUtils::TransitionImageLayout(cmd, m_Image,
 			VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-			VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT,
-			VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
+			VK_ACCESS_2_TRANSFER_WRITE_BIT, VK_ACCESS_2_SHADER_READ_BIT,
+			VK_PIPELINE_STAGE_2_TRANSFER_BIT, VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT);
 		ctx->EndSingleTimeCommands(cmd);
 
-		vkDestroyBuffer(dev, stagingBuffer, nullptr);
-		vkFreeMemory(dev, stagingMemory, nullptr);
+		vmaDestroyBuffer(allocator, stagingBuffer, stagingAllocation);
 
 		// Create image view
 		m_ImageView = VulkanUtils::CreateImageView(dev, m_Image, m_Format, VK_IMAGE_ASPECT_COLOR_BIT);
@@ -211,20 +217,22 @@ namespace Waffle {
 
 		VkFilter vkFilter = (filter == TextureFilter::Nearest) ? VK_FILTER_NEAREST : VK_FILTER_LINEAR;
 
-		VkSamplerCreateInfo samplerInfo{};
-		samplerInfo.sType                   = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
-		samplerInfo.magFilter               = vkFilter;
-		samplerInfo.minFilter               = vkFilter;
-		samplerInfo.addressModeU            = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-		samplerInfo.addressModeV            = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-		samplerInfo.addressModeW            = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-		samplerInfo.anisotropyEnable        = VK_TRUE;
-		samplerInfo.maxAnisotropy           = props.limits.maxSamplerAnisotropy;
-		samplerInfo.borderColor             = VK_BORDER_COLOR_INT_OPAQUE_BLACK;
-		samplerInfo.unnormalizedCoordinates = VK_FALSE;
-		samplerInfo.compareEnable           = VK_FALSE;
-		samplerInfo.compareOp               = VK_COMPARE_OP_ALWAYS;
-		samplerInfo.mipmapMode              = VK_SAMPLER_MIPMAP_MODE_LINEAR;
+		VkSamplerCreateInfo samplerInfo
+		{
+			.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
+			.magFilter = vkFilter,
+			.minFilter = vkFilter,
+			.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR,
+			.addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT,
+			.addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT,
+			.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT,
+			.anisotropyEnable = VK_TRUE,
+			.maxAnisotropy = props.limits.maxSamplerAnisotropy,
+			.compareEnable = VK_FALSE,
+			.compareOp = VK_COMPARE_OP_ALWAYS,
+			.borderColor = VK_BORDER_COLOR_INT_OPAQUE_BLACK,
+			.unnormalizedCoordinates = VK_FALSE
+		};
 
 		VkResult res = vkCreateSampler(dev, &samplerInfo, nullptr, &m_Sampler);
 		WF_CORE_ASSERT(res == VK_SUCCESS, "Failed to create texture sampler!");

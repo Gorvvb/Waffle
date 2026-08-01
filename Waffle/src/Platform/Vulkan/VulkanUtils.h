@@ -1,8 +1,14 @@
 #pragma once
 
-#include <vulkan/vulkan.h>
+#ifndef VK_NO_PROTOTYPES
+#define VK_NO_PROTOTYPES
+#endif
+#include <Volk/volk.h>
+#include <vma/vk_mem_alloc.h>
+
 #include <vector>
 #include <stdexcept>
+#include <algorithm>
 
 namespace Waffle {
 
@@ -47,117 +53,98 @@ namespace Waffle {
 			return VK_FORMAT_UNDEFINED;
 		}
 
-		// Create a VkBuffer with backing device memory.
-		static void CreateBuffer(VkDevice device, VkPhysicalDevice physicalDevice,
-			VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties,
-			VkBuffer& outBuffer, VkDeviceMemory& outMemory)
+		// Create a VkBuffer backed by VMA allocation
+		static void CreateBuffer(VmaAllocator allocator,
+			VkDeviceSize size, VkBufferUsageFlags usage, VmaMemoryUsage memoryUsage,
+			VkBuffer& outBuffer, VmaAllocation& outAllocation, VmaAllocationCreateFlags flags = 0)
 		{
 			outBuffer = VK_NULL_HANDLE;
-			outMemory = VK_NULL_HANDLE;
+			outAllocation = VK_NULL_HANDLE;
 			if (size == 0) size = 1;
 
-			VkBufferCreateInfo bufferInfo{};
-			bufferInfo.sType       = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-			bufferInfo.size        = size;
-			bufferInfo.usage       = usage;
-			bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+			VkBufferCreateInfo bufferInfo
+			{
+				.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+				.size = size,
+				.usage = usage,
+				.sharingMode = VK_SHARING_MODE_EXCLUSIVE
+			};
 
-			VkResult res = vkCreateBuffer(device, &bufferInfo, nullptr, &outBuffer);
+			VmaAllocationCreateInfo allocCreateInfo
+			{
+				.flags = flags,
+				.usage = memoryUsage
+			};
+
+			VkResult res = vmaCreateBuffer(allocator, &bufferInfo, &allocCreateInfo, &outBuffer, &outAllocation, nullptr);
 			if (res != VK_SUCCESS || outBuffer == VK_NULL_HANDLE)
 			{
-				WF_CORE_ERROR("vkCreateBuffer failed with error code: {0}", (int)res);
-				WF_CORE_ASSERT(false, "Failed to create buffer!");
-				return;
+				WF_CORE_ERROR("vmaCreateBuffer failed with error code: {0}", (int)res);
+				WF_CORE_ASSERT(false, "Failed to create VMA buffer!");
 			}
-
-			VkMemoryRequirements memReqs;
-			vkGetBufferMemoryRequirements(device, outBuffer, &memReqs);
-
-			VkMemoryAllocateInfo allocInfo{};
-			allocInfo.sType           = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-			allocInfo.allocationSize  = memReqs.size;
-			allocInfo.memoryTypeIndex = FindMemoryType(physicalDevice, memReqs.memoryTypeBits, properties);
-
-			res = vkAllocateMemory(device, &allocInfo, nullptr, &outMemory);
-			if (res != VK_SUCCESS || outMemory == VK_NULL_HANDLE)
-			{
-				WF_CORE_ERROR("vkAllocateMemory for buffer failed with error code: {0}", (int)res);
-				WF_CORE_ASSERT(false, "Failed to allocate buffer memory!");
-				return;
-			}
-
-			vkBindBufferMemory(device, outBuffer, outMemory, 0);
 		}
 
-		// Create a VkImage with backing device memory.
-		static void CreateImage(VkDevice device, VkPhysicalDevice physicalDevice,
+		// Create a VkImage backed by VMA allocation
+		static void CreateImage(VmaAllocator allocator,
 			uint32_t width, uint32_t height,
 			VkFormat format, VkImageTiling tiling,
-			VkImageUsageFlags usage, VkMemoryPropertyFlags properties,
-			VkImage& outImage, VkDeviceMemory& outMemory)
+			VkImageUsageFlags usage, VmaMemoryUsage memoryUsage,
+			VkImage& outImage, VmaAllocation& outAllocation, VmaAllocationCreateFlags flags = 0)
 		{
 			outImage = VK_NULL_HANDLE;
-			outMemory = VK_NULL_HANDLE;
+			outAllocation = VK_NULL_HANDLE;
 
-			width  = std::max(1u, width);
+			width = std::max(1u, width);
 			height = std::max(1u, height);
 
-			VkImageCreateInfo imageInfo{};
-			imageInfo.sType         = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
-			imageInfo.imageType     = VK_IMAGE_TYPE_2D;
-			imageInfo.extent.width  = width;
-			imageInfo.extent.height = height;
-			imageInfo.extent.depth  = 1;
-			imageInfo.mipLevels     = 1;
-			imageInfo.arrayLayers   = 1;
-			imageInfo.format        = format;
-			imageInfo.tiling        = tiling;
-			imageInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-			imageInfo.usage         = usage;
-			imageInfo.samples       = VK_SAMPLE_COUNT_1_BIT;
-			imageInfo.sharingMode   = VK_SHARING_MODE_EXCLUSIVE;
+			VkImageCreateInfo imageInfo
+			{
+				.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
+				.imageType = VK_IMAGE_TYPE_2D,
+				.format = format,
+				.extent{.width = width, .height = height, .depth = 1 },
+				.mipLevels = 1,
+				.arrayLayers = 1,
+				.samples = VK_SAMPLE_COUNT_1_BIT,
+				.tiling = tiling,
+				.usage = usage,
+				.sharingMode = VK_SHARING_MODE_EXCLUSIVE,
+				.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED
+			};
 
-			VkResult res = vkCreateImage(device, &imageInfo, nullptr, &outImage);
+			VmaAllocationCreateInfo allocCreateInfo
+			{
+				.flags = flags,
+				.usage = memoryUsage
+			};
+
+			VkResult res = vmaCreateImage(allocator, &imageInfo, &allocCreateInfo, &outImage, &outAllocation, nullptr);
 			if (res != VK_SUCCESS || outImage == VK_NULL_HANDLE)
 			{
-				WF_CORE_ERROR("vkCreateImage failed with error code: {0} (format={1}, {2}x{3})", (int)res, (int)format, width, height);
-				WF_CORE_ASSERT(false, "Failed to create image!");
-				return;
+				WF_CORE_ERROR("vmaCreateImage failed with error code: {0} (format={1}, {2}x{3})", (int)res, (int)format, width, height);
+				WF_CORE_ASSERT(false, "Failed to create VMA image!");
 			}
-
-			VkMemoryRequirements memReqs;
-			vkGetImageMemoryRequirements(device, outImage, &memReqs);
-
-			VkMemoryAllocateInfo allocInfo{};
-			allocInfo.sType           = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-			allocInfo.allocationSize  = memReqs.size;
-			allocInfo.memoryTypeIndex = FindMemoryType(physicalDevice, memReqs.memoryTypeBits, properties);
-
-			res = vkAllocateMemory(device, &allocInfo, nullptr, &outMemory);
-			if (res != VK_SUCCESS || outMemory == VK_NULL_HANDLE)
-			{
-				WF_CORE_ERROR("vkAllocateMemory for image failed with error code: {0}", (int)res);
-				WF_CORE_ASSERT(false, "Failed to allocate image memory!");
-				return;
-			}
-
-			vkBindImageMemory(device, outImage, outMemory, 0);
 		}
 
-		// Create a VkImageView.
+		// Create a VkImageView using C++20 designated initializers
 		static VkImageView CreateImageView(VkDevice device, VkImage image, VkFormat format,
 			VkImageAspectFlags aspectFlags)
 		{
-			VkImageViewCreateInfo viewInfo{};
-			viewInfo.sType                           = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-			viewInfo.image                           = image;
-			viewInfo.viewType                        = VK_IMAGE_VIEW_TYPE_2D;
-			viewInfo.format                          = format;
-			viewInfo.subresourceRange.aspectMask     = aspectFlags;
-			viewInfo.subresourceRange.baseMipLevel   = 0;
-			viewInfo.subresourceRange.levelCount     = 1;
-			viewInfo.subresourceRange.baseArrayLayer = 0;
-			viewInfo.subresourceRange.layerCount     = 1;
+			VkImageViewCreateInfo viewInfo
+			{
+				.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
+				.image = image,
+				.viewType = VK_IMAGE_VIEW_TYPE_2D,
+				.format = format,
+				.subresourceRange
+				{
+					.aspectMask = aspectFlags,
+					.baseMipLevel = 0,
+					.levelCount = 1,
+					.baseArrayLayer = 0,
+					.layerCount = 1
+				}
+			};
 
 			VkImageView imageView = VK_NULL_HANDLE;
 			VkResult res = vkCreateImageView(device, &viewInfo, nullptr, &imageView);
@@ -165,29 +152,43 @@ namespace Waffle {
 			return imageView;
 		}
 
-		// Record a pipeline barrier to transition image layout.
+		// Record a pipeline barrier to transition image layout using Synchronization 2 (vkCmdPipelineBarrier2)
 		static void TransitionImageLayout(VkCommandBuffer cmd, VkImage image,
 			VkImageLayout oldLayout, VkImageLayout newLayout,
-			VkAccessFlags srcAccess, VkAccessFlags dstAccess,
-			VkPipelineStageFlags srcStage, VkPipelineStageFlags dstStage,
+			VkAccessFlags2 srcAccess, VkAccessFlags2 dstAccess,
+			VkPipelineStageFlags2 srcStage, VkPipelineStageFlags2 dstStage,
 			VkImageAspectFlags aspectMask = VK_IMAGE_ASPECT_COLOR_BIT)
 		{
-			VkImageMemoryBarrier barrier{};
-			barrier.sType                           = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-			barrier.oldLayout                       = oldLayout;
-			barrier.newLayout                       = newLayout;
-			barrier.srcQueueFamilyIndex             = VK_QUEUE_FAMILY_IGNORED;
-			barrier.dstQueueFamilyIndex             = VK_QUEUE_FAMILY_IGNORED;
-			barrier.image                           = image;
-			barrier.subresourceRange.aspectMask     = aspectMask;
-			barrier.subresourceRange.baseMipLevel   = 0;
-			barrier.subresourceRange.levelCount     = 1;
-			barrier.subresourceRange.baseArrayLayer = 0;
-			barrier.subresourceRange.layerCount     = 1;
-			barrier.srcAccessMask                   = srcAccess;
-			barrier.dstAccessMask                   = dstAccess;
+			VkImageMemoryBarrier2 barrier
+			{
+				.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
+				.srcStageMask = srcStage,
+				.srcAccessMask = srcAccess,
+				.dstStageMask = dstStage,
+				.dstAccessMask = dstAccess,
+				.oldLayout = oldLayout,
+				.newLayout = newLayout,
+				.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+				.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+				.image = image,
+				.subresourceRange
+				{
+					.aspectMask = aspectMask,
+					.baseMipLevel = 0,
+					.levelCount = 1,
+					.baseArrayLayer = 0,
+					.layerCount = 1
+				}
+			};
 
-			vkCmdPipelineBarrier(cmd, srcStage, dstStage, 0, 0, nullptr, 0, nullptr, 1, &barrier);
+			VkDependencyInfo depInfo
+			{
+				.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
+				.imageMemoryBarrierCount = 1,
+				.pImageMemoryBarriers = &barrier
+			};
+
+			vkCmdPipelineBarrier2(cmd, &depInfo);
 		}
 
 		// Check if a format has a depth component.

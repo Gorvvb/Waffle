@@ -1,7 +1,12 @@
 #pragma once
 
 #include "Waffle/Renderer/Buffer.h"
-#include <vulkan/vulkan.h>
+
+#ifndef VK_NO_PROTOTYPES
+#define VK_NO_PROTOTYPES
+#endif
+#include <Volk/volk.h>
+#include <vma/vk_mem_alloc.h>
 
 namespace Waffle {
 
@@ -29,14 +34,11 @@ namespace Waffle {
 		VkBuffer GetVulkanBuffer() const { return m_Buffer; }
 
 	private:
-		void AllocateBuffer(VkDeviceSize size, VkBufferUsageFlags usage,
-			VkMemoryPropertyFlags memProps);
-
-		VkBuffer       m_Buffer       = VK_NULL_HANDLE;
-		VkDeviceMemory m_Memory       = VK_NULL_HANDLE;
-		uint32_t       m_Size         = 0;
-		bool           m_HostVisible  = false;  // true → persistent map
-		void*          m_MappedPtr    = nullptr;
+		VkBuffer      m_Buffer     = VK_NULL_HANDLE;
+		VmaAllocation m_Allocation = VK_NULL_HANDLE;
+		uint32_t      m_Size       = 0;
+		bool          m_HostVisible = false;  // true → persistent map
+		void*         m_MappedPtr  = nullptr;
 
 		BufferLayout m_Layout;
 	};
@@ -58,9 +60,9 @@ namespace Waffle {
 		VkBuffer GetVulkanBuffer() const { return m_Buffer; }
 
 	private:
-		VkBuffer       m_Buffer = VK_NULL_HANDLE;
-		VkDeviceMemory m_Memory = VK_NULL_HANDLE;
-		uint32_t       m_Count  = 0;
+		VkBuffer      m_Buffer     = VK_NULL_HANDLE;
+		VmaAllocation m_Allocation = VK_NULL_HANDLE;
+		uint32_t      m_Count      = 0;
 	};
 
 } // namespace Waffle
