@@ -35,4 +35,4 @@ External contributions are not accepted at this time.
 
 ## License
 
-[Apache 2.0](https://github.com/Gorvvb/Waffle?tab=Apache-2.0-1-ov-file)
+[Apache 2.0 + Commons Clause](LICENSE)
