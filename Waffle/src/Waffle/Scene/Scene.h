@@ -27,6 +27,11 @@ namespace Waffle {
 		b2World* m_PhysicsWorld = nullptr;
 		std::unordered_map<b2Body*, uint32_t> m_BodyEntityMap;
 
+		float m_GravityY = -9.8f;
+
+		float m_PhysicsAccumulator = 0.0f;
+		static constexpr float m_PhysicsFixedStep = 1.0f / 60.0f;
+
 		friend class Entity;
 		friend class SceneHierarchyPanel;
 		friend class SceneSerializer;
@@ -45,13 +50,15 @@ namespace Waffle {
 		void OnRuntimeStart();
 		void OnRuntimeStop();
 
-		void OnUpdateRuntime(Timestep ts);
+		int OnUpdateRuntime(Timestep ts);
 		void OnUpdateEditor(Timestep ts, EditorCamera& camera);
 		void OnViewportResize(uint32_t width, uint32_t height);
 
 		void DuplicateEntity(Entity entity);
 		void ParentEntity(Entity child, Entity parent);
 		void UnparentEntity(Entity child);
+
+		void SetGravity(float g) { m_GravityY = g; }
 
 		Entity GetPrimaryCameraEntity();
 

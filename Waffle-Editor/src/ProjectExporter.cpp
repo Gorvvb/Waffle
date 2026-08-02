@@ -601,13 +601,42 @@ static bool EmbedIconInExecutable(const std::filesystem::path& exePath, const st
 				relativeStartScene = (std::filesystem::path("Assets/Scenes") / scenePath.filename()).string();
 		}
 
+		// Normalize all scene paths to be relative to Assets/
+		auto MakeRelativeScene = [](const std::string& rawPath) -> std::string
+			{
+				std::string s = rawPath;
+				// Normalize slashes
+				std::replace(s.begin(), s.end(), '\\', '/');
+				auto pos = s.find("Assets");
+				if (pos != std::string::npos)
+					return s.substr(pos);
+				// Fallback: just use the filename under Assets/Scenes
+				return "Assets/Scenes/" + std::filesystem::path(s).filename().string();
+			};
+
 		// 10. Write Assets/project.wfp runtime config
 		YAML::Emitter out;
 		out << YAML::BeginMap;
 		out << YAML::Key << "Project" << YAML::Value << YAML::BeginMap;
-		out << YAML::Key << "Name"       << YAML::Value << appName;
+		out << YAML::Key << "Name" << YAML::Value << appName;
 		out << YAML::Key << "StartScene" << YAML::Value << relativeStartScene;
-		out << YAML::Key << "IconPath"   << YAML::Value << relativeIconPath;
+		out << YAML::Key << "IconPath" << YAML::Value << relativeIconPath;
+		out << YAML::Key << "Gravity" << YAML::Value << options.Gravity;
+
+		// Write the full ordered scene list so ChangeScene(n) works at runtime
+		out << YAML::Key << "Scenes" << YAML::Value << YAML::BeginSeq;
+		if (!options.SceneList.empty())
+		{
+			for (const auto& scenePath : options.SceneList)
+				out << MakeRelativeScene(scenePath);
+		}
+		else if (!relativeStartScene.empty())
+		{
+			// Fallback: at minimum write the start scene so index 0 works
+			out << relativeStartScene;
+		}
+		out << YAML::EndSeq;
+
 		out << YAML::EndMap;
 		out << YAML::EndMap;
 

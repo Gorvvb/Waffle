@@ -192,7 +192,7 @@ namespace Waffle {
 
 	void Scene::OnRuntimeStart()
 	{
-		m_PhysicsWorld = new b2World({ 0.0f, -9.8f });
+		m_PhysicsWorld = new b2World({ 0.0f, m_GravityY });
 		m_BodyEntityMap.clear();
 
 		auto view = m_Registry.view<Rigidbody2DComponent>();
@@ -209,7 +209,6 @@ namespace Waffle {
 			b2Body* body = m_PhysicsWorld->CreateBody(&bodyDef);
 			body->SetFixedRotation(rb2d.FixedRotation);
 			rb2d.RuntimeBody = body;
-
 			m_BodyEntityMap[body] = (uint32_t)e;
 
 			if (entity.HasComponent<BoxCollider2DComponent>())
@@ -280,6 +279,14 @@ namespace Waffle {
 				fixtureDef.friction = 0.5f;
 				body->CreateFixture(&fixtureDef);
 			}
+
+			// Apply mass after all fixtures so Box2D doesn't overwrite it
+			if (rb2d.Type == Rigidbody2DComponent::BodyType::Dynamic && rb2d.Mass > 0.0f)
+			{
+				b2MassData massData = body->GetMassData();
+				massData.mass = rb2d.Mass;
+				body->SetMassData(&massData);
+			}
 		}
 
 		LuaScriptEngine::OnRuntimeStart(this);
@@ -293,7 +300,7 @@ namespace Waffle {
 		m_PhysicsWorld = nullptr;
 	}
 
-	void Scene::OnUpdateRuntime(Timestep ts)
+	int Scene::OnUpdateRuntime(Timestep ts)
 	{
 		if (!m_IsPaused || m_StepFrames-- > 0)
 		{
@@ -301,7 +308,6 @@ namespace Waffle {
 			{
 				LuaScriptEngine::OnRuntimeUpdate(this, ts);
 
-				// TODO: MOVE TO SCENE ONSCENEPLAY WHEN YOU MAKE IT
 				m_Registry.view<NativeScriptComponent>().each([=](auto entity, auto& nsc)
 					{
 						if (!nsc.Instance)
@@ -310,7 +316,6 @@ namespace Waffle {
 							nsc.Instance->m_Entity = Entity{ entity, this };
 							nsc.Instance->OnCreate();
 						}
-
 						nsc.Instance->OnUpdate(ts);
 					});
 			}
@@ -319,9 +324,17 @@ namespace Waffle {
 			{
 				const int32_t velocityIterations = 6;
 				const int32_t positionIterations = 2;
-				m_PhysicsWorld->Step(ts, velocityIterations, positionIterations);
 
-				// Retrieve transfrom from Box2D
+				m_PhysicsAccumulator += ts;
+				if (m_PhysicsAccumulator > 0.2f)
+					m_PhysicsAccumulator = 0.2f;
+
+				while (m_PhysicsAccumulator >= m_PhysicsFixedStep)
+				{
+					m_PhysicsWorld->Step(m_PhysicsFixedStep, velocityIterations, positionIterations);
+					m_PhysicsAccumulator -= m_PhysicsFixedStep;
+				}
+
 				auto view = m_Registry.view<Rigidbody2DComponent>();
 				for (auto e : view)
 				{
@@ -338,7 +351,7 @@ namespace Waffle {
 			}
 		}
 
-		// Render 2D
+		// Render 2D — always runs regardless of pause state
 		Camera* mainCamera = nullptr;
 		glm::mat4 cameraTransform;
 		CameraComponent* mainCameraComp = nullptr;
@@ -346,9 +359,7 @@ namespace Waffle {
 			auto view = m_Registry.view<TransformComponent, CameraComponent>();
 			for (auto entity : view)
 			{
-				auto components = view.get<TransformComponent, CameraComponent>(entity);
-				auto [transform, camera] = components;
-
+				auto [transform, camera] = view.get<TransformComponent, CameraComponent>(entity);
 				if (camera.Primary)
 				{
 					mainCamera = &camera.Camera;
@@ -373,26 +384,28 @@ namespace Waffle {
 				Renderer2D::DrawQuad(bgTransform, mainCameraComp->BackgroundImage, mainCameraComp->BackgroundTilingFactor);
 			}
 
-			// Draw sprites
 			auto group = m_Registry.group<TransformComponent>(entt::get<SpriteRendererComponent>);
 			for (auto entity : group)
 			{
 				auto [transform, sprite] = group.get<TransformComponent, SpriteRendererComponent>(entity);
-
 				Renderer2D::DrawSprite(transform.GetTransform(), sprite, (int)entity);
 			}
 
-			// Draw circles
 			auto view = m_Registry.view<TransformComponent, CircleRendererComponent>();
 			for (auto entity : view)
 			{
 				auto [transform, circle] = view.get<TransformComponent, CircleRendererComponent>(entity);
-
 				Renderer2D::DrawCircle(transform.GetTransform(), circle.Color, circle.Thickness, circle.Fade, (int)entity);
 			}
 
 			Renderer2D::EndScene();
 		}
+
+		// Scene change — checked after render so the current frame still draws
+		int pending = LuaScriptEngine::GetPendingSceneChange();
+		if (pending != -1)
+			LuaScriptEngine::ClearPendingSceneChange();
+		return pending;
 	}
 
 	void Scene::OnUpdateEditor(Timestep ts, EditorCamera& camera)

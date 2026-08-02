@@ -332,6 +332,7 @@ namespace Waffle {
 			auto& rb2dComponent = entity.GetComponent<Rigidbody2DComponent>();
 			out << YAML::Key << "BodyType" << YAML::Value << Rigidbody2DBodyTypeToString(rb2dComponent.Type);
 			out << YAML::Key << "FixedRotation" << YAML::Value << rb2dComponent.FixedRotation;
+			out << YAML::Key << "Mass" << YAML::Value << rb2dComponent.Mass;
 
 			out << YAML::EndMap; // Rigidbody2DComponent
 		}
@@ -630,6 +631,9 @@ namespace Waffle {
 					auto& rb2d = deserializedEntity.AddComponent<Rigidbody2DComponent>();
 					rb2d.Type = Rigidbody2DBodyTypeFromString(rigidbody2DComponent["BodyType"].as<std::string>());
 					rb2d.FixedRotation = rigidbody2DComponent["FixedRotation"].as<bool>();
+
+					if (rigidbody2DComponent["Mass"])
+						rb2d.Mass = rigidbody2DComponent["Mass"].as<float>();
 				}
 
 				auto boxCollider2DComponent = entity["BoxCollider2DComponent"];

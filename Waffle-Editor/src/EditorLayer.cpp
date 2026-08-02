@@ -5,11 +5,17 @@
 #include "Waffle/Utils/PlatformUtils.h"
 #include "Waffle/Math/Math.h"
 
+#include "Waffle/Scripting/LuaScriptEngine.h"
+#include <Box2D/include/box2d/box2d.h>
+
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
 
 #include <imgui/imgui.h>
 #include <ImGuizmo.h>
+
+#include <yaml-cpp/yaml.h>
+#include <fstream>
 
 namespace Waffle {
 
@@ -17,36 +23,35 @@ namespace Waffle {
 
 	EditorLayer::EditorLayer()
 		: Layer("EditorLayer"), m_CameraController(1280.0f / 720.0f)
-	{
-	}
+	{}
+
+	// -------------------------------------------------------------------------
+	// Lifecycle
+	// -------------------------------------------------------------------------
 
 	void EditorLayer::OnAttach()
 	{
 		WF_PROFILE_FUNCTION();
 
-		// Editor buttons
+		// Toolbar icons
 		m_IconPlay = Texture2D::Create("Resources/Icons/PlayButton.png");
 		m_IconStop = Texture2D::Create("Resources/Icons/StopButton.png");
-		//m_IconSimulate = Texture2D::Create("Resources/Icons/SimulateButton.png"); // MAKE A PHYSICS SIMULATION BUTTON
 		m_IconPause = Texture2D::Create("Resources/Icons/PauseButton.png");
 		m_IconStep = Texture2D::Create("Resources/Icons/StepButton.png");
-
-		// Inactive icons
 		m_IconPauseInactive = Texture2D::Create("Resources/Icons/PauseButtonInactive.png");
 		m_IconStepInactive = Texture2D::Create("Resources/Icons/StepButtonInactive.png");
 
-		// Transform Gizmos
+		// Gizmo icons
 		m_IconNoGizmo = Texture2D::Create("Resources/Icons/Gizmos/NoGizmo.png");
 		m_IconTransformGizmo = Texture2D::Create("Resources/Icons/Gizmos/TransformGizmo.png");
 		m_IconRotationGizmo = Texture2D::Create("Resources/Icons/Gizmos/RotationGizmo.png");
 		m_IconScaleGizmo = Texture2D::Create("Resources/Icons/Gizmos/ScaleGizmo.png");
-
-		// Active Gizmo icons
 		m_IconNoGizmoActive = Texture2D::Create("Resources/Icons/Gizmos/NoGizmoActive.png");
 		m_IconTransformGizmoActive = Texture2D::Create("Resources/Icons/Gizmos/TransformGizmoActive.png");
 		m_IconRotationGizmoActive = Texture2D::Create("Resources/Icons/Gizmos/RotationGizmoActive.png");
 		m_IconScaleGizmoActive = Texture2D::Create("Resources/Icons/Gizmos/ScaleGizmoActive.png");
 
+		// Framebuffer
 		FramebufferSpecification fbSpec;
 		fbSpec.Attachments = {
 			FramebufferTextureFormat::RGBA8,
@@ -60,53 +65,57 @@ namespace Waffle {
 		m_EditorScene = CreateRef<Scene>();
 		m_ActiveScene = m_EditorScene;
 
+		// Open project / scene from command line or default project
 		auto commandLineArgs = Application::Get().GetSpecification().CommandLineArgs;
 		if (commandLineArgs.Count > 1)
 		{
-			auto sceneFilePath = commandLineArgs[1];
-			OpenScene(sceneFilePath);
+			OpenScene(commandLineArgs[1]);
 		}
 		else
 		{
 			std::filesystem::path defaultProj = FindDefaultProjectPath();
 			if (!defaultProj.empty())
-			{
 				OpenProjectAtPath(defaultProj);
-			}
 		}
 
 		m_EditorCamera = EditorCamera(30.0f, 1.778f, 0.1f, 1000.0f);
 		Renderer2D::SetLineWidth(4.0f);
 		m_SceneHierarchyPanel.SetContext(m_ActiveScene);
 
-		m_ContentBrowserPanel.SetOpenSceneCallback([this](const std::filesystem::path& path) { OpenScene(path); });
-		m_ContentBrowserPanel.SetSceneRenamedCallback([this](const std::filesystem::path& oldPath, const std::filesystem::path& newPath) {
-			std::string oldAbs = std::filesystem::absolute(oldPath).string();
-			std::string currAbs = !m_EditorScenePath.empty() ? std::filesystem::absolute(m_EditorScenePath).string() : "";
-			for (auto& c : oldAbs) c = (char)tolower(c);
-			for (auto& c : currAbs) c = (char)tolower(c);
+		m_ContentBrowserPanel.SetOpenSceneCallback(
+			[this](const std::filesystem::path& path) { OpenScene(path); });
 
-			if (!currAbs.empty() && oldAbs == currAbs)
+		m_ContentBrowserPanel.SetSceneRenamedCallback(
+			[this](const std::filesystem::path& oldPath, const std::filesystem::path& newPath)
 			{
-				m_EditorScenePath = newPath;
-				if (m_EditorScene)
+				// Compare case-insensitively on Windows
+				std::string oldAbs = std::filesystem::absolute(oldPath).string();
+				std::string currAbs = !m_EditorScenePath.empty()
+					? std::filesystem::absolute(m_EditorScenePath).string() : "";
+				for (auto& c : oldAbs)  c = (char)tolower(c);
+				for (auto& c : currAbs) c = (char)tolower(c);
+
+				if (!currAbs.empty() && oldAbs == currAbs)
 				{
-					m_EditorScene->SetName(newPath.stem().string());
-					SerializeScene(m_EditorScene, newPath);
+					m_EditorScenePath = newPath;
+					if (m_EditorScene)
+					{
+						m_EditorScene->SetName(newPath.stem().string());
+						SerializeScene(m_EditorScene, newPath);
+					}
+					UpdateWindowTitle();
 				}
-				UpdateWindowTitle();
-			}
-			else
-			{
-				Ref<Scene> tempScene = CreateRef<Scene>();
-				SceneSerializer serializer(tempScene);
-				if (serializer.Deserialize(newPath.string()))
+				else
 				{
-					tempScene->SetName(newPath.stem().string());
-					serializer.Serialize(newPath.string());
+					Ref<Scene> tempScene = CreateRef<Scene>();
+					SceneSerializer serializer(tempScene);
+					if (serializer.Deserialize(newPath.string()))
+					{
+						tempScene->SetName(newPath.stem().string());
+						serializer.Serialize(newPath.string());
+					}
 				}
-			}
-		});
+			});
 	}
 
 	void EditorLayer::OnDetach()
@@ -114,12 +123,17 @@ namespace Waffle {
 		WF_PROFILE_FUNCTION();
 	}
 
+	// -------------------------------------------------------------------------
+	// Update
+	// -------------------------------------------------------------------------
+
 	void EditorLayer::OnUpdate(Timestep ts)
 	{
 		WF_PROFILE_FUNCTION();
 
 		m_fps = ts;
 
+		// Resize framebuffer if viewport changed
 		if (FramebufferSpecification spec = m_Framebuffer->GetSpecification();
 			m_ViewportSize.x > 0.0f && m_ViewportSize.y > 0.0f &&
 			(spec.Width != m_ViewportSize.x || spec.Height != m_ViewportSize.y))
@@ -127,57 +141,86 @@ namespace Waffle {
 			m_Framebuffer->Resize((uint32_t)m_ViewportSize.x, (uint32_t)m_ViewportSize.y);
 			m_CameraController.OnResize(m_ViewportSize.x, m_ViewportSize.y);
 			m_EditorCamera.SetViewportSize(m_ViewportSize.x, m_ViewportSize.y);
-
 			m_ActiveScene->OnViewportResize((uint32_t)m_ViewportSize.x, (uint32_t)m_ViewportSize.y);
 		}
 
-		// Update
+		// Camera update (editor mode only)
 		if (m_SceneState == SceneState::Edit)
 		{
 			if (m_ViewportFocused)
 				m_CameraController.OnUpdate(ts);
-
 			m_EditorCamera.OnUpdate(ts);
 		}
 
-		// Render
+		// Clear
 		Renderer2D::ResetStats();
 
 		glm::vec4 clearColor = { 0.18f, 0.18f, 0.19f, 1.0f };
-		Entity primaryCam = m_ActiveScene->GetPrimaryCameraEntity();
-		if (primaryCam)
+		if (Entity primaryCam = m_ActiveScene->GetPrimaryCameraEntity())
 			clearColor = primaryCam.GetComponent<CameraComponent>().BackgroundColor;
 
 		RenderCommand::SetClearColor(clearColor);
 		m_Framebuffer->Bind();
 		RenderCommand::Clear();
-
 		m_Framebuffer->ClearAttachment(1, -1);
-		
+
+		// Scene update
 		switch (m_SceneState)
 		{
-			case SceneState::Edit:
+		case SceneState::Edit:
+			m_ActiveScene->OnUpdateEditor(ts, m_EditorCamera);
+			break;
+
+		case SceneState::Play:
+		{
+			int pending = m_ActiveScene->OnUpdateRuntime(ts);
+			if (pending != -1)
 			{
-				m_ActiveScene->OnUpdateEditor(ts, m_EditorCamera);
-				break;
+				if (pending >= 0 && pending < (int)m_SceneList.size())
+				{
+					m_ActiveScene->OnRuntimeStop();
+
+					Ref<Scene> nextScene = CreateRef<Scene>();
+					SceneSerializer serializer(nextScene);
+					if (serializer.Deserialize(m_SceneList[pending].string()))
+					{
+						LuaScriptEngine::SetCurrentSceneIndex(pending);
+						nextScene->SetName(m_SceneList[pending].stem().string());
+
+						m_ActiveScene = Scene::Copy(nextScene);
+						m_ActiveScene->SetGravity(m_ProjectGravity);
+						m_ActiveScene->OnViewportResize(
+							(uint32_t)m_ViewportSize.x, (uint32_t)m_ViewportSize.y);
+						m_ActiveScene->OnRuntimeStart();
+						m_SceneHierarchyPanel.SetContext(m_ActiveScene);
+					}
+					else
+					{
+						OnSceneStop();
+					}
+				}
+				else
+				{
+					WF_CORE_WARN("ChangeScene: index {0} out of range (count: {1})",
+						pending, m_SceneList.size());
+					OnSceneStop();
+				}
 			}
-			case SceneState::Play:
-			{
-				m_ActiveScene->OnUpdateRuntime(ts);
-				break;
-			}
+			break;
+		}
 		}
 
-		auto[mx, my] = ImGui::GetMousePos();
+		// Entity picking via framebuffer
+		auto [mx, my] = ImGui::GetMousePos();
 		mx -= m_ViewportBounds[0].x;
 		my -= m_ViewportBounds[0].y;
-
 		glm::vec2 viewportSize = m_ViewportBounds[1] - m_ViewportBounds[0];
 		my = viewportSize.y - my;
 		int mouseX = (int)mx;
 		int mouseY = (int)my;
 
-		if (mouseX >= 0 && mouseY >= 0 && mouseX < (int)viewportSize.x && mouseY < (int)viewportSize.y)
+		if (mouseX >= 0 && mouseY >= 0 &&
+			mouseX < (int)viewportSize.x && mouseY < (int)viewportSize.y)
 		{
 			int pixelData = m_Framebuffer->ReadPixel(1, mouseX, mouseY);
 			if (pixelData != -1 && m_ActiveScene->IsEntityValid((entt::entity)pixelData))
@@ -191,18 +234,24 @@ namespace Waffle {
 		}
 
 		OnOverlayRender();
-
 		m_Framebuffer->Unbind();
 	}
 
+	// -------------------------------------------------------------------------
+	// ImGui
+	// -------------------------------------------------------------------------
+
 	void EditorLayer::OnImGuiRender()
 	{
-		static bool dockSpaceOpen = true;
-		static bool opt_fullscreen = true;
-		static bool opt_padding = false;
+		// ── DockSpace setup ─────────────────────────────────────────────────
+		static bool        dockSpaceOpen = true;
+		static bool        opt_fullscreen = true;
+		static bool        opt_padding = false;
 		static ImGuiDockNodeFlags dockspace_flags = ImGuiDockNodeFlags_None;
 
-		ImGuiWindowFlags window_flags = ImGuiWindowFlags_MenuBar | ImGuiWindowFlags_NoDocking;
+		ImGuiWindowFlags window_flags =
+			ImGuiWindowFlags_MenuBar | ImGuiWindowFlags_NoDocking;
+
 		if (opt_fullscreen)
 		{
 			const ImGuiViewport* viewport = ImGui::GetMainViewport();
@@ -211,8 +260,10 @@ namespace Waffle {
 			ImGui::SetNextWindowViewport(viewport->ID);
 			ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0.0f);
 			ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
-			window_flags |= ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove;
-			window_flags |= ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoNavFocus;
+			window_flags |= ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoCollapse
+				| ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove
+				| ImGuiWindowFlags_NoBringToFrontOnFocus
+				| ImGuiWindowFlags_NoNavFocus;
 		}
 		else
 		{
@@ -227,221 +278,137 @@ namespace Waffle {
 		ImGui::Begin("Waffle DockSpace", &dockSpaceOpen, window_flags);
 		if (!opt_padding)
 			ImGui::PopStyleVar();
-
 		if (opt_fullscreen)
 			ImGui::PopStyleVar(2);
 
-		ImGuiIO& io = ImGui::GetIO();
-		ImGuiStyle& style = ImGui::GetStyle();
-		float minWinSizeX = style.WindowMinSize.x;
-		style.WindowMinSize.x = 370.0f;
-
-		if (io.ConfigFlags & ImGuiConfigFlags_DockingEnable)
 		{
-			ImGuiID dockspace_id = ImGui::GetID("WaffleDockSpace");
-			ImGui::DockSpace(dockspace_id, ImVec2(0.0f, 0.0f), dockspace_flags);
+			ImGuiIO& io = ImGui::GetIO();
+			ImGuiStyle& style = ImGui::GetStyle();
+			float       minWinSizeX = style.WindowMinSize.x;
+			style.WindowMinSize.x = 370.0f;
+
+			if (io.ConfigFlags & ImGuiConfigFlags_DockingEnable)
+			{
+				ImGuiID dockspace_id = ImGui::GetID("WaffleDockSpace");
+				ImGui::DockSpace(dockspace_id, ImVec2(0.0f, 0.0f), dockspace_flags);
+			}
+			style.WindowMinSize.x = minWinSizeX;
 		}
 
-		style.WindowMinSize.x = minWinSizeX;
-
+		// ── Menu bar ────────────────────────────────────────────────────────
 		if (ImGui::BeginMenuBar())
 		{
 			if (ImGui::BeginMenu("File"))
 			{
-				if (ImGui::MenuItem("New Project..."))
-					NewProject();
-
-				if (ImGui::MenuItem("Open Project..."))
-					OpenProject();
-
+				if (ImGui::MenuItem("New Project..."))   NewProject();
+				if (ImGui::MenuItem("Open Project..."))  OpenProject();
 				ImGui::Separator();
-
-				if (ImGui::MenuItem("New Scene", "Ctrl+N"))
-					NewScene();
-
-				if (ImGui::MenuItem("Open Scene...", "Ctrl+O"))
-					OpenScene();
-
-				if (ImGui::MenuItem("Save Scene", "Ctrl+S"))
-					SaveScene();
-
-				if (ImGui::MenuItem("Save As...", "Ctrl+Shift+S"))
-					SaveSceneAs();
-
+				if (ImGui::MenuItem("New Scene", "Ctrl+N"))       NewScene();
+				if (ImGui::MenuItem("Open Scene...", "Ctrl+O"))    OpenScene();
+				if (ImGui::MenuItem("Save Scene", "Ctrl+S"))       SaveScene();
+				if (ImGui::MenuItem("Save As...", "Ctrl+Shift+S")) SaveSceneAs();
 				ImGui::Separator();
-
-				if (ImGui::MenuItem("Export Project..."))
-					ExportProject();
-
-				ImGui::Separator();
-
 				if (ImGui::MenuItem("Exit")) Application::Get().Close();
 				ImGui::EndMenu();
 			}
 
-			if (ImGui::BeginMenu("Export"))
+			if (ImGui::BeginMenu("Project"))
 			{
-				if (ImGui::MenuItem("Export Windows Application (.exe)"))
-					ExportProject();
+				if (ImGui::MenuItem("Project Settings"))
+					m_ShowProjectTab = true;
+				ImGui::Separator();
+				if (ImGui::MenuItem("Export"))
+				{
+					PrepareExport();
+
+					ProjectExporter::ExportOptions options;
+					std::string projName = m_ProjectName.empty() ? "MyGame" : m_ProjectName;
+					std::string appNameStr = m_ExportAppNameBuffer[0] != '\0'
+						? m_ExportAppNameBuffer : projName;
+
+					options.ProjectName = projName;
+					options.ProjectPath = m_ProjectName.empty()
+						? std::filesystem::path()
+						: std::filesystem::path("Projects") / m_ProjectName;
+					options.AppName = appNameStr;
+					options.CustomIconPath = m_ExportIconPathBuffer;
+					options.Gravity = m_ProjectGravity;
+
+					if (!m_SceneList.empty())
+						options.SelectedScenePath = m_SceneList[0].string();
+
+					for (const auto& p : m_SceneList)
+						options.SceneList.push_back(p.string());
+
+					std::string errorMsg;
+					if (ProjectExporter::ExportProject(options, errorMsg))
+						WF_CORE_INFO("Exported to Projects/{0}/Exports/{1}.exe", projName, appNameStr);
+					else
+						WF_CORE_ERROR("Export failed: {0}", errorMsg);
+				}
 				ImGui::EndMenu();
 			}
 
 			ImGui::EndMenuBar();
 		}
 
-		// New Project Modal Popup
+		// ── New Project modal ────────────────────────────────────────────────
 		if (m_ShowNewProjectModal)
 		{
 			ImGui::OpenPopup("New Project");
 			m_ShowNewProjectModal = false;
 		}
 
-		if (ImGui::BeginPopupModal("New Project", NULL, ImGuiWindowFlags_AlwaysAutoResize))
+		if (ImGui::BeginPopupModal("New Project", NULL,
+			ImGuiWindowFlags_AlwaysAutoResize))
 		{
 			ImGui::Text("Enter Project Name:");
-			ImGui::InputText("##ProjectNameInput", m_ProjectNameBuffer, sizeof(m_ProjectNameBuffer));
+			ImGui::InputText("##ProjectNameInput",
+				m_ProjectNameBuffer, sizeof(m_ProjectNameBuffer));
 
-			if (ImGui::Button("Create Project", ImVec2(140, 0)) || ImGui::IsKeyPressed(ImGuiKey_Enter))
+			if (ImGui::Button("Create Project", ImVec2(140, 0)) ||
+				ImGui::IsKeyPressed(ImGuiKey_Enter))
 			{
 				std::string projName = m_ProjectNameBuffer;
-				if (projName.empty())
-					projName = "NewProject";
+				if (projName.empty()) projName = "NewProject";
 				CreateProject(projName);
 				ImGui::CloseCurrentPopup();
 			}
 			ImGui::SetItemDefaultFocus();
 			ImGui::SameLine();
 			if (ImGui::Button("Cancel", ImVec2(120, 0)))
-			{
 				ImGui::CloseCurrentPopup();
-			}
-			ImGui::EndPopup();
-		}
-
-		// Export Project Modal Popup
-		if (m_ShowExportModal)
-		{
-			ImGui::OpenPopup("Export Project");
-			m_ShowExportModal = false;
-		}
-
-		if (ImGui::BeginPopupModal("Export Project", NULL, ImGuiWindowFlags_AlwaysAutoResize))
-		{
-			std::string projName = m_ProjectName.empty() ? "MyGame" : m_ProjectName;
-			std::string appNameStr = m_ExportAppNameBuffer[0] != '\0' ? m_ExportAppNameBuffer : projName;
-
-			ImGui::Text("Project: %s", projName.c_str());
-			ImGui::Text("Target OS: Windows (x64)");
-			ImGui::Separator();
-
-			ImGui::InputText("Application Name", m_ExportAppNameBuffer, sizeof(m_ExportAppNameBuffer));
-
-			// Scene selection combo
-			if (!m_ExportAvailableScenes.empty())
-			{
-				std::vector<std::string> sceneDisplayNames;
-				std::vector<const char*> sceneItems;
-				for (const auto& scenePath : m_ExportAvailableScenes)
-				{
-					sceneDisplayNames.push_back(scenePath.filename().string());
-				}
-				for (const auto& name : sceneDisplayNames)
-				{
-					sceneItems.push_back(name.c_str());
-				}
-
-				if (m_SelectedExportSceneIndex < 0 || m_SelectedExportSceneIndex >= (int)sceneItems.size())
-					m_SelectedExportSceneIndex = 0;
-
-				ImGui::Combo("Start Scene", &m_SelectedExportSceneIndex, sceneItems.data(), (int)sceneItems.size());
-			}
-			else
-			{
-				ImGui::TextColored(ImVec4(0.9f, 0.6f, 0.2f, 1.0f), "No .waffle scenes found in project!");
-			}
-
-			// Custom Icon selector
-			ImGui::InputText("App Icon / Image", m_ExportIconPathBuffer, sizeof(m_ExportIconPathBuffer));
-			ImGui::SameLine();
-			if (ImGui::Button("Browse...##IconBrowse"))
-			{
-				std::string selected = FileDialogs::OpenFile("Image Files (*.png;*.jpg;*.ico)\0*.png;*.jpg;*.ico\0");
-				if (!selected.empty())
-				{
-					strcpy_s(m_ExportIconPathBuffer, sizeof(m_ExportIconPathBuffer), selected.c_str());
-				}
-			}
-
-			ImGui::Separator();
-			ImGui::Text("Output File: Projects/%s/Exports/%s.exe", projName.c_str(), appNameStr.c_str());
-			ImGui::Separator();
-
-			if (!m_ExportStatusMessage.empty())
-			{
-				if (m_ExportSuccess)
-					ImGui::TextColored(ImVec4(0.2f, 0.8f, 0.2f, 1.0f), "%s", m_ExportStatusMessage.c_str());
-				else
-					ImGui::TextColored(ImVec4(0.9f, 0.2f, 0.2f, 1.0f), "%s", m_ExportStatusMessage.c_str());
-				ImGui::Separator();
-			}
-
-			if (ImGui::Button("Export Executable", ImVec2(160, 0)))
-			{
-				ProjectExporter::ExportOptions options;
-				options.ProjectName = projName;
-				options.ProjectPath = m_ProjectName.empty() ? std::filesystem::path() : (std::filesystem::path("Projects") / m_ProjectName);
-				options.AppName = appNameStr;
-				options.CustomIconPath = m_ExportIconPathBuffer;
-
-				if (!m_ExportAvailableScenes.empty() && m_SelectedExportSceneIndex >= 0 && m_SelectedExportSceneIndex < (int)m_ExportAvailableScenes.size())
-				{
-					options.SelectedScenePath = m_ExportAvailableScenes[m_SelectedExportSceneIndex].string();
-				}
-
-				std::string errorMsg;
-				if (ProjectExporter::ExportProject(options, errorMsg))
-				{
-					m_ExportSuccess = true;
-					m_ExportStatusMessage = "Exported to Projects/" + projName + "/Exports/" + appNameStr + ".exe";
-				}
-				else
-				{
-					m_ExportSuccess = false;
-					m_ExportStatusMessage = "Export failed: " + errorMsg;
-				}
-			}
-
-			ImGui::SameLine();
-			if (ImGui::Button("Close", ImVec2(120, 0)))
-			{
-				ImGui::CloseCurrentPopup();
-			}
 
 			ImGui::EndPopup();
 		}
 
-		// RENDER SETTINGS
+		// ── Project Settings window ──────────────────────────────────────────
+		UI_ProjectSettings();
+
+		// ── Export modal ─────────────────────────────────────────────────────
+		UI_ExportModal();
+
+		// ── Stats ─────────────────────────────────────────────────────────────
 		ImGui::Begin("Stats");
+		{
+			float frameTimeMs = m_fps * 1000.0f;
+			float fps = m_fps > 0.0f ? 1.0f / m_fps : 0.0f;
+			ImGui::Text("Performance: %.1f FPS (%.2f ms)", fps, frameTimeMs);
+			ImGui::Separator();
 
-		float frameTimeMs = m_fps * 1000.0f;
-		float fps = m_fps > 0.0f ? 1.0f / m_fps : 0.0f;
-		ImGui::Text("Performance: %.1f FPS (%.2f ms)", fps, frameTimeMs);
-		ImGui::Separator();
+			std::string hovName = "None";
+			if (m_HoveredEntity && m_HoveredEntity.HasComponent<TagComponent>())
+				hovName = m_HoveredEntity.GetComponent<TagComponent>().Tag;
+			ImGui::Text("Hovered Entity: %s", hovName.c_str());
+			ImGui::Separator();
 
-		std::string name = "None";
-		if (m_HoveredEntity && m_HoveredEntity.HasComponent<TagComponent>())
-			name = m_HoveredEntity.GetComponent<TagComponent>().Tag;
-		
-		ImGui::Text("Hovered Entity: %s", name.c_str());
-		ImGui::Separator();
-
-		auto stats = Renderer2D::GetStats();
-		ImGui::Text("Renderer2D Stats:");
-		ImGui::Text("  Draw Calls: %d", stats.DrawCalls);
-		ImGui::Text("  Quads: %d", stats.QuadCount);
-		ImGui::Text("  Vertices: %d", stats.GetTotalVertexCount());
-		ImGui::Text("  Indices: %d", stats.GetTotalIndexCount());
-
+			auto stats = Renderer2D::GetStats();
+			ImGui::Text("Renderer2D Stats:");
+			ImGui::Text("  Draw Calls: %d", stats.DrawCalls);
+			ImGui::Text("  Quads: %d", stats.QuadCount);
+			ImGui::Text("  Vertices: %d", stats.GetTotalVertexCount());
+			ImGui::Text("  Indices: %d", stats.GetTotalIndexCount());
+		}
 		ImGui::End();
 
 		m_SceneHierarchyPanel.OnImGuiRender();
@@ -451,170 +418,213 @@ namespace Waffle {
 		ImGui::Checkbox("Show Physics Colliders", &m_ShowPhysicsColliders);
 		ImGui::End();
 
+		// ── Viewport ──────────────────────────────────────────────────────────
 		ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2{ 0, 0 });
 		ImGui::Begin("Viewport");
-		
-		auto viewportMinRegion = ImGui::GetWindowContentRegionMin();
-		auto viewportMaxRegion = ImGui::GetWindowContentRegionMax();
-		auto viewportOffset = ImGui::GetWindowPos();
-		m_ViewportBounds[0] = { viewportMinRegion.x + viewportOffset.x, viewportMinRegion.y + viewportOffset.y };
-		m_ViewportBounds[1] = { viewportMaxRegion.x + viewportOffset.x, viewportMaxRegion.y + viewportOffset.y };
-
-		m_ViewportFocused = ImGui::IsWindowFocused();
-		m_ViewportHovered = ImGui::IsWindowHovered();
-		Application::Get().GetImGuiLayer()->BlockEvents(!m_ViewportFocused && !m_ViewportHovered);
-
-		ImVec2 viewportPanelSize = ImGui::GetContentRegionAvail();
-		m_ViewportSize = { viewportPanelSize.x, viewportPanelSize.y };
-
-		uint64_t textureID = m_Framebuffer->GetColorAttachmentRendererID();
-		ImGui::Image(reinterpret_cast<void*>(static_cast<uintptr_t>(textureID)), ImVec2{ m_ViewportSize.x, m_ViewportSize.y }, ImVec2{ 0, 1 }, ImVec2{ 1, 0 });
-
-		if (ImGui::BeginDragDropTarget())
 		{
-			if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("CONTENT_BROWSER_ITEM"))
+			auto viewportMinRegion = ImGui::GetWindowContentRegionMin();
+			auto viewportMaxRegion = ImGui::GetWindowContentRegionMax();
+			auto viewportOffset = ImGui::GetWindowPos();
+			m_ViewportBounds[0] = {
+				viewportMinRegion.x + viewportOffset.x,
+				viewportMinRegion.y + viewportOffset.y };
+			m_ViewportBounds[1] = {
+				viewportMaxRegion.x + viewportOffset.x,
+				viewportMaxRegion.y + viewportOffset.y };
+
+			m_ViewportFocused = ImGui::IsWindowFocused();
+			m_ViewportHovered = ImGui::IsWindowHovered();
+			Application::Get().GetImGuiLayer()->BlockEvents(
+				!m_ViewportFocused && !m_ViewportHovered);
+
+			ImVec2 viewportPanelSize = ImGui::GetContentRegionAvail();
+			m_ViewportSize = { viewportPanelSize.x, viewportPanelSize.y };
+
+			uint64_t textureID = m_Framebuffer->GetColorAttachmentRendererID();
+			ImGui::Image(
+				reinterpret_cast<void*>(static_cast<uintptr_t>(textureID)),
+				ImVec2{ m_ViewportSize.x, m_ViewportSize.y },
+				ImVec2{ 0, 1 }, ImVec2{ 1, 0 });
+
+			// Drag-drop onto viewport
+			if (ImGui::BeginDragDropTarget())
 			{
-				const wchar_t* pathStr = (const wchar_t*)payload->Data;
-				std::filesystem::path path = std::filesystem::path(g_AssetPath) / pathStr;
-				std::string ext = path.extension().string();
-				for (auto& c : ext) c = (char)tolower(c);
+				if (const ImGuiPayload* payload =
+					ImGui::AcceptDragDropPayload("CONTENT_BROWSER_ITEM"))
+				{
+					const wchar_t* pathStr = (const wchar_t*)payload->Data;
+					std::filesystem::path path =
+						std::filesystem::path(g_AssetPath) / pathStr;
+					std::string ext = path.extension().string();
+					for (auto& c : ext) c = (char)tolower(c);
 
-				if (ext == ".waffle")
-				{
-					OpenScene(path);
-				}
-				else if (ext == ".png" || ext == ".jpg" || ext == ".jpeg")
-				{
-					Entity targetEntity = m_HoveredEntity ? m_HoveredEntity : m_SceneHierarchyPanel.GetSelectedEntity();
-					if (targetEntity)
+					if (ext == ".waffle")
 					{
-						if (!targetEntity.HasComponent<SpriteRendererComponent>())
-							targetEntity.AddComponent<SpriteRendererComponent>();
-
-						auto& src = targetEntity.GetComponent<SpriteRendererComponent>();
-						src.Texture = Texture2D::Create(path.string(), src.FilterMode);
+						OpenScene(path);
+					}
+					else if (ext == ".png" || ext == ".jpg" || ext == ".jpeg")
+					{
+						Entity target = m_HoveredEntity
+							? m_HoveredEntity
+							: m_SceneHierarchyPanel.GetSelectedEntity();
+						if (target)
+						{
+							if (!target.HasComponent<SpriteRendererComponent>())
+								target.AddComponent<SpriteRendererComponent>();
+							auto& src = target.GetComponent<SpriteRendererComponent>();
+							src.Texture = Texture2D::Create(path.string(), src.FilterMode);
+						}
+					}
+					else if (ext == ".lua")
+					{
+						Entity target = m_HoveredEntity
+							? m_HoveredEntity
+							: m_SceneHierarchyPanel.GetSelectedEntity();
+						if (target)
+						{
+							if (!target.HasComponent<ScriptComponent>())
+								target.AddComponent<ScriptComponent>();
+							auto& sc = target.GetComponent<ScriptComponent>();
+							std::string relStr =
+								std::filesystem::relative(path, g_AssetPath).string();
+							sc.ScriptPaths.push_back(relStr);
+							LuaScriptEngine::ScrapeFieldsFromScript(path, relStr, sc);
+						}
 					}
 				}
-				else if (ext == ".lua")
-				{
-					Entity targetEntity = m_HoveredEntity ? m_HoveredEntity : m_SceneHierarchyPanel.GetSelectedEntity();
-					if (targetEntity)
-					{
-						if (!targetEntity.HasComponent<ScriptComponent>())
-							targetEntity.AddComponent<ScriptComponent>();
+				ImGui::EndDragDropTarget();
+			}
 
-						auto& sc = targetEntity.GetComponent<ScriptComponent>();
-						sc.ScriptPaths.push_back(path.string());
+			// Gizmo toolbar (top-left of viewport)
+			UI_GizmoToolbar();
+
+			// Transform gizmos
+			Entity selectedEntity = m_SceneHierarchyPanel.GetSelectedEntity();
+			if (selectedEntity && m_GizmoType != -1)
+			{
+				const glm::mat4& cameraProjection = m_EditorCamera.GetProjection();
+				glm::mat4        cameraView = m_EditorCamera.GetViewMatrix();
+
+				ImGuizmo::SetOrthographic(cameraProjection[3][3] == 1.0f);
+				ImGuizmo::SetDrawlist();
+				ImGuizmo::SetRect(
+					m_ViewportBounds[0].x, m_ViewportBounds[0].y,
+					m_ViewportBounds[1].x - m_ViewportBounds[0].x,
+					m_ViewportBounds[1].y - m_ViewportBounds[0].y);
+
+				auto& tc = selectedEntity.GetComponent<TransformComponent>();
+				glm::mat4 transform = tc.GetTransform();
+
+				bool  snap = Input::IsKeyPressed(Key::LeftControl);
+				float snapValue = (m_GizmoType == ImGuizmo::OPERATION::ROTATE)
+					? 45.0f : 0.5f;
+				float snapValues[3] = { snapValue, snapValue, snapValue };
+
+				if (m_SceneState == SceneState::Edit)
+				{
+					ImGuizmo::Manipulate(
+						glm::value_ptr(cameraView),
+						glm::value_ptr(cameraProjection),
+						(ImGuizmo::OPERATION)m_GizmoType,
+						ImGuizmo::LOCAL,
+						glm::value_ptr(transform),
+						nullptr,
+						snap ? snapValues : nullptr);
+
+					if (ImGuizmo::IsUsing())
+					{
+						glm::vec3 translation, rotationDeg, scale;
+						ImGuizmo::DecomposeMatrixToComponents(
+							glm::value_ptr(transform),
+							glm::value_ptr(translation),
+							glm::value_ptr(rotationDeg),
+							glm::value_ptr(scale));
+
+						scale.x = std::max(scale.x, 0.0001f);
+						scale.y = std::max(scale.y, 0.0001f);
+						scale.z = std::max(scale.z, 0.0001f);
+
+						glm::vec3 rotationRad = glm::radians(rotationDeg);
+						glm::vec3 deltaRotation = rotationRad - tc.Rotation;
+						for (int i = 0; i < 3; i++)
+						{
+							while (deltaRotation[i] > glm::pi<float>())
+								deltaRotation[i] -= glm::two_pi<float>();
+							while (deltaRotation[i] < -glm::pi<float>())
+								deltaRotation[i] += glm::two_pi<float>();
+						}
+
+						tc.Translation = translation;
+						tc.Rotation += deltaRotation;
+						tc.Scale = scale;
 					}
 				}
 			}
-			ImGui::EndDragDropTarget();
+
+			UI_Toolbar();
 		}
-
-		// Display the gizmos
-		float iconSize = 20.0f;
-
-		ImGui::SetCursorPosY(5.0f);
-		ImGui::SetCursorPosX(5.0f);
-
-		ImGui::BeginGroup();
-
-		ImVec4 backgroundColor = ImVec4(0.1f, 0.1f, 0.1f, 0.8f);
-		float rounding = 10.0f;
-		float backgroundWidth = 2.0f * iconSize;
-		float backgroundHeight = 4 * (iconSize * 2.0f) - 10.0f;
-
-		ImDrawList* drawList = ImGui::GetWindowDrawList();
-		ImVec2 toolbarPos = ImGui::GetCursorScreenPos();
-		ImVec2 toolbarSize = ImVec2(backgroundWidth, backgroundHeight);
-
-		drawList->AddRectFilled(toolbarPos, ImVec2(toolbarPos.x + toolbarSize.x, toolbarPos.y + toolbarSize.y), ImGui::ColorConvertFloat4ToU32(backgroundColor), rounding);
-
-		ImTextureID noTranslateIcon = (m_GizmoType == -1) ? (ImTextureID)(uintptr_t)m_IconNoGizmoActive->GetRendererID() : (ImTextureID)(uintptr_t)m_IconNoGizmo->GetRendererID();
-		ImGui::SetCursorPosX(11.25f);
-		ImGui::SetCursorPosY(ImGui::GetCursorPosY() + 10.0f);
-		if (ImGui::ImageButton("##NoGizmo", noTranslateIcon, ImVec2(iconSize, iconSize), ImVec2(0, 0), ImVec2(1, 1)))
-			m_GizmoType = -1;
-
-		ImTextureID translateIcon = (m_GizmoType == ImGuizmo::OPERATION::TRANSLATE) ? (ImTextureID)(uintptr_t)m_IconTransformGizmoActive->GetRendererID() : (ImTextureID)(uintptr_t)m_IconTransformGizmo->GetRendererID();
-		ImGui::SetCursorPosX(11.25f);
-		ImGui::SetCursorPosY(ImGui::GetCursorPosY() + 5.0f);
-		if (ImGui::ImageButton("##TranslateGizmo", translateIcon, ImVec2(iconSize, iconSize), ImVec2(0, 0), ImVec2(1, 1)))
-			m_GizmoType = ImGuizmo::OPERATION::TRANSLATE;
-
-		ImTextureID rotationIcon = (m_GizmoType == ImGuizmo::OPERATION::ROTATE) ? (ImTextureID)(uintptr_t)m_IconRotationGizmoActive->GetRendererID() : (ImTextureID)(uintptr_t)m_IconRotationGizmo->GetRendererID();
-		ImGui::SetCursorPosX(11.25f);
-		ImGui::SetCursorPosY(ImGui::GetCursorPosY() + 5.0f);
-		if (ImGui::ImageButton("##RotateGizmo", rotationIcon, ImVec2(iconSize, iconSize), ImVec2(0, 0), ImVec2(1, 1)))
-			m_GizmoType = ImGuizmo::OPERATION::ROTATE;
-
-		ImTextureID scaleIcon = (m_GizmoType == ImGuizmo::OPERATION::SCALE) ? (ImTextureID)(uintptr_t)m_IconScaleGizmoActive->GetRendererID() : (ImTextureID)(uintptr_t)m_IconScaleGizmo->GetRendererID();
-		ImGui::SetCursorPosX(11.25f);
-		ImGui::SetCursorPosY(ImGui::GetCursorPosY() + 5.0f);
-		if (ImGui::ImageButton("##ScaleGizmo", scaleIcon, ImVec2(iconSize, iconSize), ImVec2(0, 0), ImVec2(1, 1)))
-			m_GizmoType = ImGuizmo::OPERATION::SCALE;
-
-		ImGui::EndGroup();
-
-		// Gizmos
-		Entity selectedEntity = m_SceneHierarchyPanel.GetSelectedEntity();
-		if (selectedEntity && m_GizmoType != -1)
-		{
-			// Editor camera 
-			const glm::mat4& cameraProjection = m_EditorCamera.GetProjection();
-			glm::mat4 cameraView = m_EditorCamera.GetViewMatrix();
-
-			bool isOrtho = cameraProjection[3][3] == 1.0f;
-			ImGuizmo::SetOrthographic(isOrtho);
-			ImGuizmo::SetDrawlist();
-			ImGuizmo::SetRect(m_ViewportBounds[0].x, m_ViewportBounds[0].y, m_ViewportBounds[1].x - m_ViewportBounds[0].x, m_ViewportBounds[1].y - m_ViewportBounds[0].y);
-
-			// Entity transform
-			auto& tc = selectedEntity.GetComponent<TransformComponent>();
-			glm::mat4 transform = tc.GetTransform();
-
-			// Snapping
-			bool snap = Input::IsKeyPressed(Key::LeftControl);
-			float snapValue = 0.5f;
-			if (m_GizmoType == ImGuizmo::OPERATION::ROTATE)
-				snapValue = 45.0f;
-
-			float snapValues[3] = { snapValue, snapValue, snapValue };
-
-			if (m_SceneState == SceneState::Edit)
-			{
-				ImGuizmo::Manipulate(glm::value_ptr(cameraView), glm::value_ptr(cameraProjection), (ImGuizmo::OPERATION)m_GizmoType, ImGuizmo::LOCAL, glm::value_ptr(transform), nullptr, snap ? snapValues : nullptr);
-
-				if (ImGuizmo::IsUsing())
-				{
-					glm::vec3 translation, rotationDeg, scale;
-					ImGuizmo::DecomposeMatrixToComponents(glm::value_ptr(transform), glm::value_ptr(translation), glm::value_ptr(rotationDeg), glm::value_ptr(scale));
-
-					scale.x = std::max(scale.x, 0.0001f);
-					scale.y = std::max(scale.y, 0.0001f);
-					scale.z = std::max(scale.z, 0.0001f);
-
-					glm::vec3 rotationRad = glm::radians(rotationDeg);
-					glm::vec3 deltaRotation = rotationRad - tc.Rotation;
-					for (int i = 0; i < 3; i++)
-					{
-						while (deltaRotation[i] > glm::pi<float>()) deltaRotation[i] -= glm::two_pi<float>();
-						while (deltaRotation[i] < -glm::pi<float>()) deltaRotation[i] += glm::two_pi<float>();
-					}
-
-					tc.Translation = translation;
-					tc.Rotation += deltaRotation;
-					tc.Scale = scale;
-				}
-			}
-		}
-
-		UI_Toolbar();
-
 		ImGui::End();
 		ImGui::PopStyleVar();
 
-		ImGui::End();
+		ImGui::End(); // DockSpace
+	}
+
+	// -------------------------------------------------------------------------
+	// UI sub-panels
+	// -------------------------------------------------------------------------
+
+	void EditorLayer::UI_GizmoToolbar()
+	{
+		const float iconSize = 20.0f;
+		const float backgroundWidth = 2.0f * iconSize;
+		const float backgroundHeight = 4.0f * (iconSize * 2.0f) - 10.0f;
+
+		ImGui::SetCursorPosY(5.0f);
+		ImGui::SetCursorPosX(5.0f);
+		ImGui::BeginGroup();
+
+		ImDrawList* drawList = ImGui::GetWindowDrawList();
+		ImVec2      toolbarPos = ImGui::GetCursorScreenPos();
+		drawList->AddRectFilled(
+			toolbarPos,
+			ImVec2(toolbarPos.x + backgroundWidth, toolbarPos.y + backgroundHeight),
+			ImGui::ColorConvertFloat4ToU32(ImVec4(0.1f, 0.1f, 0.1f, 0.8f)),
+			10.0f);
+
+		auto GizmoBtn = [&](const char* id, ImTextureID icon, int gizmoType)
+			{
+				ImGui::SetCursorPosX(11.25f);
+				ImGui::SetCursorPosY(ImGui::GetCursorPosY() + (id[2] == 'N' ? 10.0f : 5.0f));
+				if (ImGui::ImageButton(id, icon,
+					ImVec2(iconSize, iconSize), ImVec2(0, 0), ImVec2(1, 1)))
+					m_GizmoType = gizmoType;
+			};
+
+		GizmoBtn("##NoGizmo",
+			(m_GizmoType == -1)
+			? (ImTextureID)(uintptr_t)m_IconNoGizmoActive->GetRendererID()
+			: (ImTextureID)(uintptr_t)m_IconNoGizmo->GetRendererID(),
+			-1);
+
+		GizmoBtn("##TranslateGizmo",
+			(m_GizmoType == ImGuizmo::OPERATION::TRANSLATE)
+			? (ImTextureID)(uintptr_t)m_IconTransformGizmoActive->GetRendererID()
+			: (ImTextureID)(uintptr_t)m_IconTransformGizmo->GetRendererID(),
+			ImGuizmo::OPERATION::TRANSLATE);
+
+		GizmoBtn("##RotateGizmo",
+			(m_GizmoType == ImGuizmo::OPERATION::ROTATE)
+			? (ImTextureID)(uintptr_t)m_IconRotationGizmoActive->GetRendererID()
+			: (ImTextureID)(uintptr_t)m_IconRotationGizmo->GetRendererID(),
+			ImGuizmo::OPERATION::ROTATE);
+
+		GizmoBtn("##ScaleGizmo",
+			(m_GizmoType == ImGuizmo::OPERATION::SCALE)
+			? (ImTextureID)(uintptr_t)m_IconScaleGizmoActive->GetRendererID()
+			: (ImTextureID)(uintptr_t)m_IconScaleGizmo->GetRendererID(),
+			ImGuizmo::OPERATION::SCALE);
+
+		ImGui::EndGroup();
 	}
 
 	void EditorLayer::UI_Toolbar()
@@ -624,69 +634,77 @@ namespace Waffle {
 		ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0, 2));
 		ImGui::PushStyleVar(ImGuiStyleVar_ItemInnerSpacing, ImVec2(0, 0));
 		ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0, 0, 0, 0));
+
 		auto& colors = ImGui::GetStyle().Colors;
-		auto& buttonHovered = colors[ImGuiCol_ButtonHovered];
-		auto& buttonActive = colors[ImGuiCol_ButtonActive];
-		ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(buttonHovered.x, buttonHovered.y, buttonHovered.z, 0.5f));
-		ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(buttonActive.x, buttonActive.y, buttonActive.z, 0.5f));
+		ImGui::PushStyleColor(ImGuiCol_ButtonHovered,
+			ImVec4(colors[ImGuiCol_ButtonHovered].x,
+				colors[ImGuiCol_ButtonHovered].y,
+				colors[ImGuiCol_ButtonHovered].z, 0.5f));
+		ImGui::PushStyleColor(ImGuiCol_ButtonActive,
+			ImVec4(colors[ImGuiCol_ButtonActive].x,
+				colors[ImGuiCol_ButtonActive].y,
+				colors[ImGuiCol_ButtonActive].z, 0.5f));
 
-		bool toolbarEnabled = (bool)m_ActiveScene;
+		const float    size = 25.0f;
+		const float    availableWidth = ImGui::GetWindowContentRegionMax().x;
+		const float    startX = (availableWidth - 3.0f * size) * 0.5f;
+		ImVec4         tintColor = ImVec4(1, 1, 1, (bool)m_ActiveScene ? 1.0f : 0.5f);
 
-		ImVec4 tintColor = ImVec4(1, 1, 1, 1);
-		if (!toolbarEnabled)
-			tintColor.w = 0.5f;
-
-		float size = 25.0f;
-
-		float availableWidth = ImGui::GetWindowContentRegionMax().x;
-		float startX = (availableWidth - (3.0f * size)) * 0.5f;
-
-		ImGui::SetCursorPosX(startX);
-
-		ImVec4 backgroundColor = ImVec4(0.1f, 0.1f, 0.1f, 0.8f);
-		float rounding = 10.0f;
-
+		// Background pill
 		ImDrawList* drawList = ImGui::GetWindowDrawList();
-		ImVec2 toolbarPos = ImGui::GetCursorScreenPos();
-		ImVec2 toolbarSize = ImVec2(4.65f * size, 1.5f * size);
-
-		drawList->AddRectFilled(toolbarPos, ImVec2(toolbarPos.x + toolbarSize.x, toolbarPos.y + toolbarSize.y), ImGui::ColorConvertFloat4ToU32(backgroundColor), rounding);
+		ImGui::SetCursorPosX(startX);
+		ImGui::SetCursorPosY(5.0f);
+		ImVec2 tbPos = ImGui::GetCursorScreenPos();
+		drawList->AddRectFilled(
+			tbPos,
+			ImVec2(tbPos.x + 4.65f * size, tbPos.y + 1.5f * size),
+			ImGui::ColorConvertFloat4ToU32(ImVec4(0.1f, 0.1f, 0.1f, 0.8f)),
+			10.0f);
 
 		ImGui::SetCursorPosY(10.0f);
 		ImGui::SetCursorPosX(startX);
 
-		Ref<Texture2D> icon = (m_SceneState == SceneState::Edit) ? m_IconPlay : m_IconStop;
-		if (ImGui::ImageButton("##Play", (ImTextureID)(uintptr_t)icon->GetRendererID(), ImVec2(size, size), ImVec2(0, 0), ImVec2(1, 1), ImVec4(0.0f, 0.0f, 0.0f, 0.0f), tintColor) && toolbarEnabled) {
-			if (m_SceneState == SceneState::Edit)
-				OnScenePlay();
-			else if (m_SceneState == SceneState::Play)
-				OnSceneStop();
+		// Play / Stop
+		Ref<Texture2D> playIcon =
+			(m_SceneState == SceneState::Edit) ? m_IconPlay : m_IconStop;
+		if (ImGui::ImageButton("##Play",
+			(ImTextureID)(uintptr_t)playIcon->GetRendererID(),
+			ImVec2(size, size), ImVec2(0, 0), ImVec2(1, 1),
+			ImVec4(0, 0, 0, 0), tintColor) && m_ActiveScene)
+		{
+			if (m_SceneState == SceneState::Edit) OnScenePlay();
+			else                                  OnSceneStop();
 		}
 
-		bool isPaused = m_ActiveScene ? m_ActiveScene->IsPaused() : false;
+		// Pause
 		ImGui::SameLine();
+		bool isPaused = m_ActiveScene ? m_ActiveScene->IsPaused() : false;
 		{
-			Ref<Texture2D> pauseIcon = (isPaused == false) ? m_IconPause : m_IconPlay;
-
-			Ref<Texture2D> buttonIcon = (m_SceneState == SceneState::Play) ? pauseIcon : m_IconPauseInactive;
-
-			if (ImGui::ImageButton("##Pause", (ImTextureID)(uintptr_t)buttonIcon->GetRendererID(), ImVec2(size, size), ImVec2(0, 0), ImVec2(1, 1), ImVec4(0.0f, 0.0f, 0.0f, 0.0f), tintColor) && toolbarEnabled) {
-				if (m_SceneState == SceneState::Play) {
+			Ref<Texture2D> icon = (m_SceneState == SceneState::Play)
+				? (isPaused ? m_IconPlay : m_IconPause)
+				: m_IconPauseInactive;
+			if (ImGui::ImageButton("##Pause",
+				(ImTextureID)(uintptr_t)icon->GetRendererID(),
+				ImVec2(size, size), ImVec2(0, 0), ImVec2(1, 1),
+				ImVec4(0, 0, 0, 0), tintColor) && m_ActiveScene)
+			{
+				if (m_SceneState == SceneState::Play)
 					m_ActiveScene->SetPaused(!isPaused);
-				}
 			}
 		}
+
+		// Step
 		ImGui::SameLine();
 		{
-			Ref<Texture2D> stepIcon = m_IconStep;
-			Ref<Texture2D> inactiveStepIcon = m_IconStepInactive;
-
-			Ref<Texture2D> stepButtonIcon = (m_SceneState == SceneState::Play) ? stepIcon : inactiveStepIcon;
-
-			if (ImGui::ImageButton("##Step", (ImTextureID)(uintptr_t)stepButtonIcon->GetRendererID(), ImVec2(size, size), ImVec2(0, 0), ImVec2(1, 1), ImVec4(0.0f, 0.0f, 0.0f, 0.0f), tintColor) && toolbarEnabled) {
-				if (m_SceneState == SceneState::Play && isPaused) {
+			Ref<Texture2D> icon = (m_SceneState == SceneState::Play)
+				? m_IconStep : m_IconStepInactive;
+			if (ImGui::ImageButton("##Step",
+				(ImTextureID)(uintptr_t)icon->GetRendererID(),
+				ImVec2(size, size), ImVec2(0, 0), ImVec2(1, 1),
+				ImVec4(0, 0, 0, 0), tintColor) && m_ActiveScene)
+			{
+				if (m_SceneState == SceneState::Play && isPaused)
 					m_ActiveScene->Step();
-				}
 			}
 		}
 
@@ -694,16 +712,395 @@ namespace Waffle {
 		ImGui::PopStyleVar(2);
 	}
 
+	void EditorLayer::UI_ProjectSettings()
+	{
+		if (!m_ShowProjectTab)
+			return;
+
+		ImGui::SetNextWindowSize(ImVec2(540, 600), ImGuiCond_FirstUseEver);
+		ImGui::Begin("Project Settings", &m_ShowProjectTab);
+
+		// ── Identity ──────────────────────────────────────────────────────
+		ImGui::SeparatorText("Identity");
+
+		ImGui::SetNextItemWidth(-1);
+		ImGui::InputText("##AppName", m_ExportAppNameBuffer, sizeof(m_ExportAppNameBuffer));
+		ImGui::SameLine(0, 0);
+		ImGui::TextDisabled(" Application Name");
+		if (ImGui::IsItemDeactivatedAfterEdit()) SaveProjectSettings();
+
+		// Icon preview
+		ImGui::Spacing();
+		ImGui::Text("Application Icon");
+
+		// Lazy-load preview texture when path changes
+		{
+			std::string currentIconPath = m_ExportIconPathBuffer;
+			if (currentIconPath != m_ProjectIconPreviewPath)
+			{
+				m_ProjectIconPreviewPath = currentIconPath;
+				m_ProjectIconPreviewTexture =
+					(!currentIconPath.empty() && std::filesystem::exists(currentIconPath))
+					? Texture2D::Create(currentIconPath)
+					: nullptr;
+			}
+		}
+
+		// Preview button (drag-drop target)
+		if (m_ProjectIconPreviewTexture)
+		{
+			ImGui::ImageButton("##ProjectIcon",
+				(ImTextureID)(uintptr_t)m_ProjectIconPreviewTexture->GetRendererID(),
+				ImVec2(48, 48), ImVec2(0, 1), ImVec2(1, 0));
+		}
+		else
+		{
+			ImGui::Button("No Icon##ProjectIconBtn", ImVec2(48, 48));
+		}
+
+		if (ImGui::BeginDragDropTarget())
+		{
+			if (const ImGuiPayload* payload =
+				ImGui::AcceptDragDropPayload("CONTENT_BROWSER_ITEM"))
+			{
+				std::filesystem::path dropped =
+					std::filesystem::path(g_AssetPath) /
+					(const wchar_t*)payload->Data;
+				std::string ext = dropped.extension().string();
+				for (auto& c : ext) c = (char)tolower(c);
+				if (ext == ".png" || ext == ".jpg" || ext == ".ico")
+				{
+					strcpy_s(m_ExportIconPathBuffer,
+						sizeof(m_ExportIconPathBuffer),
+						dropped.string().c_str());
+					SaveProjectSettings();
+				}
+			}
+			ImGui::EndDragDropTarget();
+		}
+
+		ImGui::SameLine();
+		ImGui::BeginGroup();
+		ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x - 100.0f);
+		ImGui::InputText("##IconPath", m_ExportIconPathBuffer, sizeof(m_ExportIconPathBuffer));
+		if (ImGui::IsItemDeactivatedAfterEdit()) SaveProjectSettings();
+		ImGui::SameLine();
+		if (ImGui::Button("Browse...##IconBrowse"))
+		{
+			std::string sel = FileDialogs::OpenFile(
+				"Image Files (*.png;*.jpg;*.ico)\0*.png;*.jpg;*.ico\0");
+			if (!sel.empty())
+			{
+				strcpy_s(m_ExportIconPathBuffer,
+					sizeof(m_ExportIconPathBuffer), sel.c_str());
+				SaveProjectSettings();
+			}
+		}
+		if (ImGui::Button("Clear##IconClear"))
+		{
+			m_ExportIconPathBuffer[0] = '\0';
+			m_ProjectIconPreviewTexture = nullptr;
+			m_ProjectIconPreviewPath.clear();
+			SaveProjectSettings();
+		}
+		ImGui::EndGroup();
+
+		// ── Physics ───────────────────────────────────────────────────────
+		ImGui::SeparatorText("Physics");
+		if (ImGui::DragFloat("Gravity Y", &m_ProjectGravity, 0.1f, -100.0f, 0.0f))
+		{
+			if (m_ActiveScene && m_ActiveScene->GetPhysicsWorld())
+				m_ActiveScene->GetPhysicsWorld()->SetGravity({ 0.0f, m_ProjectGravity });
+			SaveProjectSettings();
+		}
+
+		// ── Scene Order ───────────────────────────────────────────────────
+		ImGui::SeparatorText("Scene Order");
+		ImGui::TextDisabled("Index 0 is the start scene. Drag rows or use arrows to reorder.");
+
+		if (ImGui::Button("Refresh##SceneList"))
+			RebuildSceneList();
+
+		ImGui::Spacing();
+
+		if (ImGui::BeginTable("SceneOrderTable", 5,
+			ImGuiTableFlags_Borders |
+			ImGuiTableFlags_RowBg |
+			ImGuiTableFlags_ScrollY,
+			ImVec2(0.0f, 200.0f)))
+		{
+			ImGui::TableSetupScrollFreeze(0, 1);
+			ImGui::TableSetupColumn("#", ImGuiTableColumnFlags_WidthFixed, 28.0f);
+			ImGui::TableSetupColumn("Scene", ImGuiTableColumnFlags_WidthStretch);
+			ImGui::TableSetupColumn("Path", ImGuiTableColumnFlags_WidthStretch);
+			ImGui::TableSetupColumn("##up", ImGuiTableColumnFlags_WidthFixed, 24.0f);
+			ImGui::TableSetupColumn("##dn", ImGuiTableColumnFlags_WidthFixed, 24.0f);
+			ImGui::TableHeadersRow();
+
+			for (int i = 0; i < (int)m_SceneList.size(); i++)
+			{
+				ImGui::TableNextRow();
+
+				// Highlight currently open scene
+				std::error_code ec;
+				bool isCurrent = !m_EditorScenePath.empty() &&
+					std::filesystem::equivalent(m_SceneList[i], m_EditorScenePath, ec);
+				if (isCurrent)
+					ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0,
+						ImGui::ColorConvertFloat4ToU32(ImVec4(0.2f, 0.5f, 0.2f, 0.4f)));
+
+				ImGui::TableSetColumnIndex(0);
+				ImGui::Text("%d", i);
+
+				ImGui::TableSetColumnIndex(1);
+				std::string stem = m_SceneList[i].stem().string();
+				ImGui::PushID(i);
+				ImGui::TextUnformatted(stem.c_str());
+
+				if (ImGui::IsItemHovered() &&
+					ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left))
+					OpenScene(m_SceneList[i]);
+
+				// Drag source
+				if (ImGui::BeginDragDropSource(ImGuiDragDropFlags_SourceAllowNullID))
+				{
+					ImGui::SetDragDropPayload("SCENE_ORDER_ITEM", &i, sizeof(int));
+					ImGui::Text("Moving: %s", stem.c_str());
+					ImGui::EndDragDropSource();
+				}
+				// Drag target
+				if (ImGui::BeginDragDropTarget())
+				{
+					if (const ImGuiPayload* payload =
+						ImGui::AcceptDragDropPayload("SCENE_ORDER_ITEM"))
+					{
+						int from = *(const int*)payload->Data;
+						if (from != i)
+						{
+							auto tmp = m_SceneList[from];
+							m_SceneList.erase(m_SceneList.begin() + from);
+							m_SceneList.insert(m_SceneList.begin() + i, tmp);
+							SaveProjectSettings();
+						}
+					}
+					ImGui::EndDragDropTarget();
+				}
+				ImGui::PopID();
+
+				ImGui::TableSetColumnIndex(2);
+				{
+					std::string fullStr = m_SceneList[i].string();
+					ImGui::TextDisabled("%s", fullStr.c_str());
+					if (ImGui::IsItemHovered())
+						ImGui::SetTooltip("%s", fullStr.c_str());
+				}
+
+				ImGui::TableSetColumnIndex(3);
+				ImGui::PushID(i * 100 + 0);
+				if (ImGui::ArrowButton("##up", ImGuiDir_Up) && i > 0)
+				{
+					std::swap(m_SceneList[i], m_SceneList[i - 1]);
+					SaveProjectSettings();
+				}
+				ImGui::PopID();
+
+				ImGui::TableSetColumnIndex(4);
+				ImGui::PushID(i * 100 + 1);
+				if (ImGui::ArrowButton("##dn", ImGuiDir_Down) &&
+					i < (int)m_SceneList.size() - 1)
+				{
+					std::swap(m_SceneList[i], m_SceneList[i + 1]);
+					SaveProjectSettings();
+				}
+				ImGui::PopID();
+			}
+			ImGui::EndTable();
+		}
+
+		if (m_SceneList.empty())
+			ImGui::TextColored(ImVec4(0.9f, 0.6f, 0.2f, 1.0f),
+				"No .waffle scenes found. Save a scene first.");
+
+		// ── Export shortcut ────────────────────────────────────────────────
+		ImGui::Spacing();
+		ImGui::Separator();
+		if (ImGui::Button("Export Project...", ImVec2(-1.0f, 0.0f)))
+		{
+			PrepareExport();
+			SaveProjectSettings();
+
+			std::string projName = m_ProjectName.empty() ? "MyGame" : m_ProjectName;
+			std::string appNameStr = m_ExportAppNameBuffer[0] != '\0'
+				? m_ExportAppNameBuffer : projName;
+
+			ProjectExporter::ExportOptions options;
+			options.ProjectName = projName;
+			options.ProjectPath = m_ProjectName.empty()
+				? std::filesystem::path()
+				: std::filesystem::path("Projects") / m_ProjectName;
+			options.AppName = appNameStr;
+			options.CustomIconPath = m_ExportIconPathBuffer;
+			options.Gravity = m_ProjectGravity;
+
+			if (!m_SceneList.empty())
+				options.SelectedScenePath = m_SceneList[0].string();
+
+			for (const auto& p : m_SceneList)
+				options.SceneList.push_back(p.string());
+
+			std::string errorMsg;
+			if (ProjectExporter::ExportProject(options, errorMsg))
+				WF_CORE_INFO("Exported to Projects/{0}/Exports/{1}.exe", projName, appNameStr);
+			else
+				WF_CORE_ERROR("Export failed: {0}", errorMsg);
+		}
+
+		ImGui::End();
+	}
+
+	void EditorLayer::UI_ExportModal()
+	{
+		if (m_ShowExportModal)
+		{
+			ImGui::OpenPopup("Export Project");
+			m_ShowExportModal = false;
+		}
+
+		if (!ImGui::BeginPopupModal("Export Project", NULL,
+			ImGuiWindowFlags_AlwaysAutoResize))
+			return;
+
+		std::string projName = m_ProjectName.empty() ? "MyGame" : m_ProjectName;
+		std::string appNameStr = m_ExportAppNameBuffer[0] != '\0'
+			? m_ExportAppNameBuffer : projName;
+
+		ImGui::Text("Project: %s", projName.c_str());
+		ImGui::Text("Target OS: Windows (x64)");
+		ImGui::Separator();
+
+		ImGui::InputText("Application Name",
+			m_ExportAppNameBuffer, sizeof(m_ExportAppNameBuffer));
+
+		// Start scene — choosing a scene here rotates it to index 0 in m_SceneList,
+		// so "Scenes[0]" and "StartScene" in project.wfp always agree.
+		if (!m_SceneList.empty())
+		{
+			std::vector<std::string> names;
+			std::vector<const char*> items;
+			for (const auto& p : m_SceneList)
+				names.push_back(p.stem().string());
+			for (const auto& n : names)
+				items.push_back(n.c_str());
+
+			// Show the current index-0 scene as the selected start scene
+			int startIndex = 0;
+			if (ImGui::Combo("Start Scene", &startIndex,
+				items.data(), (int)items.size()))
+			{
+				if (startIndex != 0)
+				{
+					// Rotate chosen scene to the front
+					std::rotate(m_SceneList.begin(),
+						m_SceneList.begin() + startIndex,
+						m_SceneList.begin() + startIndex + 1);
+					SaveProjectSettings();
+				}
+			}
+			ImGui::TextDisabled("Index 0 in the Scene Order is always the start scene.");
+		}
+		else
+		{
+			ImGui::TextColored(ImVec4(0.9f, 0.6f, 0.2f, 1.0f),
+				"No .waffle scenes found in project!");
+		}
+
+		// Icon
+		ImGui::InputText("App Icon",
+			m_ExportIconPathBuffer, sizeof(m_ExportIconPathBuffer));
+		ImGui::SameLine();
+		if (ImGui::Button("Browse...##ExportIcon"))
+		{
+			std::string sel = FileDialogs::OpenFile(
+				"Image Files (*.png;*.jpg;*.ico)\0*.png;*.jpg;*.ico\0");
+			if (!sel.empty())
+				strcpy_s(m_ExportIconPathBuffer,
+					sizeof(m_ExportIconPathBuffer), sel.c_str());
+		}
+
+		ImGui::Separator();
+		ImGui::Text("Output: Projects/%s/Exports/%s.exe",
+			projName.c_str(), appNameStr.c_str());
+		ImGui::Separator();
+
+		if (!m_ExportStatusMessage.empty())
+		{
+			if (m_ExportSuccess)
+				ImGui::TextColored(ImVec4(0.2f, 0.8f, 0.2f, 1.0f),
+					"%s", m_ExportStatusMessage.c_str());
+			else
+				ImGui::TextColored(ImVec4(0.9f, 0.2f, 0.2f, 1.0f),
+					"%s", m_ExportStatusMessage.c_str());
+			ImGui::Separator();
+		}
+
+		if (ImGui::Button("Export Executable", ImVec2(160, 0)))
+		{
+			SaveProjectSettings();
+
+			ProjectExporter::ExportOptions options;
+			options.ProjectName = projName;
+			options.ProjectPath = m_ProjectName.empty()
+				? std::filesystem::path()
+				: std::filesystem::path("Projects") / m_ProjectName;
+			options.AppName = appNameStr;
+			options.CustomIconPath = m_ExportIconPathBuffer;
+			options.Gravity = m_ProjectGravity;
+
+			// Index 0 is always the start scene — no separate SelectedScenePath ambiguity
+			if (!m_SceneList.empty())
+				options.SelectedScenePath = m_SceneList[0].string();
+
+			for (const auto& p : m_SceneList)
+				options.SceneList.push_back(p.string());
+
+			std::string errorMsg;
+			if (ProjectExporter::ExportProject(options, errorMsg))
+			{
+				m_ExportSuccess = true;
+				m_ExportStatusMessage = "Exported to Projects/" + projName
+					+ "/Exports/" + appNameStr + ".exe";
+			}
+			else
+			{
+				m_ExportSuccess = false;
+				m_ExportStatusMessage = "Export failed: " + errorMsg;
+			}
+		}
+
+		ImGui::SameLine();
+		if (ImGui::Button("Close", ImVec2(100, 0)))
+			ImGui::CloseCurrentPopup();
+
+		ImGui::EndPopup();
+	}
+
+	// -------------------------------------------------------------------------
+	// Events
+	// -------------------------------------------------------------------------
+
 	void EditorLayer::OnEvent(Waffle::Event& e)
 	{
 		m_CameraController.OnEvent(e);
 		if (m_SceneState == SceneState::Edit)
 			m_EditorCamera.OnEvent(e);
 
-		EventDispatcher dispacher(e);
-		dispacher.Dispatch<KeyPressedEvent>(WF_BIND_EVENT_FN(EditorLayer::OnkeyPressed));
-		dispacher.Dispatch<MouseButtonPressedEvent>(WF_BIND_EVENT_FN(EditorLayer::OnMouseButtonPressed));
-		dispacher.Dispatch<WindowDropEvent>(WF_BIND_EVENT_FN(EditorLayer::OnWindowDrop));
+		EventDispatcher dispatcher(e);
+		dispatcher.Dispatch<KeyPressedEvent>(
+			WF_BIND_EVENT_FN(EditorLayer::OnkeyPressed));
+		dispatcher.Dispatch<MouseButtonPressedEvent>(
+			WF_BIND_EVENT_FN(EditorLayer::OnMouseButtonPressed));
+		dispatcher.Dispatch<WindowDropEvent>(
+			WF_BIND_EVENT_FN(EditorLayer::OnWindowDrop));
 	}
 
 	bool EditorLayer::OnWindowDrop(WindowDropEvent& e)
@@ -716,9 +1113,10 @@ namespace Waffle {
 		{
 			if (std::filesystem::exists(path))
 			{
-				std::filesystem::path destPath = targetDir / path.filename();
 				std::error_code ec;
-				std::filesystem::copy(path, destPath, std::filesystem::copy_options::overwrite_existing | std::filesystem::copy_options::recursive, ec);
+				std::filesystem::copy(path, targetDir / path.filename(),
+					std::filesystem::copy_options::overwrite_existing |
+					std::filesystem::copy_options::recursive, ec);
 			}
 		}
 		return true;
@@ -726,99 +1124,65 @@ namespace Waffle {
 
 	bool EditorLayer::OnkeyPressed(KeyPressedEvent& e)
 	{
-		if (m_SceneState == SceneState::Play)
-			return false;
+		if (m_SceneState == SceneState::Play) return false;
+		if (e.GetRepeatCount() > 0)           return false;
 
-		if (e.GetRepeatCount() > 0)
-			return false;
+		bool control = Input::IsKeyPressed(Key::LeftControl) ||
+			Input::IsKeyPressed(Key::RightControl);
+		bool shift = Input::IsKeyPressed(Key::LeftShift) ||
+			Input::IsKeyPressed(Key::RightShift);
 
-		bool control = Input::IsKeyPressed(Key::LeftControl) || Input::IsKeyPressed(Key::RightControl);
-		bool shift = Input::IsKeyPressed(Key::LeftShift) || Input::IsKeyPressed(Key::RightShift);
 		switch (e.GetKeyCode())
 		{
-			case Key::S:
-			{
-				if (control)
-					if (shift)
-						SaveSceneAs();
-					else
-						SaveScene();
-
-				break;
-			}
-			case Key::O:
-			{
-				if (control)
-					OpenScene();
-				break;
-			}
-			case Key::N:
-			{
-				if (control)
-					NewScene();
-				break;
-			}
-			case Key::D:
-			{
-				if (control)
-					OnDuplicateEntity();
-
-				break;
-			}
+		case Key::S: if (control) { shift ? SaveSceneAs() : SaveScene(); } break;
+		case Key::O: if (control) OpenScene();         break;
+		case Key::N: if (control) NewScene();          break;
+		case Key::D: if (control) OnDuplicateEntity(); break;
 
 			// Gizmos
-			case Key::Q:
-			{
-				m_GizmoType = -1;
-				break;
-			}
-			case Key::W:
-			{
-				m_GizmoType = ImGuizmo::OPERATION::TRANSLATE;
-				break;
-			}
-			case Key::E:
-			{
-				m_GizmoType = ImGuizmo::OPERATION::ROTATE;
-				break;
-			}
-			case Key::R:
-			{
-				m_GizmoType = ImGuizmo::OPERATION::SCALE;
-				break;
-			}
-			case Key::F:
-			{
-				Entity selectedEntity = m_SceneHierarchyPanel.GetSelectedEntity();
-				if (selectedEntity && selectedEntity.HasComponent<TransformComponent>())
-				{
-					m_EditorCamera.SetFocalPoint(selectedEntity.GetComponent<TransformComponent>().Translation);
-				}
-				break;
-			}
+		case Key::Q: m_GizmoType = -1;                            break;
+		case Key::W: m_GizmoType = ImGuizmo::OPERATION::TRANSLATE; break;
+		case Key::E: m_GizmoType = ImGuizmo::OPERATION::ROTATE;    break;
+		case Key::R: m_GizmoType = ImGuizmo::OPERATION::SCALE;     break;
+
+		case Key::F:
+		{
+			Entity sel = m_SceneHierarchyPanel.GetSelectedEntity();
+			if (sel && sel.HasComponent<TransformComponent>())
+				m_EditorCamera.SetFocalPoint(
+					sel.GetComponent<TransformComponent>().Translation);
+			break;
+		}
 		}
 		return false;
 	}
 
 	bool EditorLayer::OnMouseButtonPressed(MouseButtonPressedEvent& e)
 	{
-		if (e.GetMouseButton() == Mouse::ButtonLeft && m_ViewportHovered && !ImGuizmo::IsOver() && !Input::IsKeyPressed(Key::LeftControl))
+		if (e.GetMouseButton() == Mouse::ButtonLeft &&
+			m_ViewportHovered &&
+			!ImGuizmo::IsOver() &&
+			!Input::IsKeyPressed(Key::LeftControl))
 		{
 			if (m_HoveredEntity)
 				m_SceneHierarchyPanel.SetSelectedEntity(m_HoveredEntity);
 		}
-
 		return false;
 	}
+
+	// -------------------------------------------------------------------------
+	// Overlay
+	// -------------------------------------------------------------------------
 
 	void EditorLayer::OnOverlayRender()
 	{
 		if (m_SceneState == SceneState::Play)
 		{
 			Entity camera = m_ActiveScene->GetPrimaryCameraEntity();
-			if (!camera)
-				return;
-			Renderer2D::BeginScene(camera.GetComponent<CameraComponent>().Camera, camera.GetComponent<TransformComponent>().GetTransform());
+			if (!camera) return;
+			Renderer2D::BeginScene(
+				camera.GetComponent<CameraComponent>().Camera,
+				camera.GetComponent<TransformComponent>().GetTransform());
 		}
 		else
 		{
@@ -827,51 +1191,57 @@ namespace Waffle {
 
 		if (m_ShowPhysicsColliders)
 		{
-			// Box Colliders
+			// Box colliders
+			auto boxView = m_ActiveScene->GetAllEntitiesWith<
+				TransformComponent, BoxCollider2DComponent>();
+			for (auto entity : boxView)
 			{
-				auto view = m_ActiveScene->GetAllEntitiesWith<TransformComponent, BoxCollider2DComponent>();
-				for (auto entity : view)
-				{
-					auto [tc, bc2d] = view.get<TransformComponent, BoxCollider2DComponent>(entity);
+				auto [tc, bc2d] = boxView.get<
+					TransformComponent, BoxCollider2DComponent>(entity);
 
-					glm::vec3 translation = tc.Translation + glm::vec3(bc2d.Offset, 0.001f);
-					glm::vec3 scale = tc.Scale * glm::vec3(bc2d.Size * 2.0f, 1.0f);
+				glm::mat4 transform =
+					glm::translate(glm::mat4(1.0f),
+						tc.Translation + glm::vec3(bc2d.Offset, 0.001f))
+					* glm::rotate(glm::mat4(1.0f), tc.Rotation.z,
+						glm::vec3(0.0f, 0.0f, 1.0f))
+					* glm::scale(glm::mat4(1.0f),
+						tc.Scale * glm::vec3(bc2d.Size * 2.0f, 1.0f));
 
-					glm::mat4 transform = glm::translate(glm::mat4(1.0f), translation)
-						* glm::rotate(glm::mat4(1.0f), tc.Rotation.z, glm::vec3(0.0f, 0.0f, 1.0f))
-						* glm::scale(glm::mat4(1.0f), scale);
-
-					Renderer2D::DrawRect(transform, glm::vec4(0, 1, 0, 1));
-				}
+				Renderer2D::DrawRect(transform, glm::vec4(0, 1, 0, 1));
 			}
 
-			// Circle Colliders
+			// Circle colliders
+			auto circleView = m_ActiveScene->GetAllEntitiesWith<
+				TransformComponent, CircleCollider2DComponent>();
+			for (auto entity : circleView)
 			{
-				auto view = m_ActiveScene->GetAllEntitiesWith<TransformComponent, CircleCollider2DComponent>();
-				for (auto entity : view)
-				{
-					auto [tc, cc2d] = view.get<TransformComponent, CircleCollider2DComponent>(entity);
+				auto [tc, cc2d] = circleView.get<
+					TransformComponent, CircleCollider2DComponent>(entity);
 
-					glm::vec3 translation = tc.Translation + glm::vec3(cc2d.Offset, 0.001f);
-					glm::vec3 scale = tc.Scale * glm::vec3(cc2d.Radius * 2.0f);
+				glm::mat4 transform =
+					glm::translate(glm::mat4(1.0f),
+						tc.Translation + glm::vec3(cc2d.Offset, 0.001f))
+					* glm::scale(glm::mat4(1.0f),
+						tc.Scale * glm::vec3(cc2d.Radius * 2.0f));
 
-					glm::mat4 transform = glm::translate(glm::mat4(1.0f), translation)
-						* glm::scale(glm::mat4(1.0f), scale);
-
-					Renderer2D::DrawCircle(transform, glm::vec4(0, 1, 0, 1), 0.01f);
-				}
+				Renderer2D::DrawCircle(transform, glm::vec4(0, 1, 0, 1), 0.01f);
 			}
 		}
 
-		// Draw selected entity outline 
-		if (Entity selectedEntity = m_SceneHierarchyPanel.GetSelectedEntity())
+		// Selected entity outline
+		if (Entity sel = m_SceneHierarchyPanel.GetSelectedEntity())
 		{
-			const TransformComponent& transform = selectedEntity.GetComponent<TransformComponent>();
-			Renderer2D::DrawRect(transform.GetTransform(), glm::vec4(1.0f, 1.0f, 0.0f, 1.0f));
+			Renderer2D::DrawRect(
+				sel.GetComponent<TransformComponent>().GetTransform(),
+				glm::vec4(1.0f, 1.0f, 0.0f, 1.0f));
 		}
 
 		Renderer2D::EndScene();
 	}
+
+	// -------------------------------------------------------------------------
+	// Project management
+	// -------------------------------------------------------------------------
 
 	void EditorLayer::NewProject()
 	{
@@ -879,70 +1249,41 @@ namespace Waffle {
 		m_ShowNewProjectModal = true;
 	}
 
-	void EditorLayer::ExportProject()
+	void EditorLayer::OpenProject()
 	{
-		m_ExportStatusMessage = "";
-		m_ExportSuccess = false;
-
-		std::string defaultName = m_ProjectName.empty() ? "MyGame" : m_ProjectName;
-		strcpy_s(m_ExportAppNameBuffer, sizeof(m_ExportAppNameBuffer), defaultName.c_str());
-		m_ExportIconPathBuffer[0] = '\0';
-
-		m_ExportAvailableScenes.clear();
-		std::filesystem::path assetsPath = m_ProjectName.empty() ? std::filesystem::path("Assets") : (std::filesystem::path("Projects") / m_ProjectName / "Assets");
-
-		if (std::filesystem::exists(assetsPath))
-		{
-			for (auto& entry : std::filesystem::recursive_directory_iterator(assetsPath))
-			{
-				if (entry.is_regular_file() && entry.path().extension() == ".waffle")
-				{
-					m_ExportAvailableScenes.push_back(entry.path());
-				}
-			}
-		}
-
-		m_SelectedExportSceneIndex = 0;
-		if (!m_EditorScenePath.empty())
-		{
-			for (size_t i = 0; i < m_ExportAvailableScenes.size(); i++)
-			{
-				std::error_code ec;
-				if (std::filesystem::equivalent(m_ExportAvailableScenes[i], m_EditorScenePath, ec))
-				{
-					m_SelectedExportSceneIndex = (int)i;
-					break;
-				}
-			}
-		}
-
-		m_ShowExportModal = true;
+		std::string folderpath = FileDialogs::OpenFolder();
+		if (!folderpath.empty())
+			OpenProjectAtPath(folderpath);
 	}
 
-	void EditorLayer::UpdateWindowTitle()
+	void EditorLayer::CreateProject(const std::string& projectName)
 	{
-		std::string title = "Waffle Editor";
-		if (!m_ProjectName.empty())
-			title += " - " + m_ProjectName;
-		if (!m_EditorScenePath.empty())
-			title += " [" + m_EditorScenePath.filename().string() + "]";
-		Application::Get().GetWindow().SetTitle(title);
-	}
+		std::filesystem::path projectPath = std::filesystem::path("Projects") / projectName;
+		std::filesystem::path defaultProjPath = FindDefaultProjectPath();
+		std::error_code ec;
 
-	std::filesystem::path EditorLayer::FindDefaultProjectPath()
-	{
-		std::vector<std::filesystem::path> candidates = {
-			"Projects/DefaultProject",
-			"Waffle-Editor/Projects/DefaultProject",
-			"../Waffle-Editor/Projects/DefaultProject"
-		};
-
-		for (const auto& path : candidates)
+		if (!defaultProjPath.empty() && std::filesystem::exists(defaultProjPath))
 		{
-			if (std::filesystem::exists(path) && std::filesystem::is_directory(path))
-				return path;
+			std::filesystem::create_directories(projectPath, ec);
+			std::filesystem::copy(defaultProjPath, projectPath,
+				std::filesystem::copy_options::overwrite_existing |
+				std::filesystem::copy_options::recursive, ec);
+
+			// Clear old exports
+			if (std::filesystem::exists(projectPath / "Exports"))
+				std::filesystem::remove_all(projectPath / "Exports", ec);
+			std::filesystem::create_directories(projectPath / "Exports", ec);
 		}
-		return "";
+		else
+		{
+			std::filesystem::path assetsPath = projectPath / "Assets";
+			std::filesystem::create_directories(assetsPath / "Scenes", ec);
+			std::filesystem::create_directories(assetsPath / "Textures", ec);
+			std::filesystem::create_directories(assetsPath / "Scripts", ec);
+			std::filesystem::create_directories(projectPath / "Exports", ec);
+		}
+
+		OpenProjectAtPath(projectPath);
 	}
 
 	void EditorLayer::OpenProjectAtPath(const std::filesystem::path& projectPath)
@@ -958,14 +1299,60 @@ namespace Waffle {
 
 		m_ProjectName = projectPath.filename().string();
 		m_ContentBrowserPanel.SetAssetDirectory(assetsPath);
+		LuaScriptEngine::SetAssetPath(assetsPath);
+
+		// Load saved project settings (gravity, name, icon, scene order)
+		std::filesystem::path wfpPath = assetsPath / "project.wfp";
+		if (std::filesystem::exists(wfpPath))
+		{
+			try
+			{
+				YAML::Node data = YAML::LoadFile(wfpPath.string());
+				auto       project = data["Project"];
+				if (project)
+				{
+					if (project["Gravity"])
+						m_ProjectGravity = project["Gravity"].as<float>();
+
+					if (project["Name"])
+						strcpy_s(m_ExportAppNameBuffer, sizeof(m_ExportAppNameBuffer),
+							project["Name"].as<std::string>().c_str());
+
+					if (project["IconPath"])
+						strcpy_s(m_ExportIconPathBuffer, sizeof(m_ExportIconPathBuffer),
+							project["IconPath"].as<std::string>().c_str());
+
+					// Restore saved scene order first, then merge with disk
+					if (project["Scenes"])
+					{
+						m_SceneList.clear();
+						for (auto node : project["Scenes"])
+						{
+							std::filesystem::path p = node.as<std::string>();
+							if (std::filesystem::exists(p))
+								m_SceneList.push_back(p);
+						}
+					}
+				}
+			}
+			catch (...) {}
+		}
+
+		// Merge: pick up any new scenes not yet in the saved list
+		RebuildSceneList();
 		UpdateWindowTitle();
 
+		// Open the first available scene
 		std::filesystem::path defaultScene;
+
+		// Prefer Scenes/ subdirectory
 		if (std::filesystem::exists(assetsPath / "Scenes"))
 		{
-			for (const auto& entry : std::filesystem::directory_iterator(assetsPath / "Scenes"))
+			for (const auto& entry :
+				std::filesystem::directory_iterator(assetsPath / "Scenes"))
 			{
-				if (entry.is_regular_file() && entry.path().extension() == ".waffle")
+				if (entry.is_regular_file() &&
+					entry.path().extension() == ".waffle")
 				{
 					defaultScene = entry.path();
 					break;
@@ -973,11 +1360,14 @@ namespace Waffle {
 			}
 		}
 
+		// Fall back to any .waffle in assets
 		if (defaultScene.empty() && std::filesystem::exists(assetsPath))
 		{
-			for (const auto& entry : std::filesystem::recursive_directory_iterator(assetsPath))
+			for (const auto& entry :
+				std::filesystem::recursive_directory_iterator(assetsPath))
 			{
-				if (entry.is_regular_file() && entry.path().extension() == ".waffle")
+				if (entry.is_regular_file() &&
+					entry.path().extension() == ".waffle")
 				{
 					defaultScene = entry.path();
 					break;
@@ -986,69 +1376,60 @@ namespace Waffle {
 		}
 
 		if (!defaultScene.empty())
-		{
 			OpenScene(defaultScene);
-		}
 		else
-		{
 			NewScene();
-		}
 	}
 
-	void EditorLayer::CreateProject(const std::string& projectName)
+	std::filesystem::path EditorLayer::FindDefaultProjectPath()
 	{
-		std::filesystem::path projectsDir = "Projects";
-		std::filesystem::path projectPath = projectsDir / projectName;
-		std::filesystem::path defaultProjPath = FindDefaultProjectPath();
-		std::error_code ec;
-
-		if (!defaultProjPath.empty() && std::filesystem::exists(defaultProjPath))
+		std::vector<std::filesystem::path> candidates = {
+			"Projects/DefaultProject",
+			"Waffle-Editor/Projects/DefaultProject",
+			"../Waffle-Editor/Projects/DefaultProject"
+		};
+		for (const auto& path : candidates)
 		{
-			std::filesystem::create_directories(projectPath, ec);
-			std::filesystem::copy(defaultProjPath, projectPath, std::filesystem::copy_options::overwrite_existing | std::filesystem::copy_options::recursive, ec);
-
-			if (std::filesystem::exists(projectPath / "Exports"))
-			{
-				std::filesystem::remove_all(projectPath / "Exports", ec);
-			}
-			std::filesystem::create_directories(projectPath / "Exports", ec);
+			if (std::filesystem::exists(path) && std::filesystem::is_directory(path))
+				return path;
 		}
-		else
-		{
-			std::filesystem::path assetsPath = projectPath / "Assets";
-			std::filesystem::create_directories(assetsPath / "Scenes");
-			std::filesystem::create_directories(assetsPath / "Textures");
-			std::filesystem::create_directories(assetsPath / "Scripts");
-			std::filesystem::create_directories(projectPath / "Exports");
-		}
-
-		OpenProjectAtPath(projectPath);
+		return "";
 	}
 
-	void EditorLayer::OpenProject()
+	void EditorLayer::PrepareExport()
 	{
-		std::string folderpath = FileDialogs::OpenFolder();
-		if (!folderpath.empty())
+		m_ExportStatusMessage = "";
+		m_ExportSuccess = false;
+
+		if (m_ExportAppNameBuffer[0] == '\0')
 		{
-			OpenProjectAtPath(folderpath);
+			std::string def = m_ProjectName.empty() ? "MyGame" : m_ProjectName;
+			strcpy_s(m_ExportAppNameBuffer, sizeof(m_ExportAppNameBuffer), def.c_str());
 		}
+
+		RebuildSceneList();
 	}
+
+	// -------------------------------------------------------------------------
+	// Scene management
+	// -------------------------------------------------------------------------
 
 	void EditorLayer::NewScene()
 	{
 		m_EditorScene = CreateRef<Scene>();
 		m_EditorScene->SetName("Untitled");
-		m_EditorScene->OnViewportResize((uint32_t)m_ViewportSize.x, (uint32_t)m_ViewportSize.y);
+		m_EditorScene->OnViewportResize(
+			(uint32_t)m_ViewportSize.x, (uint32_t)m_ViewportSize.y);
 		m_ActiveScene = m_EditorScene;
 		m_SceneHierarchyPanel.SetContext(m_ActiveScene);
-
-		m_EditorScenePath = std::filesystem::path();
+		m_EditorScenePath.clear();
 		UpdateWindowTitle();
 	}
 
 	void EditorLayer::OpenScene()
 	{
-		std::string filepath = FileDialogs::OpenFile("Waffle Scene (*.waffle)\0*.waffle\0");
+		std::string filepath =
+			FileDialogs::OpenFile("Waffle Scene (*.waffle)\0*.waffle\0");
 		if (!filepath.empty())
 			OpenScene(filepath);
 	}
@@ -1064,15 +1445,15 @@ namespace Waffle {
 			return;
 		}
 
-		Ref<Scene> newScene = CreateRef<Scene>();
-		SceneSerializer serializer(newScene);
+		Ref<Scene>       newScene = CreateRef<Scene>();
+		SceneSerializer  serializer(newScene);
 		if (serializer.Deserialize(path.string()))
 		{
 			m_EditorScene = newScene;
 			m_EditorScene->SetName(path.stem().string());
-			m_EditorScene->OnViewportResize((uint32_t)m_ViewportSize.x, (uint32_t)m_ViewportSize.y);
+			m_EditorScene->OnViewportResize(
+				(uint32_t)m_ViewportSize.x, (uint32_t)m_ViewportSize.y);
 			m_SceneHierarchyPanel.SetContext(m_EditorScene);
-
 			m_ActiveScene = m_EditorScene;
 			m_EditorScenePath = path;
 			UpdateWindowTitle();
@@ -1089,7 +1470,8 @@ namespace Waffle {
 
 	void EditorLayer::SaveSceneAs()
 	{
-		std::string filepath = FileDialogs::SaveFile("Waffle Scene (*.waffle)\0*.waffle\0");
+		std::string filepath =
+			FileDialogs::SaveFile("Waffle Scene (*.waffle)\0*.waffle\0");
 		if (!filepath.empty())
 		{
 			std::filesystem::path path(filepath);
@@ -1100,53 +1482,156 @@ namespace Waffle {
 		}
 	}
 
-	void EditorLayer::SerializeScene(Ref<Scene> scene, const std::filesystem::path& path)
+	void EditorLayer::SerializeScene(Ref<Scene> scene,
+		const std::filesystem::path& path)
 	{
 		SceneSerializer serializer(scene);
 		serializer.Serialize(path.string());
 	}
 
-	void EditorLayer::OnScenePlay()
+	void EditorLayer::RebuildSceneList()
 	{
-		m_SceneState = SceneState::Play;
+		std::filesystem::path assetsPath = m_ProjectName.empty()
+			? std::filesystem::path("Assets")
+			: std::filesystem::path("Projects") / m_ProjectName / "Assets";
 
-		if (!m_EditorScene) {
-			std::cerr << "Error: m_EditorScene is null." << std::endl;
-			return;
+		// Scan for all .waffle files
+		std::vector<std::filesystem::path> found;
+		if (std::filesystem::exists(assetsPath))
+		{
+			for (const auto& entry :
+				std::filesystem::recursive_directory_iterator(assetsPath))
+			{
+				if (entry.is_regular_file() &&
+					entry.path().extension() == ".waffle")
+					found.push_back(entry.path());
+			}
+		}
+		std::sort(found.begin(), found.end());
+
+		// Keep existing order, append newly discovered scenes at the end
+		std::vector<std::filesystem::path> merged;
+		for (const auto& existing : m_SceneList)
+		{
+			std::error_code ec;
+			bool stillExists = std::any_of(found.begin(), found.end(),
+				[&](const auto& f) {
+					return std::filesystem::equivalent(f, existing, ec);
+				});
+			if (stillExists)
+				merged.push_back(existing);
+		}
+		for (const auto& f : found)
+		{
+			std::error_code ec;
+			bool alreadyIn = std::any_of(merged.begin(), merged.end(),
+				[&](const auto& m) {
+					return std::filesystem::equivalent(f, m, ec);
+				});
+			if (!alreadyIn)
+				merged.push_back(f);
 		}
 
-		m_ActiveScene = Scene::Copy(m_EditorScene);
-		m_ActiveScene->OnViewportResize((uint32_t)m_ViewportSize.x, (uint32_t)m_ViewportSize.y);
-		m_ActiveScene->OnRuntimeStart();
+		m_SceneList = std::move(merged);
+	}
 
+	// -------------------------------------------------------------------------
+	// Project settings persistence
+	// -------------------------------------------------------------------------
+
+	void EditorLayer::SaveProjectSettings()
+	{
+		if (m_ProjectName.empty())
+			return;
+
+		std::filesystem::path wfpPath =
+			std::filesystem::path("Projects") / m_ProjectName / "Assets" / "project.wfp";
+
+		std::string appName = m_ExportAppNameBuffer[0] != '\0'
+			? std::string(m_ExportAppNameBuffer) : m_ProjectName;
+
+		YAML::Emitter out;
+		out << YAML::BeginMap;
+		out << YAML::Key << "Project" << YAML::Value << YAML::BeginMap;
+		out << YAML::Key << "Name" << YAML::Value << appName;
+		out << YAML::Key << "Gravity" << YAML::Value << m_ProjectGravity;
+		out << YAML::Key << "IconPath" << YAML::Value
+			<< std::string(m_ExportIconPathBuffer);
+
+		out << YAML::Key << "Scenes" << YAML::Value << YAML::BeginSeq;
+		for (const auto& p : m_SceneList)
+			out << p.string();
+		out << YAML::EndSeq;
+
+		out << YAML::EndMap;
+		out << YAML::EndMap;
+
+		std::ofstream fout(wfpPath);
+		fout << out.c_str();
+	}
+
+	void EditorLayer::UpdateWindowTitle()
+	{
+		std::string title = "Waffle Editor";
+		if (!m_ProjectName.empty())
+			title += " - " + m_ProjectName;
+		if (!m_EditorScenePath.empty())
+			title += " [" + m_EditorScenePath.filename().string() + "]";
+		Application::Get().GetWindow().SetTitle(title);
+	}
+
+	// -------------------------------------------------------------------------
+	// Scene play / stop
+	// -------------------------------------------------------------------------
+
+	void EditorLayer::OnScenePlay()
+	{
+		if (!m_EditorScene) return;
+
+		m_SceneState = SceneState::Play;
+		RebuildSceneList();
+
+		// Determine which index the current scene maps to
+		int currentIndex = 0;
+		for (int i = 0; i < (int)m_SceneList.size(); i++)
+		{
+			std::error_code ec;
+			if (!m_EditorScenePath.empty() &&
+				std::filesystem::equivalent(m_SceneList[i], m_EditorScenePath, ec))
+			{
+				currentIndex = i;
+				break;
+			}
+		}
+		LuaScriptEngine::SetCurrentSceneIndex(currentIndex);
+
+		m_ActiveScene = Scene::Copy(m_EditorScene);
+		m_ActiveScene->SetGravity(m_ProjectGravity);
+		m_ActiveScene->OnViewportResize(
+			(uint32_t)m_ViewportSize.x, (uint32_t)m_ViewportSize.y);
+		m_ActiveScene->OnRuntimeStart();
 		m_SceneHierarchyPanel.SetContext(m_ActiveScene);
 	}
 
 	void EditorLayer::OnSceneStop()
 	{
 		m_SceneState = SceneState::Edit;
-
 		m_ActiveScene->OnRuntimeStop();
 		m_ActiveScene = m_EditorScene;
-
 		m_SceneHierarchyPanel.SetContext(m_ActiveScene);
 	}
 
 	void EditorLayer::OnScenePause()
 	{
-		if (m_SceneState == SceneState::Edit)
-			return;
-
+		if (m_SceneState == SceneState::Edit) return;
 		m_ActiveScene->SetPaused(true);
 	}
 
 	void EditorLayer::OnDuplicateEntity()
 	{
-		if (m_SceneState != SceneState::Edit)
-			return;
-
-		Entity selectedEntity = m_SceneHierarchyPanel.GetSelectedEntity();
-		if (selectedEntity)
-			m_EditorScene->DuplicateEntity(selectedEntity);
+		if (m_SceneState != SceneState::Edit) return;
+		if (Entity sel = m_SceneHierarchyPanel.GetSelectedEntity())
+			m_EditorScene->DuplicateEntity(sel);
 	}
+
 }
