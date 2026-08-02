@@ -20,9 +20,14 @@ namespace Waffle {
 		
 		static std::shared_ptr<spdlog::logger>& GetCoreLogger() { return s_CoreLogger; }
 		static std::shared_ptr<spdlog::logger>& GetClientLogger() { return s_ClientLogger; }
+
+		using LogCallbackFn = std::function<void(int level, const std::string& msg)>;
+		static void SetLogCallback(LogCallbackFn callback);
+		static LogCallbackFn GetLogCallback();
 	private:
 		static std::shared_ptr<spdlog::logger> s_CoreLogger;
 		static std::shared_ptr<spdlog::logger> s_ClientLogger;
+		static LogCallbackFn s_LogCallback;
 	};
 }
 

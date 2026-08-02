@@ -3,10 +3,12 @@
 #include "SceneCamera.h"
 #include "Waffle/Core/UUID.h"
 #include "Waffle/Renderer/Texture.h"
+#include "Waffle/Renderer/SubTexture2D.h"
 
 #include <string>
 #include <vector>
 #include <unordered_map>
+#include <yaml-cpp/yaml.h>
 
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
@@ -240,4 +242,178 @@ namespace Waffle {
 	// Tag component that marks an entity as inactive.
 	// When present, the entity is skipped by the script engine and renderer.
 	struct DisabledComponent {};
+
+	struct AnimationClip
+	{
+		std::string Name = "Default";
+		std::string TexturePath;
+		Ref<Texture2D> Texture = nullptr;
+
+		int Columns = 1;
+		int Rows = 1;
+		int StartFrame = 0;
+		int EndFrame = 0;
+		float FPS = 12.0f;
+		bool Loop = true;
+
+		std::vector<std::string> KeyframeImagePaths;
+		std::vector<Ref<SubTexture2D>> SubTextures;
+
+		void RefreshSubTextures()
+		{
+			SubTextures.clear();
+			if (!KeyframeImagePaths.empty())
+			{
+				for (const auto& path : KeyframeImagePaths)
+				{
+					if (path.empty())
+					{
+						SubTextures.push_back(nullptr);
+						continue;
+					}
+
+					Ref<SubTexture2D> sub = nullptr;
+					size_t colonPos = path.find(':');
+					if (colonPos != std::string::npos)
+					{
+						std::string sheetPath = path.substr(0, colonPos);
+						int frameIdx = std::stoi(path.substr(colonPos + 1));
+						try {
+							YAML::Node data = YAML::LoadFile(sheetPath);
+							std::string texName = data["Spritesheet"].as<std::string>("");
+							int cols = data["Columns"].as<int>(1);
+							int rows = data["Rows"].as<int>(1);
+							std::filesystem::path fullTex = std::filesystem::path(sheetPath).parent_path() / texName;
+							if (std::filesystem::exists(fullTex))
+							{
+								Ref<Texture2D> tex = Texture2D::Create(fullTex.string(), TextureFilter::Nearest);
+								if (tex)
+								{
+									float cellW = (float)tex->GetWidth() / (float)cols;
+									float cellH = (float)tex->GetHeight() / (float)rows;
+									int col = frameIdx % cols;
+									int row = rows - 1 - (frameIdx / cols);
+									sub = SubTexture2D::CreateFromCoords(tex, { (float)col, (float)row }, { cellW, cellH });
+								}
+							}
+						} catch (...) {}
+					}
+					else
+					{
+						Ref<Texture2D> tex = Texture2D::Create(path, TextureFilter::Nearest);
+						if (tex)
+						{
+							sub = CreateRef<SubTexture2D>(tex, glm::vec2(0, 0), glm::vec2(1, 1));
+						}
+					}
+					SubTextures.push_back(sub);
+				}
+				return;
+			}
+
+			if (!Texture || Columns <= 0 || Rows <= 0) return;
+
+			float cellWidth = (float)Texture->GetWidth() / (float)Columns;
+			float cellHeight = (float)Texture->GetHeight() / (float)Rows;
+
+			int totalFrames = Columns * Rows;
+			int start = std::max(0, std::min(StartFrame, totalFrames - 1));
+			int end = std::max(start, std::min(EndFrame, totalFrames - 1));
+
+			for (int i = start; i <= end; i++)
+			{
+				int col = i % Columns;
+				int row = Rows - 1 - (i / Columns);
+				auto sub = SubTexture2D::CreateFromCoords(Texture, { (float)col, (float)row }, { cellWidth, cellHeight });
+				if (sub)
+					SubTextures.push_back(sub);
+			}
+		}
+	};
+
+	struct AnimatorComponent
+	{
+		std::unordered_map<std::string, AnimationClip> Clips;
+		std::string CurrentClip = "";
+		int CurrentFrameIndex = 0;
+		float Timer = 0.0f;
+		bool IsPlaying = true;
+
+		AnimatorComponent() = default;
+		AnimatorComponent(const AnimatorComponent&) = default;
+
+		void Play(const std::string& clipName)
+		{
+			if (Clips.find(clipName) != Clips.end())
+			{
+				CurrentClip = clipName;
+				CurrentFrameIndex = 0;
+				Timer = 0.0f;
+				IsPlaying = true;
+			}
+		}
+
+		void Stop()
+		{
+			IsPlaying = false;
+			CurrentFrameIndex = 0;
+			Timer = 0.0f;
+		}
+
+		void Pause()
+		{
+			IsPlaying = false;
+		}
+
+		Ref<SubTexture2D> GetCurrentSubTexture()
+		{
+			auto it = Clips.find(CurrentClip);
+			if (it == Clips.end()) return nullptr;
+			auto& clip = it->second;
+			if (clip.SubTextures.empty())
+				clip.RefreshSubTextures();
+
+			if (clip.SubTextures.empty()) return nullptr;
+			if (CurrentFrameIndex < 0 || CurrentFrameIndex >= (int)clip.SubTextures.size())
+				CurrentFrameIndex = 0;
+
+			return clip.SubTextures[CurrentFrameIndex];
+		}
+
+		void Update(float dt)
+		{
+			if (!IsPlaying || CurrentClip.empty()) return;
+
+			auto it = Clips.find(CurrentClip);
+			if (it == Clips.end()) return;
+			auto& clip = it->second;
+
+			if (clip.SubTextures.empty())
+				clip.RefreshSubTextures();
+
+			if (clip.SubTextures.empty() || clip.FPS <= 0.0f) return;
+
+			Timer += dt;
+			float frameTime = 1.0f / clip.FPS;
+
+			while (Timer >= frameTime)
+			{
+				Timer -= frameTime;
+				CurrentFrameIndex++;
+				if (CurrentFrameIndex >= (int)clip.SubTextures.size())
+				{
+					if (clip.Loop)
+					{
+						CurrentFrameIndex = 0;
+					}
+					else
+					{
+						CurrentFrameIndex = (int)clip.SubTextures.size() - 1;
+						IsPlaying = false;
+						break;
+					}
+				}
+			}
+		}
+	};
 }

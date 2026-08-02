@@ -1,6 +1,7 @@
 #include "SceneHierarchyPanel.h"
 
 #include "Waffle/Scene/Components.h"
+#include "Waffle/Scene/SceneSerializer.h"
 #include "Waffle/Utils/PlatformUtils.h"
 
 #include "Waffle/Scripting/LuaScriptEngine.h"
@@ -219,6 +220,23 @@ namespace Waffle {
 			}
 			if (ImGui::MenuItem("Duplicate Entity"))
 				entityDuplicated = true;
+			if (ImGui::MenuItem("Save as Prefab"))
+			{
+				std::string entityName = tag.empty() ? "Entity" : tag;
+				std::filesystem::path prefabsDir = g_AssetPath / "Prefabs";
+				if (!std::filesystem::exists(prefabsDir))
+					std::filesystem::create_directories(prefabsDir);
+
+				std::filesystem::path prefabPath = prefabsDir / (entityName + ".prefab");
+				int counter = 1;
+				while (std::filesystem::exists(prefabPath))
+				{
+					prefabPath = prefabsDir / (entityName + std::to_string(counter++) + ".prefab");
+				}
+
+				SceneSerializer::SerializeEntityToPrefab(entity, prefabPath.string());
+				WF_CORE_INFO("Saved entity '{0}' as prefab '{1}'", entityName, prefabPath.string());
+			}
 			if (ImGui::MenuItem("Delete Entity"))
 				entityDeleted = true;
 			ImGui::EndPopup();
@@ -393,6 +411,7 @@ namespace Waffle {
 			DisplayAddComponentEntry<BoxCollider2DComponent>("Box Collider (2D)");
 			DisplayAddComponentEntry<CircleCollider2DComponent>("Circle Collider (2D)");
 			DisplayAddComponentEntry<PolygonCollider2DComponent>("Polygon Collider (2D)");
+			DisplayAddComponentEntry<AnimatorComponent>("Animator (2D)");
 
 			ImGui::EndPopup();
 		}
@@ -866,6 +885,91 @@ namespace Waffle {
 			ImGui::Text("Vertices Count: %zu", component.Vertices.size());
 			if (ImGui::Button("Add Vertex"))
 				component.Vertices.push_back({ 0.0f, 0.0f });
+		});
+
+		DrawComponent<AnimatorComponent>("Animator (2D)", entity, [](auto& component)
+		{
+			ImGui::Text("Current Clip: %s", component.CurrentClip.c_str());
+			ImGui::Text("Frame: %d | Playing: %s", component.CurrentFrameIndex, component.IsPlaying ? "Yes" : "No");
+
+			if (ImGui::Button(component.IsPlaying ? "Pause" : "Play"))
+			{
+				component.IsPlaying = !component.IsPlaying;
+			}
+			ImGui::SameLine();
+			if (ImGui::Button("Stop"))
+			{
+				component.Stop();
+			}
+
+			ImGui::Separator();
+			static char clipNameBuf[64] = "NewClip";
+			ImGui::InputText("##NewClipName", clipNameBuf, sizeof(clipNameBuf));
+			ImGui::SameLine();
+			if (ImGui::Button("Add Clip"))
+			{
+				std::string name(clipNameBuf);
+				if (!name.empty() && component.Clips.find(name) == component.Clips.end())
+				{
+					AnimationClip clip;
+					clip.Name = name;
+					component.Clips[name] = clip;
+					if (component.CurrentClip.empty())
+						component.CurrentClip = name;
+				}
+			}
+
+			ImGui::Separator();
+			std::vector<std::string> clipNames;
+			for (auto& [name, clip] : component.Clips) clipNames.push_back(name);
+
+			for (auto& clipName : clipNames)
+			{
+				auto& clip = component.Clips[clipName];
+				bool isCurrent = (component.CurrentClip == clipName);
+				std::string headerLabel = clipName + (isCurrent ? " (Active)" : "");
+				if (ImGui::TreeNodeEx(headerLabel.c_str(), isCurrent ? ImGuiTreeNodeFlags_Selected : 0))
+				{
+					if (!isCurrent && ImGui::Button("Make Active Clip"))
+					{
+						component.Play(clipName);
+					}
+
+					ImGui::Text("Texture: %s", clip.TexturePath.empty() ? "None (Drag PNG Here)" : clip.TexturePath.c_str());
+					if (ImGui::BeginDragDropTarget())
+					{
+						if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("CONTENT_BROWSER_ITEM"))
+						{
+							const wchar_t* pathStr = (const wchar_t*)payload->Data;
+							std::filesystem::path path = std::filesystem::path(g_AssetPath) / pathStr;
+							std::string ext = path.extension().string();
+							for (auto& c : ext) c = (char)tolower(c);
+							if (ext == ".png" || ext == ".jpg" || ext == ".jpeg")
+							{
+								clip.TexturePath = std::filesystem::relative(path, g_AssetPath).string();
+								clip.Texture = Texture2D::Create(path.string());
+								clip.RefreshSubTextures();
+							}
+						}
+						ImGui::EndDragDropTarget();
+					}
+
+					if (ImGui::DragInt("Columns", &clip.Columns, 1.0f, 1, 64)) clip.RefreshSubTextures();
+					if (ImGui::DragInt("Rows", &clip.Rows, 1.0f, 1, 64)) clip.RefreshSubTextures();
+					if (ImGui::DragInt("Start Frame", &clip.StartFrame, 1.0f, 0, std::max(0, clip.Columns * clip.Rows - 1))) clip.RefreshSubTextures();
+					if (ImGui::DragInt("End Frame", &clip.EndFrame, 1.0f, 0, std::max(0, clip.Columns * clip.Rows - 1))) clip.RefreshSubTextures();
+					ImGui::DragFloat("FPS", &clip.FPS, 0.5f, 0.1f, 120.0f);
+					ImGui::Checkbox("Loop", &clip.Loop);
+
+					if (ImGui::Button("Delete Clip"))
+					{
+						component.Clips.erase(clipName);
+						if (component.CurrentClip == clipName) component.CurrentClip.clear();
+					}
+
+					ImGui::TreePop();
+				}
+			}
 		});
 	}
 

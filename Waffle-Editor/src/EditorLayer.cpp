@@ -33,6 +33,18 @@ namespace Waffle {
 	{
 		WF_PROFILE_FUNCTION();
 
+		// Route all spdlog and Lua script logs directly to in-editor ConsolePanel
+		Log::SetLogCallback([](int level, const std::string& msg) {
+			ConsoleMessage::Level lvl = ConsoleMessage::Level::Info;
+			if (level <= 1) lvl = ConsoleMessage::Level::Trace; // trace / debug
+			else if (level == 2) lvl = ConsoleMessage::Level::Info;
+			else if (level == 3) lvl = ConsoleMessage::Level::Warn;
+			else if (level == 4) lvl = ConsoleMessage::Level::Error;
+			else if (level >= 5) lvl = ConsoleMessage::Level::Critical;
+
+			ConsolePanel::AddMessage(lvl, msg);
+		});
+
 		// Toolbar icons
 		m_IconPlay = Texture2D::Create("Resources/Icons/PlayButton.png");
 		m_IconStop = Texture2D::Create("Resources/Icons/StopButton.png");
@@ -73,14 +85,14 @@ namespace Waffle {
 		}
 		else
 		{
-			std::filesystem::path defaultProj = FindDefaultProjectPath();
-			if (!defaultProj.empty())
-				OpenProjectAtPath(defaultProj);
+			LoadEditorConfig();
 		}
 
 		m_EditorCamera = EditorCamera(30.0f, 1.778f, 0.1f, 1000.0f);
 		Renderer2D::SetLineWidth(4.0f);
 		m_SceneHierarchyPanel.SetContext(m_ActiveScene);
+		m_ContentBrowserPanel.SetContext(m_ActiveScene.get());
+		m_AnimationEditorPanel.SetContext(m_ActiveScene);
 
 		m_ContentBrowserPanel.SetOpenSceneCallback(
 			[this](const std::filesystem::path& path) { OpenScene(path); });
@@ -121,6 +133,7 @@ namespace Waffle {
 	void EditorLayer::OnDetach()
 	{
 		WF_PROFILE_FUNCTION();
+		SaveEditorConfig();
 	}
 
 	// -------------------------------------------------------------------------
@@ -151,6 +164,8 @@ namespace Waffle {
 				m_CameraController.OnUpdate(ts);
 			m_EditorCamera.OnUpdate(ts);
 		}
+
+		m_AnimationEditorPanel.SetSelectedEntity(m_SceneHierarchyPanel.GetSelectedEntity());
 
 		// Clear
 		Renderer2D::ResetStats();
@@ -243,7 +258,7 @@ namespace Waffle {
 
 	void EditorLayer::OnImGuiRender()
 	{
-		// ── DockSpace setup ─────────────────────────────────────────────────
+		// -- DockSpace setup -------------------------------------------------
 		static bool        dockSpaceOpen = true;
 		static bool        opt_fullscreen = true;
 		static bool        opt_padding = false;
@@ -295,7 +310,7 @@ namespace Waffle {
 			style.WindowMinSize.x = minWinSizeX;
 		}
 
-		// ── Menu bar ────────────────────────────────────────────────────────
+		// -- Menu bar --------------------------------------------------------
 		if (ImGui::BeginMenuBar())
 		{
 			if (ImGui::BeginMenu("File"))
@@ -316,6 +331,8 @@ namespace Waffle {
 			{
 				if (ImGui::MenuItem("Project Settings"))
 					m_ShowProjectTab = true;
+				if (ImGui::MenuItem("Set Current as Default Template"))
+					SetCurrentProjectAsDefaultTemplate();
 				ImGui::Separator();
 				if (ImGui::MenuItem("Export"))
 				{
@@ -349,10 +366,17 @@ namespace Waffle {
 				ImGui::EndMenu();
 			}
 
+			if (ImGui::BeginMenu("Window"))
+			{
+				ImGui::MenuItem("Animation Editor", nullptr, &m_ShowAnimationEditor);
+				ImGui::MenuItem("Spritesheet Editor", nullptr, &m_ShowSpritesheetEditor);
+				ImGui::EndMenu();
+			}
+
 			ImGui::EndMenuBar();
 		}
 
-		// ── New Project modal ────────────────────────────────────────────────
+		// -- New Project modal ------------------------------------------------
 		if (m_ShowNewProjectModal)
 		{
 			ImGui::OpenPopup("New Project");
@@ -382,13 +406,19 @@ namespace Waffle {
 			ImGui::EndPopup();
 		}
 
-		// ── Project Settings window ──────────────────────────────────────────
+		// -- Project Settings window ------------------------------------------
 		UI_ProjectSettings();
 
-		// ── Export modal ─────────────────────────────────────────────────────
+		if (m_ShowAnimationEditor)
+			m_AnimationEditorPanel.OnImGuiRender();
+
+		if (m_ShowSpritesheetEditor)
+			m_SpritesheetEditorPanel.OnImGuiRender();
+
+		// -- Export modal -----------------------------------------------------
 		UI_ExportModal();
 
-		// ── Stats ─────────────────────────────────────────────────────────────
+		// -- Stats -------------------------------------------------------------
 		ImGui::Begin("Stats");
 		{
 			float frameTimeMs = m_fps * 1000.0f;
@@ -413,12 +443,13 @@ namespace Waffle {
 
 		m_SceneHierarchyPanel.OnImGuiRender();
 		m_ContentBrowserPanel.OnImGuiRender();
+		m_ConsolePanel.OnImGuiRender();
 
 		ImGui::Begin("Settings");
 		ImGui::Checkbox("Show Physics Colliders", &m_ShowPhysicsColliders);
 		ImGui::End();
 
-		// ── Viewport ──────────────────────────────────────────────────────────
+		// -- Viewport ----------------------------------------------------------
 		ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2{ 0, 0 });
 		ImGui::Begin("Viewport");
 		{
@@ -461,6 +492,12 @@ namespace Waffle {
 					if (ext == ".waffle")
 					{
 						OpenScene(path);
+					}
+					else if (ext == ".prefab")
+					{
+						Entity instantiated = SceneSerializer::DeserializePrefabToEntity(m_ActiveScene.get(), path.string());
+						if (instantiated)
+							m_SceneHierarchyPanel.SetSelectedEntity(instantiated);
 					}
 					else if (ext == ".png" || ext == ".jpg" || ext == ".jpeg")
 					{
@@ -575,26 +612,17 @@ namespace Waffle {
 
 	void EditorLayer::UI_GizmoToolbar()
 	{
-		const float iconSize = 20.0f;
-		const float backgroundWidth = 2.0f * iconSize;
-		const float backgroundHeight = 4.0f * (iconSize * 2.0f) - 10.0f;
+		const float iconSize = 22.0f;
+		const float padding = 10.0f;
 
-		ImGui::SetCursorPosY(5.0f);
-		ImGui::SetCursorPosX(5.0f);
+		ImGui::SetCursorPosY(38.0f);
+		ImGui::SetCursorPosX(16.0f);
 		ImGui::BeginGroup();
-
-		ImDrawList* drawList = ImGui::GetWindowDrawList();
-		ImVec2      toolbarPos = ImGui::GetCursorScreenPos();
-		drawList->AddRectFilled(
-			toolbarPos,
-			ImVec2(toolbarPos.x + backgroundWidth, toolbarPos.y + backgroundHeight),
-			ImGui::ColorConvertFloat4ToU32(ImVec4(0.1f, 0.1f, 0.1f, 0.8f)),
-			10.0f);
 
 		auto GizmoBtn = [&](const char* id, ImTextureID icon, int gizmoType)
 			{
-				ImGui::SetCursorPosX(11.25f);
-				ImGui::SetCursorPosY(ImGui::GetCursorPosY() + (id[2] == 'N' ? 10.0f : 5.0f));
+				ImGui::SetCursorPosX(ImGui::GetCursorPosX() + padding);
+				ImGui::SetCursorPosY(ImGui::GetCursorPosY() + padding * 0.5f);
 				if (ImGui::ImageButton(id, icon,
 					ImVec2(iconSize, iconSize), ImVec2(0, 0), ImVec2(1, 1)))
 					m_GizmoType = gizmoType;
@@ -629,10 +657,8 @@ namespace Waffle {
 
 	void EditorLayer::UI_Toolbar()
 	{
-		ImGui::SetCursorPosY(5.0f);
-
-		ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0, 2));
-		ImGui::PushStyleVar(ImGuiStyleVar_ItemInnerSpacing, ImVec2(0, 0));
+		ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(6, 6));
+		ImGui::PushStyleVar(ImGuiStyleVar_ItemInnerSpacing, ImVec2(6, 6));
 		ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0, 0, 0, 0));
 
 		auto& colors = ImGui::GetStyle().Colors;
@@ -645,23 +671,14 @@ namespace Waffle {
 				colors[ImGuiCol_ButtonActive].y,
 				colors[ImGuiCol_ButtonActive].z, 0.5f));
 
-		const float    size = 25.0f;
+		const float    iconSize = 24.0f;
+		const float    padding = 10.0f;
+		const float    pillWidth = 3.0f * (iconSize + padding) + padding;
 		const float    availableWidth = ImGui::GetWindowContentRegionMax().x;
-		const float    startX = (availableWidth - 3.0f * size) * 0.5f;
+		const float    startX = (availableWidth - pillWidth) * 0.5f;
 		ImVec4         tintColor = ImVec4(1, 1, 1, (bool)m_ActiveScene ? 1.0f : 0.5f);
 
-		// Background pill
-		ImDrawList* drawList = ImGui::GetWindowDrawList();
-		ImGui::SetCursorPosX(startX);
-		ImGui::SetCursorPosY(5.0f);
-		ImVec2 tbPos = ImGui::GetCursorScreenPos();
-		drawList->AddRectFilled(
-			tbPos,
-			ImVec2(tbPos.x + 4.65f * size, tbPos.y + 1.5f * size),
-			ImGui::ColorConvertFloat4ToU32(ImVec4(0.1f, 0.1f, 0.1f, 0.8f)),
-			10.0f);
-
-		ImGui::SetCursorPosY(10.0f);
+		ImGui::SetCursorPosY(38.0f);
 		ImGui::SetCursorPosX(startX);
 
 		// Play / Stop
@@ -669,7 +686,7 @@ namespace Waffle {
 			(m_SceneState == SceneState::Edit) ? m_IconPlay : m_IconStop;
 		if (ImGui::ImageButton("##Play",
 			(ImTextureID)(uintptr_t)playIcon->GetRendererID(),
-			ImVec2(size, size), ImVec2(0, 0), ImVec2(1, 1),
+			ImVec2(iconSize, iconSize), ImVec2(0, 0), ImVec2(1, 1),
 			ImVec4(0, 0, 0, 0), tintColor) && m_ActiveScene)
 		{
 			if (m_SceneState == SceneState::Edit) OnScenePlay();
@@ -677,7 +694,7 @@ namespace Waffle {
 		}
 
 		// Pause
-		ImGui::SameLine();
+		ImGui::SameLine(0.0f, padding);
 		bool isPaused = m_ActiveScene ? m_ActiveScene->IsPaused() : false;
 		{
 			Ref<Texture2D> icon = (m_SceneState == SceneState::Play)
@@ -685,7 +702,7 @@ namespace Waffle {
 				: m_IconPauseInactive;
 			if (ImGui::ImageButton("##Pause",
 				(ImTextureID)(uintptr_t)icon->GetRendererID(),
-				ImVec2(size, size), ImVec2(0, 0), ImVec2(1, 1),
+				ImVec2(iconSize, iconSize), ImVec2(0, 0), ImVec2(1, 1),
 				ImVec4(0, 0, 0, 0), tintColor) && m_ActiveScene)
 			{
 				if (m_SceneState == SceneState::Play)
@@ -694,13 +711,13 @@ namespace Waffle {
 		}
 
 		// Step
-		ImGui::SameLine();
+		ImGui::SameLine(0.0f, padding);
 		{
 			Ref<Texture2D> icon = (m_SceneState == SceneState::Play)
 				? m_IconStep : m_IconStepInactive;
 			if (ImGui::ImageButton("##Step",
 				(ImTextureID)(uintptr_t)icon->GetRendererID(),
-				ImVec2(size, size), ImVec2(0, 0), ImVec2(1, 1),
+				ImVec2(iconSize, iconSize), ImVec2(0, 0), ImVec2(1, 1),
 				ImVec4(0, 0, 0, 0), tintColor) && m_ActiveScene)
 			{
 				if (m_SceneState == SceneState::Play && isPaused)
@@ -720,7 +737,7 @@ namespace Waffle {
 		ImGui::SetNextWindowSize(ImVec2(540, 600), ImGuiCond_FirstUseEver);
 		ImGui::Begin("Project Settings", &m_ShowProjectTab);
 
-		// ── Identity ──────────────────────────────────────────────────────
+		// -- Identity ------------------------------------------------------
 		ImGui::SeparatorText("Identity");
 
 		ImGui::SetNextItemWidth(-1);
@@ -805,7 +822,7 @@ namespace Waffle {
 		}
 		ImGui::EndGroup();
 
-		// ── Physics ───────────────────────────────────────────────────────
+		// -- Physics -------------------------------------------------------
 		ImGui::SeparatorText("Physics");
 		if (ImGui::DragFloat("Gravity Y", &m_ProjectGravity, 0.1f, -100.0f, 0.0f))
 		{
@@ -814,7 +831,7 @@ namespace Waffle {
 			SaveProjectSettings();
 		}
 
-		// ── Scene Order ───────────────────────────────────────────────────
+		// -- Scene Order ---------------------------------------------------
 		ImGui::SeparatorText("Scene Order");
 		ImGui::TextDisabled("Index 0 is the start scene. Drag rows or use arrows to reorder.");
 
@@ -921,7 +938,7 @@ namespace Waffle {
 			ImGui::TextColored(ImVec4(0.9f, 0.6f, 0.2f, 1.0f),
 				"No .waffle scenes found. Save a scene first.");
 
-		// ── Export shortcut ────────────────────────────────────────────────
+		// -- Export shortcut ------------------------------------------------
 		ImGui::Spacing();
 		ImGui::Separator();
 		if (ImGui::Button("Export Project...", ImVec2(-1.0f, 0.0f)))
@@ -1280,10 +1297,12 @@ namespace Waffle {
 			std::filesystem::create_directories(assetsPath / "Scenes", ec);
 			std::filesystem::create_directories(assetsPath / "Textures", ec);
 			std::filesystem::create_directories(assetsPath / "Scripts", ec);
+			std::filesystem::create_directories(assetsPath / "Prefabs", ec);
 			std::filesystem::create_directories(projectPath / "Exports", ec);
 		}
 
 		OpenProjectAtPath(projectPath);
+		SaveEditorConfig();
 	}
 
 	void EditorLayer::OpenProjectAtPath(const std::filesystem::path& projectPath)
@@ -1341,6 +1360,7 @@ namespace Waffle {
 		// Merge: pick up any new scenes not yet in the saved list
 		RebuildSceneList();
 		UpdateWindowTitle();
+		SaveEditorConfig();
 
 		// Open the first available scene
 		std::filesystem::path defaultScene;
@@ -1457,6 +1477,7 @@ namespace Waffle {
 			m_ActiveScene = m_EditorScene;
 			m_EditorScenePath = path;
 			UpdateWindowTitle();
+			SaveEditorConfig();
 		}
 	}
 
@@ -1479,6 +1500,7 @@ namespace Waffle {
 			SerializeScene(m_ActiveScene, filepath);
 			m_EditorScenePath = filepath;
 			UpdateWindowTitle();
+			SaveEditorConfig();
 		}
 	}
 
@@ -1570,6 +1592,90 @@ namespace Waffle {
 		fout << out.c_str();
 	}
 
+	void EditorLayer::SaveEditorConfig()
+	{
+		std::filesystem::path configPath = std::filesystem::path("Projects") / "editor_config.yaml";
+		std::filesystem::create_directories("Projects");
+
+		YAML::Emitter out;
+		out << YAML::BeginMap;
+		out << YAML::Key << "EditorConfig" << YAML::Value << YAML::BeginMap;
+		if (!m_ProjectName.empty())
+		{
+			std::filesystem::path projPath = std::filesystem::path("Projects") / m_ProjectName;
+			out << YAML::Key << "LastOpenedProject" << YAML::Value << projPath.string();
+		}
+		if (!m_EditorScenePath.empty())
+		{
+			out << YAML::Key << "LastOpenedScene" << YAML::Value << m_EditorScenePath.string();
+		}
+		out << YAML::EndMap;
+		out << YAML::EndMap;
+
+		std::ofstream fout(configPath);
+		fout << out.c_str();
+	}
+
+	void EditorLayer::LoadEditorConfig()
+	{
+		std::filesystem::path configPath = std::filesystem::path("Projects") / "editor_config.yaml";
+		bool opened = false;
+		if (std::filesystem::exists(configPath))
+		{
+			try
+			{
+				YAML::Node data = YAML::LoadFile(configPath.string());
+				auto cfg = data["EditorConfig"];
+				if (cfg)
+				{
+					std::string lastProjStr = cfg["LastOpenedProject"] ? cfg["LastOpenedProject"].as<std::string>() : "";
+					std::string lastSceneStr = cfg["LastOpenedScene"] ? cfg["LastOpenedScene"].as<std::string>() : "";
+
+					if (!lastProjStr.empty() && std::filesystem::exists(lastProjStr))
+					{
+						OpenProjectAtPath(lastProjStr);
+						opened = true;
+
+						if (!lastSceneStr.empty() && std::filesystem::exists(lastSceneStr))
+						{
+							OpenScene(lastSceneStr);
+						}
+					}
+				}
+			}
+			catch (...) {}
+		}
+
+		if (!opened)
+		{
+			std::filesystem::path defaultProj = FindDefaultProjectPath();
+			if (!defaultProj.empty())
+				OpenProjectAtPath(defaultProj);
+		}
+	}
+
+	void EditorLayer::SetCurrentProjectAsDefaultTemplate()
+	{
+		if (m_ProjectName.empty()) return;
+		std::filesystem::path currentPath = std::filesystem::path("Projects") / m_ProjectName;
+		std::filesystem::path defaultPath = std::filesystem::path("Projects") / "DefaultProject";
+		if (!std::filesystem::exists(currentPath)) return;
+
+		SaveScene();
+		SaveProjectSettings();
+
+		std::error_code ec;
+		std::filesystem::create_directories(defaultPath, ec);
+		std::filesystem::copy(currentPath, defaultPath,
+			std::filesystem::copy_options::overwrite_existing |
+			std::filesystem::copy_options::recursive, ec);
+
+		if (std::filesystem::exists(defaultPath / "Exports"))
+			std::filesystem::remove_all(defaultPath / "Exports", ec);
+
+		WF_CORE_INFO("Set current project '{0}' as default template!", m_ProjectName);
+	}
+
 	void EditorLayer::UpdateWindowTitle()
 	{
 		std::string title = "Waffle Editor";
@@ -1611,6 +1717,7 @@ namespace Waffle {
 			(uint32_t)m_ViewportSize.x, (uint32_t)m_ViewportSize.y);
 		m_ActiveScene->OnRuntimeStart();
 		m_SceneHierarchyPanel.SetContext(m_ActiveScene);
+		m_ContentBrowserPanel.SetContext(m_ActiveScene.get());
 	}
 
 	void EditorLayer::OnSceneStop()
@@ -1619,6 +1726,8 @@ namespace Waffle {
 		m_ActiveScene->OnRuntimeStop();
 		m_ActiveScene = m_EditorScene;
 		m_SceneHierarchyPanel.SetContext(m_ActiveScene);
+		m_ContentBrowserPanel.SetContext(m_ActiveScene.get());
+		m_AnimationEditorPanel.SetContext(m_ActiveScene);
 	}
 
 	void EditorLayer::OnScenePause()

@@ -371,6 +371,39 @@ namespace Waffle {
 			out << YAML::EndMap; // CircleCollider2DComponent
 		}
 
+		if (entity.HasComponent<AnimatorComponent>())
+		{
+			out << YAML::Key << "AnimatorComponent";
+			out << YAML::BeginMap; // AnimatorComponent
+
+			auto& animator = entity.GetComponent<AnimatorComponent>();
+			out << YAML::Key << "CurrentClip" << YAML::Value << animator.CurrentClip;
+
+			out << YAML::Key << "Clips" << YAML::Value << YAML::BeginSeq;
+			for (auto& [name, clip] : animator.Clips)
+			{
+				out << YAML::BeginMap;
+				out << YAML::Key << "Name" << YAML::Value << clip.Name;
+				out << YAML::Key << "TexturePath" << YAML::Value << clip.TexturePath;
+				out << YAML::Key << "Columns" << YAML::Value << clip.Columns;
+				out << YAML::Key << "Rows" << YAML::Value << clip.Rows;
+				out << YAML::Key << "StartFrame" << YAML::Value << clip.StartFrame;
+				out << YAML::Key << "EndFrame" << YAML::Value << clip.EndFrame;
+				out << YAML::Key << "FPS" << YAML::Value << clip.FPS;
+				out << YAML::Key << "Loop" << YAML::Value << clip.Loop;
+
+				out << YAML::Key << "KeyframeImagePaths" << YAML::Value << YAML::BeginSeq;
+				for (auto& kfPath : clip.KeyframeImagePaths)
+					out << kfPath;
+				out << YAML::EndSeq;
+
+				out << YAML::EndMap;
+			}
+			out << YAML::EndSeq;
+
+			out << YAML::EndMap; // AnimatorComponent
+		}
+
 		if (entity.HasComponent<PolygonCollider2DComponent>())
 		{
 			out << YAML::Key << "PolygonCollider2DComponent";
@@ -685,6 +718,46 @@ namespace Waffle {
 							pc2d.Vertices.push_back(v.as<glm::vec2>());
 					}
 				}
+
+				auto animatorComponent = entity["AnimatorComponent"];
+				if (animatorComponent)
+				{
+					auto& animator = deserializedEntity.AddComponent<AnimatorComponent>();
+					animator.CurrentClip = animatorComponent["CurrentClip"].as<std::string>("");
+
+					auto clips = animatorComponent["Clips"];
+					if (clips)
+					{
+						for (auto clipNode : clips)
+						{
+							AnimationClip clip;
+							clip.Name = clipNode["Name"].as<std::string>("Default");
+							clip.TexturePath = clipNode["TexturePath"].as<std::string>("");
+							clip.Columns = clipNode["Columns"].as<int>(1);
+							clip.Rows = clipNode["Rows"].as<int>(1);
+							clip.StartFrame = clipNode["StartFrame"].as<int>(0);
+							clip.EndFrame = clipNode["EndFrame"].as<int>(0);
+							clip.FPS = clipNode["FPS"].as<float>(12.0f);
+							clip.Loop = clipNode["Loop"].as<bool>(true);
+
+							auto kfPaths = clipNode["KeyframeImagePaths"];
+							if (kfPaths)
+							{
+								for (auto kf : kfPaths)
+									clip.KeyframeImagePaths.push_back(kf.as<std::string>());
+							}
+
+							if (!clip.TexturePath.empty())
+							{
+								std::filesystem::path resolved = ResolveTexturePath(clip.TexturePath);
+								if (std::filesystem::exists(resolved))
+									clip.Texture = Texture2D::Create(resolved.string());
+							}
+							clip.RefreshSubTextures();
+							animator.Clips[clip.Name] = clip;
+						}
+					}
+				}
 			}
 		}
 
@@ -696,5 +769,172 @@ namespace Waffle {
 		// Not implemented yet
 		WF_CORE_ASSERT(false);
 		return false;
+	}
+
+	bool SceneSerializer::SerializeEntityToPrefab(Entity entity, const std::string& filepath)
+	{
+		if (!entity) return false;
+
+		YAML::Emitter out;
+		out << YAML::BeginMap;
+		out << YAML::Key << "Prefab" << YAML::Value << entity.GetComponent<TagComponent>().Tag;
+		out << YAML::Key << "Entity" << YAML::Value;
+		SerializeEntity(out, entity);
+		out << YAML::EndMap;
+
+		std::ofstream fout(filepath);
+		fout << out.c_str();
+		return true;
+	}
+
+	Entity SceneSerializer::DeserializePrefabToEntity(Scene* scene, const std::string& filepath, float x, float y)
+	{
+		if (!scene) return {};
+
+		YAML::Node data;
+		try
+		{
+			data = YAML::LoadFile(filepath);
+		}
+		catch (...)
+		{
+			WF_CORE_ERROR("Failed to load prefab file '{0}'", filepath);
+			return {};
+		}
+
+		auto entityNode = data["Entity"];
+		if (!entityNode) return {};
+
+		std::string name = "Entity";
+		auto tagComponent = entityNode["TagComponent"];
+		if (tagComponent)
+			name = tagComponent["Tag"].as<std::string>();
+
+		Entity deserializedEntity = scene->CreateEntity(name);
+
+		auto transformComponent = entityNode["TransformComponent"];
+		if (transformComponent)
+		{
+			auto& tc = deserializedEntity.GetComponent<TransformComponent>();
+			tc.Translation = transformComponent["Translation"].as<glm::vec3>();
+			tc.Rotation = transformComponent["Rotation"].as<glm::vec3>();
+			tc.Scale = transformComponent["Scale"].as<glm::vec3>();
+		}
+
+		if (x != 0.0f || y != 0.0f)
+		{
+			auto& tc = deserializedEntity.GetComponent<TransformComponent>();
+			tc.Translation.x = x;
+			tc.Translation.y = y;
+		}
+
+		auto spriteRendererComponent = entityNode["SpriteRendererComponent"];
+		if (spriteRendererComponent)
+		{
+			auto& src = deserializedEntity.AddComponent<SpriteRendererComponent>();
+			src.Color = spriteRendererComponent["Color"].as<glm::vec4>();
+
+			if (spriteRendererComponent["TexturePath"])
+			{
+				std::string texturePath = spriteRendererComponent["TexturePath"].as<std::string>();
+				std::filesystem::path resolved = ResolveTexturePath(texturePath);
+				src.Texture = Texture2D::Create(resolved.string(), src.FilterMode);
+			}
+
+			if (spriteRendererComponent["FilterMode"])
+			{
+				int filterModeValue = spriteRendererComponent["FilterMode"].as<int>();
+				src.FilterMode = static_cast<Waffle::TextureFilter>(filterModeValue);
+				if (src.Texture)
+				{
+					std::string currentTexturePath = src.Texture->GetPath();
+					src.Texture = Texture2D::Create(currentTexturePath, src.FilterMode);
+				}
+			}
+
+			if (spriteRendererComponent["TilingFactor"])
+				src.TilingFactor = spriteRendererComponent["TilingFactor"].as<glm::vec2>();
+		}
+
+		auto circleRendererComponent = entityNode["CircleRendererComponent"];
+		if (circleRendererComponent)
+		{
+			auto& crc = deserializedEntity.AddComponent<CircleRendererComponent>();
+			crc.Color = circleRendererComponent["Color"].as<glm::vec4>();
+			crc.Thickness = circleRendererComponent["Thickness"].as<float>();
+			crc.Fade = circleRendererComponent["Fade"].as<float>();
+		}
+
+		auto rigidbody2DComponent = entityNode["Rigidbody2DComponent"];
+		if (rigidbody2DComponent)
+		{
+			auto& rb2d = deserializedEntity.AddComponent<Rigidbody2DComponent>();
+			rb2d.Type = Rigidbody2DBodyTypeFromString(rigidbody2DComponent["BodyType"].as<std::string>());
+			rb2d.FixedRotation = rigidbody2DComponent["FixedRotation"].as<bool>();
+			if (rigidbody2DComponent["Mass"])
+				rb2d.Mass = rigidbody2DComponent["Mass"].as<float>();
+		}
+
+		auto boxCollider2DComponent = entityNode["BoxCollider2DComponent"];
+		if (!boxCollider2DComponent)
+			boxCollider2DComponent = entityNode["RectCollider2DComponent"];
+
+		if (boxCollider2DComponent)
+		{
+			auto& bc2d = deserializedEntity.AddComponent<BoxCollider2DComponent>();
+			bc2d.Offset = boxCollider2DComponent["Offset"].as<glm::vec2>();
+			bc2d.Size = boxCollider2DComponent["Size"].as<glm::vec2>();
+			bc2d.Density = boxCollider2DComponent["Density"].as<float>();
+			bc2d.Friction = boxCollider2DComponent["Friction"].as<float>();
+			bc2d.Restitution = boxCollider2DComponent["Restitution"].as<float>();
+			bc2d.RestitutionThreshold = boxCollider2DComponent["RestitutionThreshold"].as<float>();
+			bc2d.IsTrigger = boxCollider2DComponent["IsTrigger"] ? boxCollider2DComponent["IsTrigger"].as<bool>() : false;
+		}
+
+		auto circleCollider2DComponent = entityNode["CircleCollider2DComponent"];
+		if (circleCollider2DComponent)
+		{
+			auto& cc2d = deserializedEntity.AddComponent<CircleCollider2DComponent>();
+			cc2d.Offset = circleCollider2DComponent["Offset"].as<glm::vec2>();
+			cc2d.Radius = circleCollider2DComponent["Radius"].as<float>();
+			cc2d.Density = circleCollider2DComponent["Density"].as<float>();
+			cc2d.Friction = circleCollider2DComponent["Friction"].as<float>();
+			cc2d.Restitution = circleCollider2DComponent["Restitution"].as<float>();
+			cc2d.RestitutionThreshold = circleCollider2DComponent["RestitutionThreshold"].as<float>();
+			cc2d.IsTrigger = circleCollider2DComponent["IsTrigger"] ? circleCollider2DComponent["IsTrigger"].as<bool>() : false;
+		}
+
+		auto polygonCollider2DComponent = entityNode["PolygonCollider2DComponent"];
+		if (polygonCollider2DComponent)
+		{
+			auto& pc2d = deserializedEntity.AddComponent<PolygonCollider2DComponent>();
+			pc2d.Offset = polygonCollider2DComponent["Offset"].as<glm::vec2>();
+			pc2d.Density = polygonCollider2DComponent["Density"].as<float>();
+			pc2d.Friction = polygonCollider2DComponent["Friction"].as<float>();
+			pc2d.Restitution = polygonCollider2DComponent["Restitution"].as<float>();
+			pc2d.RestitutionThreshold = polygonCollider2DComponent["RestitutionThreshold"].as<float>();
+			pc2d.IsTrigger = polygonCollider2DComponent["IsTrigger"] ? polygonCollider2DComponent["IsTrigger"].as<bool>() : false;
+			auto vertices = polygonCollider2DComponent["Vertices"];
+			if (vertices)
+			{
+				for (auto v : vertices)
+					pc2d.Vertices.push_back(v.as<glm::vec2>());
+			}
+		}
+
+		auto scriptComponent = entityNode["ScriptComponent"];
+		if (scriptComponent)
+		{
+			auto& sc = deserializedEntity.AddComponent<ScriptComponent>();
+			if (scriptComponent["ScriptPath"])
+				sc.ScriptPaths.push_back(scriptComponent["ScriptPath"].as<std::string>());
+			if (scriptComponent["ScriptPaths"])
+			{
+				for (auto pNode : scriptComponent["ScriptPaths"])
+					sc.ScriptPaths.push_back(pNode.as<std::string>());
+			}
+		}
+
+		return deserializedEntity;
 	}
 }

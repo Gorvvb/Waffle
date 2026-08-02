@@ -68,6 +68,30 @@ namespace Waffle {
 		return false;
 	}
 
+	float Input::GetAxis(const std::string& axisName)
+	{
+		std::string name = axisName;
+		for (auto& c : name) c = (char)tolower(c);
+
+		float value = 0.0f;
+		if (name == "horizontal")
+		{
+			if (IsKeyPressed(Key::A) || IsKeyPressed(Key::Left))
+				value -= 1.0f;
+			if (IsKeyPressed(Key::D) || IsKeyPressed(Key::Right))
+				value += 1.0f;
+		}
+		else if (name == "vertical")
+		{
+			if (IsKeyPressed(Key::S) || IsKeyPressed(Key::Down))
+				value -= 1.0f;
+			if (IsKeyPressed(Key::W) || IsKeyPressed(Key::Up))
+				value += 1.0f;
+		}
+
+		return value;
+	}
+
 	float Input::GetMouseX()
 	{
 		return GetMousePosition().x;

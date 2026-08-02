@@ -1,4 +1,4 @@
-Scene: NewScene
+Scene: Scene
 Entities:
   - Entity: 8185513918266057845
     TagComponent:

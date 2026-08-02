@@ -392,6 +392,19 @@ namespace Waffle {
 		for (auto entity : group)
 		{
 			auto [transform, sprite] = group.get<TransformComponent, SpriteRendererComponent>(entity);
+
+			auto* animator = m_Registry.try_get<AnimatorComponent>(entity);
+			if (animator)
+			{
+				animator->Update(ts);
+				Ref<SubTexture2D> subTexture = animator->GetCurrentSubTexture();
+				if (subTexture)
+				{
+					Renderer2D::DrawQuad(transform.GetTransform(), subTexture, sprite.TilingFactor, sprite.Color, (int)entity);
+					continue;
+				}
+			}
+
 			Renderer2D::DrawSprite(transform.GetTransform(), sprite, (int)entity);
 		}
 
@@ -438,7 +451,18 @@ namespace Waffle {
 		{
 			auto [transform, sprite] = group.get<TransformComponent, SpriteRendererComponent>(entity);
 
-			//Renderer2D::DrawQuad(transform.GetTransform(), sprite.Color);
+			auto* animator = m_Registry.try_get<AnimatorComponent>(entity);
+			if (animator)
+			{
+				animator->Update(ts);
+				Ref<SubTexture2D> subTexture = animator->GetCurrentSubTexture();
+				if (subTexture)
+				{
+					Renderer2D::DrawQuad(transform.GetTransform(), subTexture, sprite.TilingFactor, sprite.Color, (int)entity);
+					continue;
+				}
+			}
+
 			Renderer2D::DrawSprite(transform.GetTransform(), sprite, (int)entity);
 		}
 
@@ -528,6 +552,9 @@ namespace Waffle {
 
 	template<>
 	void Scene::OnComponentAdded<SpriteRendererComponent>(Entity entity, SpriteRendererComponent& component) {}
+
+	template<>
+	void Scene::OnComponentAdded<AnimatorComponent>(Entity entity, AnimatorComponent& component) {}
 
 	template<>
 	void Scene::OnComponentAdded<CircleRendererComponent>(Entity entity, CircleRendererComponent& component) {}
