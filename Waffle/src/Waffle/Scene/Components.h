@@ -66,11 +66,28 @@ namespace Waffle {
 			: Parent(parent) {}
 	};
 
+	enum class LuaFieldType { Float, Int, Bool, String };
+
+	struct LuaField
+	{
+		std::string  Name;
+		LuaFieldType Type = LuaFieldType::Float;
+		float        FloatVal = 0.f;
+		int          IntVal = 0;
+		bool         BoolVal = false;
+		std::string  StringVal;
+
+		bool UserModified = false; // true = user changed this, don't overwrite from script
+	};
+
 	struct ScriptComponent
 	{
-		std::string ClassName;
+		std::string              ClassName;
 		std::vector<std::string> ScriptPaths;
-		std::vector<std::string> ScriptTableKeys;
+		std::vector<std::string> ScriptTableKeys; // runtime only
+
+		// Key = script path, value = public fields for that script
+		std::unordered_map<std::string, std::vector<LuaField>> Fields;
 
 		ScriptComponent() = default;
 		ScriptComponent(const ScriptComponent&) = default;
@@ -127,6 +144,7 @@ namespace Waffle {
 		CameraComponent(const CameraComponent&) = default;
 	};
 
+	// TODO: Consider removing native scripting, since it is not used in the current engine architecture.
 	// Forward declaration
 	class ScriptableEntity;
 
@@ -182,7 +200,7 @@ namespace Waffle {
 		glm::vec2 Offset = { 0.0f, 0.0f };
 		float Radius = 0.5f;
 
-		// TODO: Perhaps move into physics material in the future if you wan't to.
+		// TODO: Perhaps make it possible for the user to make a physics material, that will change these settnings.
 		float Density = 1.0f;
 		float Friction = 0.5f;
 		float Restitution = 0.0f;
