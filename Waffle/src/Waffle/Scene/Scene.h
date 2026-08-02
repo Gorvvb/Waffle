@@ -58,6 +58,9 @@ namespace Waffle {
 		void ParentEntity(Entity child, Entity parent);
 		void UnparentEntity(Entity child);
 
+		uint32_t GetViewportWidth()  const { return m_ViewportWidth; }
+		uint32_t GetViewportHeight() const { return m_ViewportHeight; }
+
 		void SetGravity(float g) { m_GravityY = g; }
 
 		Entity GetPrimaryCameraEntity();

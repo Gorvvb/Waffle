@@ -30,6 +30,17 @@ namespace Waffle {
 
 	std::filesystem::path LuaScriptEngine::s_AssetPath = "Assets";
 
+	// New state variables
+	std::unordered_map<int, bool>          LuaScriptEngine::s_PrevKeyStates;
+	std::unordered_map<int, bool>          LuaScriptEngine::s_CurrKeyStates;
+	std::unordered_map<int, bool>          LuaScriptEngine::s_PrevMouseStates;
+	std::unordered_map<int, bool>          LuaScriptEngine::s_CurrMouseStates;
+	std::vector<LuaTimerEntry>             LuaScriptEngine::s_Timers;
+	uint32_t                               LuaScriptEngine::s_NextTimerID = 0;
+	std::vector<uint32_t>                  LuaScriptEngine::s_PendingDestroys;
+	std::vector<LuaDelayedDestroy>         LuaScriptEngine::s_DelayedDestroys;
+	float                                  LuaScriptEngine::s_CurrentDeltaTime = 0.0f;
+
 	static std::filesystem::path ResolveScriptPath(const std::string& scriptPath)
 	{
 		std::filesystem::path normalized = std::filesystem::path(scriptPath).make_preferred();
@@ -67,6 +78,42 @@ namespace Waffle {
 		}
 
 		return normalized;
+	}
+
+	// -------------------------------------------------------------------------
+	// Input state tracking helpers (for IsKeyJustPressed / IsKeyJustReleased)
+	// -------------------------------------------------------------------------
+
+	void LuaScriptEngine::TrackKey(int code)
+	{
+		if (s_CurrKeyStates.find(code) == s_CurrKeyStates.end())
+		{
+			s_CurrKeyStates[code] = Input::IsKeyPressed((KeyCode)code);
+			s_PrevKeyStates[code] = false;
+		}
+	}
+
+	void LuaScriptEngine::TrackMouse(int code)
+	{
+		if (s_CurrMouseStates.find(code) == s_CurrMouseStates.end())
+		{
+			s_CurrMouseStates[code] = Input::IsMouseButtonPressed((MouseCode)code);
+			s_PrevMouseStates[code] = false;
+		}
+	}
+
+	void LuaScriptEngine::UpdateInputStates()
+	{
+		for (auto& [key, curr] : s_CurrKeyStates)
+		{
+			s_PrevKeyStates[key] = curr;
+			curr = Input::IsKeyPressed((KeyCode)key);
+		}
+		for (auto& [btn, curr] : s_CurrMouseStates)
+		{
+			s_PrevMouseStates[btn] = curr;
+			curr = Input::IsMouseButtonPressed((MouseCode)btn);
+		}
 	}
 
 	// -------------------------------------------------------------------------
@@ -523,13 +570,11 @@ namespace Waffle {
 	// Lua C bindings — Raycasting
 	// -------------------------------------------------------------------------
 
-	// Raycast(entityID, offsetX, offsetY, dirX, dirY, distance) -> bool
+	// Raycast(entityID, offsetX, offsetY, dirX, dirY, distance)
+	//   -> hit, hitEntityID, hitX, hitY, normalX, normalY
 	//
-	// Casts a ray from the entity's position + offset in the given direction
-	// for the given distance. Returns true if anything other than the entity
-	// itself was hit. Useful for ground detection:
-	//
-	//   local isGrounded = Raycast(entity, 0, -0.5, 0, -1, 0.6)
+	// Returns up to 6 values. If miss, returns false, -1, 0, 0, 0, 0.
+	// hitEntityID is -1 when the hit body isn't in the entity map.
 	static int Lua_Raycast(lua_State* L)
 	{
 		uint32_t entityID = (uint32_t)lua_tonumber(L, 1);
@@ -542,45 +587,54 @@ namespace Waffle {
 		Scene* scene = LuaScriptEngine::GetSceneContext();
 		if (!scene)
 		{
-			lua_pushboolean(L, 0);
-			return 1;
+			lua_pushboolean(L, 0); lua_pushnumber(L, -1);
+			lua_pushnumber(L, 0); lua_pushnumber(L, 0);
+			lua_pushnumber(L, 0); lua_pushnumber(L, 0);
+			return 6;
 		}
 
 		Entity entity{ (entt::entity)entityID, scene };
 		if (!entity || !entity.HasComponent<TransformComponent>())
 		{
-			lua_pushboolean(L, 0);
-			return 1;
+			lua_pushboolean(L, 0); lua_pushnumber(L, -1);
+			lua_pushnumber(L, 0); lua_pushnumber(L, 0);
+			lua_pushnumber(L, 0); lua_pushnumber(L, 0);
+			return 6;
 		}
 
-		// Guard: need a physics world
 		if (!scene->GetPhysicsWorld())
 		{
-			lua_pushboolean(L, 0);
-			return 1;
+			lua_pushboolean(L, 0); lua_pushnumber(L, -1);
+			lua_pushnumber(L, 0); lua_pushnumber(L, 0);
+			lua_pushnumber(L, 0); lua_pushnumber(L, 0);
+			return 6;
 		}
 
 		const auto& tc = entity.GetComponent<TransformComponent>();
 		b2Vec2 origin(tc.Translation.x + offsetX, tc.Translation.y + offsetY);
 		b2Vec2 end(origin.x + dirX * dist, origin.y + dirY * dist);
 
-		// Box2D requires the two endpoints to differ
 		if (origin.x == end.x && origin.y == end.y)
 		{
-			lua_pushboolean(L, 0);
-			return 1;
+			lua_pushboolean(L, 0); lua_pushnumber(L, -1);
+			lua_pushnumber(L, 0); lua_pushnumber(L, 0);
+			lua_pushnumber(L, 0); lua_pushnumber(L, 0);
+			return 6;
 		}
 
-		// Inline callback — ignores the casting entity's own fixtures
-		struct GroundCallback : public b2RayCastCallback
+		struct RayCallback : public b2RayCastCallback
 		{
 			uint32_t ignoreID;
-			bool hit = false;
+			bool     hit        = false;
+			int32_t  hitEntity  = -1;
+			b2Vec2   hitPoint   = { 0, 0 };
+			b2Vec2   hitNormal  = { 0, 0 };
+			float    minFraction = 1.0f;
 			std::unordered_map<b2Body*, uint32_t>* bodyMap;
 
 			float ReportFixture(b2Fixture* fixture,
-				const b2Vec2& /*point*/,
-				const b2Vec2& /*normal*/,
+				const b2Vec2& point,
+				const b2Vec2& normal,
 				float fraction) override
 			{
 				b2Body* body = fixture->GetBody();
@@ -588,18 +642,30 @@ namespace Waffle {
 				if (it != bodyMap->end() && it->second == ignoreID)
 					return -1.0f; // skip self
 
-				hit = true;
-				return fraction;
+				if (fraction < minFraction)
+				{
+					minFraction = fraction;
+					hit        = true;
+					hitPoint   = point;
+					hitNormal  = normal;
+					hitEntity  = (it != bodyMap->end()) ? (int32_t)it->second : -1;
+				}
+				return fraction; // continue to find closest
 			}
 		};
 
-		GroundCallback cb;
+		RayCallback cb;
 		cb.ignoreID = entityID;
-		cb.bodyMap = &scene->GetBodyEntityMap();
+		cb.bodyMap  = &scene->GetBodyEntityMap();
 		scene->GetPhysicsWorld()->RayCast(&cb, origin, end);
 
 		lua_pushboolean(L, cb.hit ? 1 : 0);
-		return 1;
+		lua_pushnumber(L, cb.hitEntity);
+		lua_pushnumber(L, cb.hitPoint.x);
+		lua_pushnumber(L, cb.hitPoint.y);
+		lua_pushnumber(L, cb.hitNormal.x);
+		lua_pushnumber(L, cb.hitNormal.y);
+		return 6;
 	}
 
 	// -------------------------------------------------------------------------
@@ -880,6 +946,648 @@ namespace Waffle {
 		lua_close(L);
 	}
 
+	// =========================================================================
+	// NEW BINDINGS — Input (just-pressed / just-released)
+	// =========================================================================
+
+	static int Lua_IsKeyJustPressed(lua_State* L)
+	{
+		int code = 0;
+		if (lua_isnumber(L, 1)) code = (int)lua_tonumber(L, 1);
+		else if (lua_isstring(L, 1))
+		{
+			// Reuse existing string → keycode logic by calling IsKeyPressed helper
+			// We only need the code; parse via the same chain already in Lua_IsKeyPressed.
+			// Simplest: just call Input directly after resolving via a temporary Lua call.
+			// Instead, duplicate the minimal lookup here for common keys.
+			const char* str = lua_tostring(L, 1);
+			if (str && strlen(str) == 1) { char c = (char)toupper((unsigned char)str[0]); if (c >= 'A' && c <= 'Z') code = (int)c; }
+		}
+		LuaScriptEngine::TrackKey(code);
+		bool prev = LuaScriptEngine::s_PrevKeyStates.count(code) ? LuaScriptEngine::s_PrevKeyStates[code] : false;
+		bool curr = LuaScriptEngine::s_CurrKeyStates.count(code) ? LuaScriptEngine::s_CurrKeyStates[code] : false;
+		lua_pushboolean(L, (curr && !prev) ? 1 : 0);
+		return 1;
+	}
+
+	static int Lua_IsKeyJustReleased(lua_State* L)
+	{
+		int code = 0;
+		if (lua_isnumber(L, 1)) code = (int)lua_tonumber(L, 1);
+		else if (lua_isstring(L, 1))
+		{
+			const char* str = lua_tostring(L, 1);
+			if (str && strlen(str) == 1) { char c = (char)toupper((unsigned char)str[0]); if (c >= 'A' && c <= 'Z') code = (int)c; }
+		}
+		LuaScriptEngine::TrackKey(code);
+		bool prev = LuaScriptEngine::s_PrevKeyStates.count(code) ? LuaScriptEngine::s_PrevKeyStates[code] : false;
+		bool curr = LuaScriptEngine::s_CurrKeyStates.count(code) ? LuaScriptEngine::s_CurrKeyStates[code] : false;
+		lua_pushboolean(L, (!curr && prev) ? 1 : 0);
+		return 1;
+	}
+
+	static int Lua_IsMouseJustPressed(lua_State* L)
+	{
+		int code = 0;
+		if (lua_isnumber(L, 1)) code = (int)lua_tonumber(L, 1);
+		LuaScriptEngine::TrackMouse(code);
+		bool prev = LuaScriptEngine::s_PrevMouseStates.count(code) ? LuaScriptEngine::s_PrevMouseStates[code] : false;
+		bool curr = LuaScriptEngine::s_CurrMouseStates.count(code) ? LuaScriptEngine::s_CurrMouseStates[code] : false;
+		lua_pushboolean(L, (curr && !prev) ? 1 : 0);
+		return 1;
+	}
+
+	static int Lua_IsMouseJustReleased(lua_State* L)
+	{
+		int code = 0;
+		if (lua_isnumber(L, 1)) code = (int)lua_tonumber(L, 1);
+		LuaScriptEngine::TrackMouse(code);
+		bool prev = LuaScriptEngine::s_PrevMouseStates.count(code) ? LuaScriptEngine::s_PrevMouseStates[code] : false;
+		bool curr = LuaScriptEngine::s_CurrMouseStates.count(code) ? LuaScriptEngine::s_CurrMouseStates[code] : false;
+		lua_pushboolean(L, (!curr && prev) ? 1 : 0);
+		return 1;
+	}
+
+	// =========================================================================
+	// NEW BINDINGS — Color / Visual
+	// =========================================================================
+
+	static int Lua_SetColor(lua_State* L)
+	{
+		uint32_t entityID = (uint32_t)lua_tonumber(L, 1);
+		float r = (float)lua_tonumber(L, 2);
+		float g = (float)lua_tonumber(L, 3);
+		float b = (float)lua_tonumber(L, 4);
+		float a = lua_isnumber(L, 5) ? (float)lua_tonumber(L, 5) : 1.0f;
+
+		Scene* scene = LuaScriptEngine::GetSceneContext();
+		if (!scene) return 0;
+		Entity entity{ (entt::entity)entityID, scene };
+		if (!entity) return 0;
+
+		if (entity.HasComponent<SpriteRendererComponent>())
+			entity.GetComponent<SpriteRendererComponent>().Color = { r, g, b, a };
+		else if (entity.HasComponent<CircleRendererComponent>())
+			entity.GetComponent<CircleRendererComponent>().Color = { r, g, b, a };
+		return 0;
+	}
+
+	static int Lua_GetColor(lua_State* L)
+	{
+		uint32_t entityID = (uint32_t)lua_tonumber(L, 1);
+		Scene* scene = LuaScriptEngine::GetSceneContext();
+		if (scene)
+		{
+			Entity entity{ (entt::entity)entityID, scene };
+			if (entity)
+			{
+				glm::vec4 c = { 1, 1, 1, 1 };
+				if (entity.HasComponent<SpriteRendererComponent>())
+					c = entity.GetComponent<SpriteRendererComponent>().Color;
+				else if (entity.HasComponent<CircleRendererComponent>())
+					c = entity.GetComponent<CircleRendererComponent>().Color;
+				lua_pushnumber(L, c.r); lua_pushnumber(L, c.g);
+				lua_pushnumber(L, c.b); lua_pushnumber(L, c.a);
+				return 4;
+			}
+		}
+		lua_pushnumber(L, 1); lua_pushnumber(L, 1); lua_pushnumber(L, 1); lua_pushnumber(L, 1);
+		return 4;
+	}
+
+	static int Lua_SetAlpha(lua_State* L)
+	{
+		uint32_t entityID = (uint32_t)lua_tonumber(L, 1);
+		float a = (float)lua_tonumber(L, 2);
+		Scene* scene = LuaScriptEngine::GetSceneContext();
+		if (!scene) return 0;
+		Entity entity{ (entt::entity)entityID, scene };
+		if (!entity) return 0;
+		if (entity.HasComponent<SpriteRendererComponent>())
+			entity.GetComponent<SpriteRendererComponent>().Color.a = a;
+		else if (entity.HasComponent<CircleRendererComponent>())
+			entity.GetComponent<CircleRendererComponent>().Color.a = a;
+		return 0;
+	}
+
+	static int Lua_SetTexture(lua_State* L)
+	{
+		uint32_t entityID  = (uint32_t)lua_tonumber(L, 1);
+		const char* path   = lua_tostring(L, 2);
+		if (!path) return 0;
+
+		Scene* scene = LuaScriptEngine::GetSceneContext();
+		if (!scene) return 0;
+		Entity entity{ (entt::entity)entityID, scene };
+		if (!entity || !entity.HasComponent<SpriteRendererComponent>()) return 0;
+
+		auto& src = entity.GetComponent<SpriteRendererComponent>();
+		std::filesystem::path fullPath = LuaScriptEngine::GetAssetPath() / path;
+		if (!std::filesystem::exists(fullPath))
+			fullPath = path; // try as-is
+		if (std::filesystem::exists(fullPath))
+			src.Texture = Texture2D::Create(fullPath.string(), src.FilterMode);
+		return 0;
+	}
+
+	// =========================================================================
+	// NEW BINDINGS — Entity management
+	// =========================================================================
+
+	static int Lua_CreateEntity(lua_State* L)
+	{
+		const char* name = lua_isstring(L, 1) ? lua_tostring(L, 1) : "Entity";
+		float x = lua_isnumber(L, 2) ? (float)lua_tonumber(L, 2) : 0.0f;
+		float y = lua_isnumber(L, 3) ? (float)lua_tonumber(L, 3) : 0.0f;
+
+		Scene* scene = LuaScriptEngine::GetSceneContext();
+		if (!scene) { lua_pushnumber(L, -1); return 1; }
+
+		Entity entity = scene->CreateEntity(name ? name : "Entity");
+		if (entity.HasComponent<TransformComponent>())
+		{
+			auto& tc = entity.GetComponent<TransformComponent>();
+			tc.Translation.x = x;
+			tc.Translation.y = y;
+		}
+		lua_pushnumber(L, (uint32_t)(entt::entity)entity);
+		return 1;
+	}
+
+	static int Lua_DestroyEntity(lua_State* L)
+	{
+		uint32_t entityID = (uint32_t)lua_tonumber(L, 1);
+		// Deferred — we process after the script update loop to avoid iterator invalidation
+		LuaScriptEngine::s_PendingDestroys.push_back(entityID);
+		return 0;
+	}
+
+	static int Lua_DestroyEntityDelayed(lua_State* L)
+	{
+		uint32_t entityID = (uint32_t)lua_tonumber(L, 1);
+		float delay = lua_isnumber(L, 2) ? (float)lua_tonumber(L, 2) : 0.0f;
+		LuaScriptEngine::s_DelayedDestroys.push_back({ entityID, delay });
+		return 0;
+	}
+
+	static int Lua_CloneEntity(lua_State* L)
+	{
+		uint32_t sourceID = (uint32_t)lua_tonumber(L, 1);
+		Scene* scene = LuaScriptEngine::GetSceneContext();
+		if (!scene) { lua_pushnumber(L, -1); return 1; }
+
+		Entity source{ (entt::entity)sourceID, scene };
+		if (!source) { lua_pushnumber(L, -1); return 1; }
+
+		// DuplicateEntity copies all components
+		scene->DuplicateEntity(source);
+
+		// DuplicateEntity doesn't return the new entity — find the newest entity
+		// by scanning for one with no match to existing UUIDs (brittle but workable).
+		// Better: search by iterating and finding the most recently added IDComponent.
+		// We use the fact that entt creates entities with incrementing IDs.
+		uint32_t newID = (uint32_t)entt::null;
+		auto view = scene->GetRegistry().view<IDComponent>();
+		for (auto e : view) { newID = (uint32_t)e; } // last iterated is newest
+
+		lua_pushnumber(L, newID);
+		return 1;
+	}
+
+	static int Lua_GetEntityName(lua_State* L)
+	{
+		uint32_t entityID = (uint32_t)lua_tonumber(L, 1);
+		Scene* scene = LuaScriptEngine::GetSceneContext();
+		if (scene)
+		{
+			Entity entity{ (entt::entity)entityID, scene };
+			if (entity && entity.HasComponent<TagComponent>())
+			{
+				lua_pushstring(L, entity.GetComponent<TagComponent>().Tag.c_str());
+				return 1;
+			}
+		}
+		lua_pushstring(L, "");
+		return 1;
+	}
+
+	static int Lua_FindAllEntitiesByName(lua_State* L)
+	{
+		const char* name = lua_tostring(L, 1);
+		lua_newtable(L);
+		if (!name) return 1;
+
+		Scene* scene = LuaScriptEngine::GetSceneContext();
+		if (!scene) return 1;
+
+		int idx = 1;
+		auto view = scene->GetRegistry().view<TagComponent>();
+		for (auto entityID : view)
+		{
+			const auto& tag = view.get<TagComponent>(entityID);
+			if (tag.Tag == name)
+			{
+				lua_pushnumber(L, (uint32_t)entityID);
+				lua_rawseti(L, -2, idx++);
+			}
+		}
+		return 1;
+	}
+
+	static int Lua_GetAllEntities(lua_State* L)
+	{
+		lua_newtable(L);
+		Scene* scene = LuaScriptEngine::GetSceneContext();
+		if (!scene) return 1;
+
+		int idx = 1;
+		auto view = scene->GetRegistry().view<TagComponent>();
+		for (auto entityID : view)
+		{
+			lua_pushnumber(L, (uint32_t)entityID);
+			lua_rawseti(L, -2, idx++);
+		}
+		return 1;
+	}
+
+	// =========================================================================
+	// NEW BINDINGS — Timer system
+	// =========================================================================
+
+	static int Lua_SetTimer(lua_State* L)
+	{
+		float delay = (float)lua_tonumber(L, 1);
+		if (!lua_isfunction(L, 2)) { lua_pushnumber(L, -1); return 1; }
+
+		int callbackRef = luaL_ref(L, LUA_REGISTRYINDEX); // pops the function
+		uint32_t id = LuaScriptEngine::s_NextTimerID++;
+
+		LuaTimerEntry entry;
+		entry.Remaining    = delay;
+		entry.Delay        = delay;
+		entry.CallbackRef  = callbackRef;
+		entry.Active       = true;
+		entry.ID           = id;
+		LuaScriptEngine::s_Timers.push_back(entry);
+
+		lua_pushnumber(L, id);
+		return 1;
+	}
+
+	static int Lua_CancelTimer(lua_State* L)
+	{
+		uint32_t id = (uint32_t)lua_tonumber(L, 1);
+		for (auto& t : LuaScriptEngine::s_Timers)
+		{
+			if (t.ID == id && t.Active)
+			{
+				t.Active = false;
+				luaL_unref(LuaScriptEngine::s_LuaState, LUA_REGISTRYINDEX, t.CallbackRef);
+				t.CallbackRef = LUA_NOREF;
+				break;
+			}
+		}
+		return 0;
+	}
+
+	// =========================================================================
+	// NEW BINDINGS — Angular physics
+	// =========================================================================
+
+	static int Lua_GetAngularVelocity(lua_State* L)
+	{
+		uint32_t entityID = (uint32_t)lua_tonumber(L, 1);
+		Scene* scene = LuaScriptEngine::GetSceneContext();
+		if (scene)
+		{
+			Entity entity{ (entt::entity)entityID, scene };
+			if (entity && entity.HasComponent<Rigidbody2DComponent>())
+			{
+				b2Body* body = (b2Body*)entity.GetComponent<Rigidbody2DComponent>().RuntimeBody;
+				if (body) { lua_pushnumber(L, body->GetAngularVelocity()); return 1; }
+			}
+		}
+		lua_pushnumber(L, 0);
+		return 1;
+	}
+
+	static int Lua_SetAngularVelocity(lua_State* L)
+	{
+		uint32_t entityID = (uint32_t)lua_tonumber(L, 1);
+		float omega = (float)lua_tonumber(L, 2);
+		Scene* scene = LuaScriptEngine::GetSceneContext();
+		if (!scene) return 0;
+		Entity entity{ (entt::entity)entityID, scene };
+		if (entity && entity.HasComponent<Rigidbody2DComponent>())
+		{
+			b2Body* body = (b2Body*)entity.GetComponent<Rigidbody2DComponent>().RuntimeBody;
+			if (body) { body->SetAwake(true); body->SetAngularVelocity(omega); }
+		}
+		return 0;
+	}
+
+	static int Lua_ApplyTorque(lua_State* L)
+	{
+		uint32_t entityID = (uint32_t)lua_tonumber(L, 1);
+		float torque = (float)lua_tonumber(L, 2);
+		Scene* scene = LuaScriptEngine::GetSceneContext();
+		if (!scene) return 0;
+		Entity entity{ (entt::entity)entityID, scene };
+		if (entity && entity.HasComponent<Rigidbody2DComponent>())
+		{
+			b2Body* body = (b2Body*)entity.GetComponent<Rigidbody2DComponent>().RuntimeBody;
+			if (body) { body->SetAwake(true); body->ApplyTorque(torque, true); }
+		}
+		return 0;
+	}
+
+	static int Lua_ApplyAngularImpulse(lua_State* L)
+	{
+		uint32_t entityID = (uint32_t)lua_tonumber(L, 1);
+		float impulse = (float)lua_tonumber(L, 2);
+		Scene* scene = LuaScriptEngine::GetSceneContext();
+		if (!scene) return 0;
+		Entity entity{ (entt::entity)entityID, scene };
+		if (entity && entity.HasComponent<Rigidbody2DComponent>())
+		{
+			b2Body* body = (b2Body*)entity.GetComponent<Rigidbody2DComponent>().RuntimeBody;
+			if (body) { body->SetAwake(true); body->ApplyAngularImpulse(impulse, true); }
+		}
+		return 0;
+	}
+
+	// =========================================================================
+	// NEW BINDINGS — Shape overlap queries
+	// =========================================================================
+
+	static int Lua_OverlapCircle(lua_State* L)
+	{
+		float cx = (float)lua_tonumber(L, 1);
+		float cy = (float)lua_tonumber(L, 2);
+		float radius = (float)lua_tonumber(L, 3);
+		uint32_t excludeID = lua_isnumber(L, 4) ? (uint32_t)lua_tonumber(L, 4) : (uint32_t)entt::null;
+
+		lua_newtable(L);
+		Scene* scene = LuaScriptEngine::GetSceneContext();
+		if (!scene || !scene->GetPhysicsWorld()) return 1;
+
+		struct OverlapCallback : public b2QueryCallback
+		{
+			std::vector<uint32_t> hits;
+			uint32_t excludeID;
+			float cx, cy, radius;
+			std::unordered_map<b2Body*, uint32_t>* bodyMap;
+
+			bool ReportFixture(b2Fixture* fixture) override
+			{
+				b2Body* body = fixture->GetBody();
+				auto it = bodyMap->find(body);
+				if (it == bodyMap->end() || it->second == excludeID) return true;
+
+				// Confirm circle overlap using Box2D TestPoint or distance check
+				b2Vec2 pos = body->GetPosition();
+				float dx = pos.x - cx, dy = pos.y - cy;
+				if (dx * dx + dy * dy <= radius * radius)
+				{
+					uint32_t id = it->second;
+					if (std::find(hits.begin(), hits.end(), id) == hits.end())
+						hits.push_back(id);
+				}
+				return true;
+			}
+		} cb;
+
+		cb.excludeID = excludeID;
+		cb.cx = cx; cb.cy = cy; cb.radius = radius;
+		cb.bodyMap = &scene->GetBodyEntityMap();
+
+		b2AABB aabb;
+		aabb.lowerBound = { cx - radius, cy - radius };
+		aabb.upperBound = { cx + radius, cy + radius };
+		scene->GetPhysicsWorld()->QueryAABB(&cb, aabb);
+
+		for (int i = 0; i < (int)cb.hits.size(); i++)
+		{
+			lua_pushnumber(L, cb.hits[i]);
+			lua_rawseti(L, -2, i + 1);
+		}
+		return 1;
+	}
+
+	static int Lua_OverlapBox(lua_State* L)
+	{
+		float cx    = (float)lua_tonumber(L, 1);
+		float cy    = (float)lua_tonumber(L, 2);
+		float halfW = (float)lua_tonumber(L, 3);
+		float halfH = (float)lua_tonumber(L, 4);
+		uint32_t excludeID = lua_isnumber(L, 5) ? (uint32_t)lua_tonumber(L, 5) : (uint32_t)entt::null;
+
+		lua_newtable(L);
+		Scene* scene = LuaScriptEngine::GetSceneContext();
+		if (!scene || !scene->GetPhysicsWorld()) return 1;
+
+		struct BoxOverlapCB : public b2QueryCallback
+		{
+			std::vector<uint32_t> hits;
+			uint32_t excludeID;
+			std::unordered_map<b2Body*, uint32_t>* bodyMap;
+
+			bool ReportFixture(b2Fixture* fixture) override
+			{
+				b2Body* body = fixture->GetBody();
+				auto it = bodyMap->find(body);
+				if (it == bodyMap->end() || it->second == excludeID) return true;
+				uint32_t id = it->second;
+				if (std::find(hits.begin(), hits.end(), id) == hits.end())
+					hits.push_back(id);
+				return true;
+			}
+		} cb;
+
+		cb.excludeID = excludeID;
+		cb.bodyMap   = &scene->GetBodyEntityMap();
+
+		b2AABB aabb;
+		aabb.lowerBound = { cx - halfW, cy - halfH };
+		aabb.upperBound = { cx + halfW, cy + halfH };
+		scene->GetPhysicsWorld()->QueryAABB(&cb, aabb);
+
+		for (int i = 0; i < (int)cb.hits.size(); i++)
+		{
+			lua_pushnumber(L, cb.hits[i]);
+			lua_rawseti(L, -2, i + 1);
+		}
+		return 1;
+	}
+
+	// =========================================================================
+	// NEW BINDINGS — Entity hierarchy
+	// =========================================================================
+
+	static int Lua_GetParent(lua_State* L)
+	{
+		uint32_t entityID = (uint32_t)lua_tonumber(L, 1);
+		Scene* scene = LuaScriptEngine::GetSceneContext();
+		if (scene)
+		{
+			Entity entity{ (entt::entity)entityID, scene };
+			if (entity && entity.HasComponent<RelationshipComponent>())
+			{
+				UUID parent = entity.GetComponent<RelationshipComponent>().Parent;
+				if (parent != 0)
+				{
+					Entity parentEntity = scene->GetEntityByUUID(parent);
+					if (parentEntity)
+					{
+						lua_pushnumber(L, (uint32_t)(entt::entity)parentEntity);
+						return 1;
+					}
+				}
+			}
+		}
+		lua_pushnumber(L, -1);
+		return 1;
+	}
+
+	static int Lua_GetChildren(lua_State* L)
+	{
+		uint32_t entityID = (uint32_t)lua_tonumber(L, 1);
+		lua_newtable(L);
+		Scene* scene = LuaScriptEngine::GetSceneContext();
+		if (!scene) return 1;
+
+		Entity entity{ (entt::entity)entityID, scene };
+		if (!entity || !entity.HasComponent<RelationshipComponent>()) return 1;
+
+		const auto& children = entity.GetComponent<RelationshipComponent>().Children;
+		for (int i = 0; i < (int)children.size(); i++)
+		{
+			Entity child = scene->GetEntityByUUID(children[i]);
+			if (child)
+			{
+				lua_pushnumber(L, (uint32_t)(entt::entity)child);
+				lua_rawseti(L, -2, i + 1);
+			}
+		}
+		return 1;
+	}
+
+	static int Lua_SetParent(lua_State* L)
+	{
+		uint32_t childID  = (uint32_t)lua_tonumber(L, 1);
+		uint32_t parentID = (uint32_t)lua_tonumber(L, 2);
+		Scene* scene = LuaScriptEngine::GetSceneContext();
+		if (!scene) return 0;
+		Entity child{ (entt::entity)childID, scene };
+		Entity parent{ (entt::entity)parentID, scene };
+		if (child && parent)
+			scene->ParentEntity(child, parent);
+		return 0;
+	}
+
+	static int Lua_Unparent(lua_State* L)
+	{
+		uint32_t childID = (uint32_t)lua_tonumber(L, 1);
+		Scene* scene = LuaScriptEngine::GetSceneContext();
+		if (!scene) return 0;
+		Entity child{ (entt::entity)childID, scene };
+		if (child) scene->UnparentEntity(child);
+		return 0;
+	}
+
+	// =========================================================================
+	// NEW BINDINGS — Active state
+	// =========================================================================
+
+	static int Lua_SetActive(lua_State* L)
+	{
+		uint32_t entityID = (uint32_t)lua_tonumber(L, 1);
+		bool active = lua_toboolean(L, 2) != 0;
+		Scene* scene = LuaScriptEngine::GetSceneContext();
+		if (!scene) return 0;
+		entt::entity e = (entt::entity)entityID;
+		if (!scene->GetRegistry().valid(e)) return 0;
+
+		if (active)
+		{
+			if (scene->GetRegistry().all_of<DisabledComponent>(e))
+				scene->GetRegistry().remove<DisabledComponent>(e);
+		}
+		else
+		{
+			if (!scene->GetRegistry().all_of<DisabledComponent>(e))
+				scene->GetRegistry().emplace<DisabledComponent>(e);
+		}
+		return 0;
+	}
+
+	static int Lua_IsActive(lua_State* L)
+	{
+		uint32_t entityID = (uint32_t)lua_tonumber(L, 1);
+		Scene* scene = LuaScriptEngine::GetSceneContext();
+		if (!scene) { lua_pushboolean(L, 1); return 1; }
+		entt::entity e = (entt::entity)entityID;
+		bool disabled = scene->GetRegistry().valid(e) && scene->GetRegistry().all_of<DisabledComponent>(e);
+		lua_pushboolean(L, disabled ? 0 : 1);
+		return 1;
+	}
+
+	// =========================================================================
+	// NEW BINDINGS — Viewport & camera
+	// =========================================================================
+
+	static int Lua_GetViewportSize(lua_State* L)
+	{
+		Scene* scene = LuaScriptEngine::GetSceneContext();
+		if (!scene) { lua_pushnumber(L, 0); lua_pushnumber(L, 0); return 2; }
+		lua_pushnumber(L, scene->GetViewportWidth());
+		lua_pushnumber(L, scene->GetViewportHeight());
+		return 2;
+	}
+
+	static int Lua_ScreenToWorld(lua_State* L)
+	{
+		float sx = (float)lua_tonumber(L, 1);
+		float sy = (float)lua_tonumber(L, 2);
+
+		Scene* scene = LuaScriptEngine::GetSceneContext();
+		if (!scene) { lua_pushnumber(L, sx); lua_pushnumber(L, sy); return 2; }
+
+		Entity camEntity = scene->GetPrimaryCameraEntity();
+		if (!camEntity || !camEntity.HasComponent<CameraComponent>() || !camEntity.HasComponent<TransformComponent>())
+		{
+			lua_pushnumber(L, sx); lua_pushnumber(L, sy); return 2;
+		}
+
+		const auto& camComp = camEntity.GetComponent<CameraComponent>();
+		const auto& tc      = camEntity.GetComponent<TransformComponent>();
+		float orthoSize  = camComp.Camera.GetOrthographicSize();
+		float aspectRatio = camComp.Camera.GetAspectRatio();
+		float vw = (float)scene->GetViewportWidth();
+		float vh = (float)scene->GetViewportHeight();
+		if (vw == 0 || vh == 0) { lua_pushnumber(L, sx); lua_pushnumber(L, sy); return 2; }
+
+		float wx = tc.Translation.x + (sx / vw - 0.5f) * 2.0f * orthoSize * aspectRatio;
+		float wy = tc.Translation.y + (0.5f - sy / vh) * 2.0f * orthoSize; // Y flipped
+		lua_pushnumber(L, wx);
+		lua_pushnumber(L, wy);
+		return 2;
+	}
+
+	// =========================================================================
+	// NEW BINDINGS — GetDeltaTime
+	// =========================================================================
+
+	static int Lua_GetDeltaTime(lua_State* L)
+	{
+		lua_pushnumber(L, LuaScriptEngine::s_CurrentDeltaTime);
+		return 1;
+	}
+
+	// =========================================================================
+	// REGISTER ALL GLOBALS
+	// =========================================================================
+
 	static void RegisterGlobals(lua_State* L)
 	{
 		// ---- Key table ----
@@ -955,6 +1663,119 @@ namespace Waffle {
 		lua_pushcfunction(L, Lua_ChangeScene);          lua_setglobal(L, "ChangeScene");
 		lua_pushcfunction(L, Lua_GetCurrentSceneIndex); lua_setglobal(L, "GetCurrentSceneIndex");
 		lua_pushcfunction(L, Lua_SetCurrentSceneIndex); lua_setglobal(L, "SetCurrentSceneIndex");
+
+		// ---- New: Just-pressed input ----
+		lua_pushcfunction(L, Lua_IsKeyJustPressed);     lua_setglobal(L, "IsKeyJustPressed");
+		lua_pushcfunction(L, Lua_IsKeyJustReleased);    lua_setglobal(L, "IsKeyJustReleased");
+		lua_pushcfunction(L, Lua_IsMouseJustPressed);   lua_setglobal(L, "IsMouseJustPressed");
+		lua_pushcfunction(L, Lua_IsMouseJustReleased);  lua_setglobal(L, "IsMouseJustReleased");
+		lua_getglobal(L, "Input");
+		lua_pushcfunction(L, Lua_IsKeyJustPressed);     lua_setfield(L, -2, "IsKeyJustPressed");
+		lua_pushcfunction(L, Lua_IsKeyJustReleased);    lua_setfield(L, -2, "IsKeyJustReleased");
+		lua_pushcfunction(L, Lua_IsMouseJustPressed);   lua_setfield(L, -2, "IsMouseJustPressed");
+		lua_pushcfunction(L, Lua_IsMouseJustReleased);  lua_setfield(L, -2, "IsMouseJustReleased");
+		lua_pop(L, 1);
+
+		// ---- New: Color / Visual ----
+		lua_pushcfunction(L, Lua_SetColor);             lua_setglobal(L, "SetColor");
+		lua_pushcfunction(L, Lua_GetColor);             lua_setglobal(L, "GetColor");
+		lua_pushcfunction(L, Lua_SetAlpha);             lua_setglobal(L, "SetAlpha");
+		lua_pushcfunction(L, Lua_SetTexture);           lua_setglobal(L, "SetTexture");
+
+		// ---- New: Entity management ----
+		lua_pushcfunction(L, Lua_CreateEntity);         lua_setglobal(L, "CreateEntity");
+		lua_pushcfunction(L, Lua_DestroyEntity);        lua_setglobal(L, "DestroyEntity");
+		lua_pushcfunction(L, Lua_DestroyEntityDelayed); lua_setglobal(L, "DestroyEntityDelayed");
+		lua_pushcfunction(L, Lua_CloneEntity);          lua_setglobal(L, "CloneEntity");
+		lua_pushcfunction(L, Lua_GetEntityName);        lua_setglobal(L, "GetEntityName");
+		lua_pushcfunction(L, Lua_FindAllEntitiesByName);lua_setglobal(L, "FindAllEntitiesByName");
+		lua_pushcfunction(L, Lua_GetAllEntities);       lua_setglobal(L, "GetAllEntities");
+
+		// ---- New: Timer ----
+		lua_pushcfunction(L, Lua_SetTimer);             lua_setglobal(L, "SetTimer");
+		lua_pushcfunction(L, Lua_CancelTimer);          lua_setglobal(L, "CancelTimer");
+
+		// ---- New: Angular physics ----
+		lua_pushcfunction(L, Lua_GetAngularVelocity);   lua_setglobal(L, "GetAngularVelocity");
+		lua_pushcfunction(L, Lua_SetAngularVelocity);   lua_setglobal(L, "SetAngularVelocity");
+		lua_pushcfunction(L, Lua_ApplyTorque);          lua_setglobal(L, "ApplyTorque");
+		lua_pushcfunction(L, Lua_ApplyAngularImpulse);  lua_setglobal(L, "ApplyAngularImpulse");
+
+		// ---- New: Shape queries ----
+		lua_pushcfunction(L, Lua_OverlapCircle);        lua_setglobal(L, "OverlapCircle");
+		lua_pushcfunction(L, Lua_OverlapBox);           lua_setglobal(L, "OverlapBox");
+
+		// ---- New: Hierarchy ----
+		lua_pushcfunction(L, Lua_GetParent);            lua_setglobal(L, "GetParent");
+		lua_pushcfunction(L, Lua_GetChildren);          lua_setglobal(L, "GetChildren");
+		lua_pushcfunction(L, Lua_SetParent);            lua_setglobal(L, "SetParent");
+		lua_pushcfunction(L, Lua_Unparent);             lua_setglobal(L, "Unparent");
+
+		// ---- New: Active state ----
+		lua_pushcfunction(L, Lua_SetActive);            lua_setglobal(L, "SetActive");
+		lua_pushcfunction(L, Lua_IsActive);             lua_setglobal(L, "IsActive");
+
+		// ---- New: Viewport / Camera ----
+		lua_pushcfunction(L, Lua_GetViewportSize);      lua_setglobal(L, "GetViewportSize");
+		lua_pushcfunction(L, Lua_ScreenToWorld);        lua_setglobal(L, "ScreenToWorld");
+
+		// ---- New: DeltaTime ----
+		lua_pushcfunction(L, Lua_GetDeltaTime);         lua_setglobal(L, "GetDeltaTime");
+
+		// ---- Pure-Lua Math / Vec2 helpers ----
+		static const char* s_MathLibLua = R"lua(
+Math = {}
+Math.Lerp    = function(a, b, t) return a + (b - a) * t end
+Math.Clamp   = function(v, lo, hi) if v < lo then return lo end if v > hi then return hi end return v end
+Math.Atan2   = function(y, x) return math.atan(y, x) end
+Math.Sign    = function(v) if v > 0 then return 1 elseif v < 0 then return -1 else return 0 end end
+Math.Abs     = math.abs
+Math.Sqrt    = math.sqrt
+Math.Floor   = math.floor
+Math.Ceil    = math.ceil
+Math.Round   = function(v) return math.floor(v + 0.5) end
+Math.Pi      = math.pi
+Math.Deg     = math.deg
+Math.Rad     = math.rad
+Math.Max     = math.max
+Math.Min     = math.min
+Math.Random  = math.random
+Math.Sin     = math.sin
+Math.Cos     = math.cos
+
+Vec2 = {}
+Vec2.New      = function(x, y) return { x = x or 0, y = y or 0 } end
+Vec2.Length   = function(x, y) return math.sqrt(x * x + y * y) end
+Vec2.LengthSq = function(x, y) return x * x + y * y end
+Vec2.Normalize = function(x, y)
+    local len = math.sqrt(x * x + y * y)
+    if len == 0 then return 0, 0 end
+    return x / len, y / len
+end
+Vec2.Dot      = function(ax, ay, bx, by) return ax * bx + ay * by end
+Vec2.Distance = function(ax, ay, bx, by)
+    local dx, dy = bx - ax, by - ay
+    return math.sqrt(dx * dx + dy * dy)
+end
+Vec2.DistanceSq = function(ax, ay, bx, by)
+    local dx, dy = bx - ax, by - ay
+    return dx * dx + dy * dy
+end
+Vec2.Lerp     = function(ax, ay, bx, by, t)
+    return ax + (bx - ax) * t, ay + (by - ay) * t
+end
+Vec2.Angle    = function(x, y) return math.atan(y, x) end
+
+-- Persistent global data store (survives ChangeScene)
+if Global == nil then Global = {} end
+)lua";
+		if (luaL_loadbuffer(L, s_MathLibLua, strlen(s_MathLibLua), "@WaffleLib") != LUA_OK ||
+			lua_pcall(L, 0, 0, 0) != LUA_OK)
+		{
+			const char* err = lua_tostring(L, -1);
+			WF_CORE_ERROR("LuaScriptEngine: Failed to load Math/Vec2 library: {0}", err ? err : "unknown");
+			lua_pop(L, 1);
+		}
 	}
 
 	static std::string MakeTableKey(uint32_t entityID, const std::filesystem::path& scriptPath)
@@ -1092,7 +1913,7 @@ namespace Waffle {
 			b2Body* bodyB = contact->GetFixtureB()->GetBody();
 
 			Scene* scene = LuaScriptEngine::GetSceneContext();
-			lua_State* L = LuaScriptEngine::GetLuaState(); // you'll need to expose this
+			lua_State* L = LuaScriptEngine::GetLuaState();
 			if (!scene || !L) return;
 
 			auto& bodyMap = scene->GetBodyEntityMap();
@@ -1109,8 +1930,17 @@ namespace Waffle {
 			FireOnEntity(L, scene, idB, funcName, idB, idA);
 		}
 
-		void BeginContact(b2Contact* contact) override { FireCollision("OnCollisionBegin", contact); }
-		void EndContact(b2Contact* contact)   override { FireCollision("OnCollisionEnd", contact); }
+		void BeginContact(b2Contact* contact) override
+		{
+			// Check if either fixture is a sensor (trigger)
+			bool isSensor = contact->GetFixtureA()->IsSensor() || contact->GetFixtureB()->IsSensor();
+			FireCollision(isSensor ? "OnTriggerBegin" : "OnCollisionBegin", contact);
+		}
+		void EndContact(b2Contact* contact) override
+		{
+			bool isSensor = contact->GetFixtureA()->IsSensor() || contact->GetFixtureB()->IsSensor();
+			FireCollision(isSensor ? "OnTriggerEnd" : "OnCollisionEnd", contact);
+		}
 
 	private:
 		void FireOnEntity(lua_State* L, Scene* scene, uint32_t entityID,
@@ -1239,6 +2069,19 @@ namespace Waffle {
 		delete s_ContactListener;
 		s_ContactListener = nullptr;
 
+		// Clean up timers and release their Lua refs
+		for (auto& t : s_Timers)
+		{
+			if (t.Active && t.CallbackRef != LUA_NOREF)
+				luaL_unref(s_LuaState, LUA_REGISTRYINDEX, t.CallbackRef);
+		}
+		s_Timers.clear();
+		s_PendingDestroys.clear();
+		s_DelayedDestroys.clear();
+
+		// NOTE: We intentionally do NOT clear s_Global or the Lua "Global" table.
+		// It is meant to persist across ChangeScene calls.
+
 		s_SceneContext = nullptr;
 	}
 
@@ -1247,9 +2090,17 @@ namespace Waffle {
 		if (!scene || !s_LuaState)
 			return;
 
+		// --- Frame setup ---
+		s_CurrentDeltaTime = (float)ts;
+		UpdateInputStates(); // snapshot prev/curr key and mouse states
+
+		// --- Script update (skip disabled entities) ---
 		auto view = scene->m_Registry.view<ScriptComponent>();
 		for (auto entityID : view)
 		{
+			// Skip disabled entities
+			if (scene->m_Registry.all_of<DisabledComponent>(entityID)) continue;
+
 			Entity entity{ entityID, scene };
 			auto& sc = entity.GetComponent<ScriptComponent>();
 
@@ -1264,7 +2115,6 @@ namespace Waffle {
 					});
 
 				// Sync Public table values back into sc.Fields for live inspector display
-				// Find which script path this tableKey belongs to
 				for (auto& [scriptPath, fieldList] : sc.Fields)
 				{
 					if (fieldList.empty()) continue;
@@ -1305,5 +2155,58 @@ namespace Waffle {
 				}
 			}
 		}
+
+		// --- Tick timers ---
+		for (auto& t : s_Timers)
+		{
+			if (!t.Active) continue;
+			t.Remaining -= (float)ts;
+			if (t.Remaining <= 0.0f)
+			{
+				t.Active = false;
+				// Fire callback
+				lua_rawgeti(s_LuaState, LUA_REGISTRYINDEX, t.CallbackRef);
+				if (lua_isfunction(s_LuaState, -1))
+				{
+					if (lua_pcall(s_LuaState, 0, 0, 0) != LUA_OK)
+					{
+						const char* err = lua_tostring(s_LuaState, -1);
+						WF_CORE_ERROR("LuaScriptEngine: Timer callback error: {0}", err ? err : "unknown");
+						lua_pop(s_LuaState, 1);
+					}
+				}
+				else lua_pop(s_LuaState, 1);
+				luaL_unref(s_LuaState, LUA_REGISTRYINDEX, t.CallbackRef);
+				t.CallbackRef = LUA_NOREF;
+			}
+		}
+		// Compact finished timers
+		s_Timers.erase(std::remove_if(s_Timers.begin(), s_Timers.end(),
+			[](const LuaTimerEntry& t) { return !t.Active; }), s_Timers.end());
+
+		// --- Tick delayed destroys ---
+		for (auto& d : s_DelayedDestroys)
+			d.Remaining -= (float)ts;
+		for (auto& d : s_DelayedDestroys)
+		{
+			if (d.Remaining <= 0.0f)
+				s_PendingDestroys.push_back(d.EntityID);
+		}
+		s_DelayedDestroys.erase(
+			std::remove_if(s_DelayedDestroys.begin(), s_DelayedDestroys.end(),
+				[](const LuaDelayedDestroy& d) { return d.Remaining <= 0.0f; }),
+			s_DelayedDestroys.end());
+
+		// --- Process deferred destroys ---
+		for (uint32_t id : s_PendingDestroys)
+		{
+			entt::entity e = (entt::entity)id;
+			if (scene->m_Registry.valid(e))
+			{
+				Entity entity{ e, scene };
+				scene->DestroyEntity(entity);
+			}
+		}
+		s_PendingDestroys.clear();
 	}
 }

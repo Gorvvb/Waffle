@@ -189,6 +189,8 @@ namespace Waffle {
 		float Restitution = 0.0f; // Bounciness
 		float RestitutionThreshold = 0.5f; // Threshold to stop endless bouncing
 
+		bool IsTrigger = false; // When true, acts as a sensor (no collision response, fires OnTriggerBegin/End)
+
 		// Storage for runtime
 		void* RuntimeFixture = nullptr;
 
@@ -207,6 +209,8 @@ namespace Waffle {
 		float Restitution = 0.0f;
 		float RestitutionThreshold = 0.5f;
 
+		bool IsTrigger = false; // When true, acts as a sensor (no collision response, fires OnTriggerBegin/End)
+
 		// Storage for runtime
 		void* RuntimeFixture = nullptr;
 
@@ -224,10 +228,16 @@ namespace Waffle {
 		float Restitution = 0.0f;
 		float RestitutionThreshold = 0.5f;
 
+		bool IsTrigger = false; // When true, acts as a sensor (no collision response, fires OnTriggerBegin/End)
+
 		// Storage for runtime
 		void* RuntimeFixture = nullptr;
 
 		PolygonCollider2DComponent() = default;
 		PolygonCollider2DComponent(const PolygonCollider2DComponent&) = default;
 	};
+
+	// Tag component that marks an entity as inactive.
+	// When present, the entity is skipped by the script engine and renderer.
+	struct DisabledComponent {};
 }

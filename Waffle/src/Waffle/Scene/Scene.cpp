@@ -224,6 +224,7 @@ namespace Waffle {
 				fixtureDef.friction = bc2d.Friction;
 				fixtureDef.restitution = bc2d.Restitution;
 				fixtureDef.restitutionThreshold = bc2d.RestitutionThreshold;
+				fixtureDef.isSensor = bc2d.IsTrigger;
 				body->CreateFixture(&fixtureDef);
 			}
 
@@ -241,6 +242,7 @@ namespace Waffle {
 				fixtureDef.friction = cc2d.Friction;
 				fixtureDef.restitution = cc2d.Restitution;
 				fixtureDef.restitutionThreshold = cc2d.RestitutionThreshold;
+				fixtureDef.isSensor = cc2d.IsTrigger;
 				body->CreateFixture(&fixtureDef);
 			}
 
@@ -264,6 +266,7 @@ namespace Waffle {
 					fixtureDef.friction = pc2d.Friction;
 					fixtureDef.restitution = pc2d.Restitution;
 					fixtureDef.restitutionThreshold = pc2d.RestitutionThreshold;
+					fixtureDef.isSensor = pc2d.IsTrigger;
 					body->CreateFixture(&fixtureDef);
 				}
 			}
@@ -384,19 +387,21 @@ namespace Waffle {
 				Renderer2D::DrawQuad(bgTransform, mainCameraComp->BackgroundImage, mainCameraComp->BackgroundTilingFactor);
 			}
 
-			auto group = m_Registry.group<TransformComponent>(entt::get<SpriteRendererComponent>);
-			for (auto entity : group)
-			{
-				auto [transform, sprite] = group.get<TransformComponent, SpriteRendererComponent>(entity);
-				Renderer2D::DrawSprite(transform.GetTransform(), sprite, (int)entity);
-			}
+		// Draw sprites — skip disabled entities
+		auto group = m_Registry.group<TransformComponent>(entt::get<SpriteRendererComponent>, entt::exclude<DisabledComponent>);
+		for (auto entity : group)
+		{
+			auto [transform, sprite] = group.get<TransformComponent, SpriteRendererComponent>(entity);
+			Renderer2D::DrawSprite(transform.GetTransform(), sprite, (int)entity);
+		}
 
-			auto view = m_Registry.view<TransformComponent, CircleRendererComponent>();
-			for (auto entity : view)
-			{
-				auto [transform, circle] = view.get<TransformComponent, CircleRendererComponent>(entity);
-				Renderer2D::DrawCircle(transform.GetTransform(), circle.Color, circle.Thickness, circle.Fade, (int)entity);
-			}
+		// Draw circles — skip disabled entities
+		auto view = m_Registry.view<TransformComponent, CircleRendererComponent>(entt::exclude<DisabledComponent>);
+		for (auto entity : view)
+		{
+			auto [transform, circle] = view.get<TransformComponent, CircleRendererComponent>(entity);
+			Renderer2D::DrawCircle(transform.GetTransform(), circle.Color, circle.Thickness, circle.Fade, (int)entity);
+		}
 
 			Renderer2D::EndScene();
 		}

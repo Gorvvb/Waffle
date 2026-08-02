@@ -837,6 +837,7 @@ namespace Waffle {
 		{
 			ImGui::DragFloat2("Offset", glm::value_ptr(component.Offset));
 			ImGui::DragFloat2("Size", glm::value_ptr(component.Size));
+			ImGui::Checkbox("Is Trigger", &component.IsTrigger);
 			ImGui::DragFloat("Density", &component.Density, 0.01f, 0.0f, 5.0f);
 			ImGui::DragFloat("Friction", &component.Friction, 0.01f, 0.0f, 1.0f);
 			ImGui::DragFloat("Restitution", &component.Restitution, 0.01f, 0.0f, 1.0f);
@@ -847,6 +848,7 @@ namespace Waffle {
 		{
 			ImGui::DragFloat2("Offset", glm::value_ptr(component.Offset));
 			ImGui::DragFloat("Radius", &component.Radius);
+			ImGui::Checkbox("Is Trigger", &component.IsTrigger);
 			ImGui::DragFloat("Density", &component.Density, 0.01f, 0.0f, 5.0f);
 			ImGui::DragFloat("Friction", &component.Friction, 0.01f, 0.0f, 1.0f);
 			ImGui::DragFloat("Restitution", &component.Restitution, 0.01f, 0.0f, 1.0f);
@@ -856,6 +858,7 @@ namespace Waffle {
 		DrawComponent<PolygonCollider2DComponent>("Polygon Collider (2D)", entity, [](auto& component)
 		{
 			ImGui::DragFloat2("Offset", glm::value_ptr(component.Offset));
+			ImGui::Checkbox("Is Trigger", &component.IsTrigger);
 			ImGui::DragFloat("Density", &component.Density, 0.01f, 0.0f, 5.0f);
 			ImGui::DragFloat("Friction", &component.Friction, 0.01f, 0.0f, 1.0f);
 			ImGui::DragFloat("Restitution", &component.Restitution, 0.01f, 0.0f, 1.0f);
