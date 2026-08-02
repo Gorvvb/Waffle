@@ -349,6 +349,7 @@ namespace Waffle {
 			out << YAML::Key << "Friction" << YAML::Value << bc2dComponent.Friction;
 			out << YAML::Key << "Restitution" << YAML::Value << bc2dComponent.Restitution;
 			out << YAML::Key << "RestitutionThreshold" << YAML::Value << bc2dComponent.RestitutionThreshold;
+			out << YAML::Key << "IsTrigger" << YAML::Value << bc2dComponent.IsTrigger;
 
 			out << YAML::EndMap; // BoxCollider2DComponent
 		}
@@ -365,6 +366,7 @@ namespace Waffle {
 			out << YAML::Key << "Friction" << YAML::Value << cc2dComponent.Friction;
 			out << YAML::Key << "Restitution" << YAML::Value << cc2dComponent.Restitution;
 			out << YAML::Key << "RestitutionThreshold" << YAML::Value << cc2dComponent.RestitutionThreshold;
+			out << YAML::Key << "IsTrigger" << YAML::Value << cc2dComponent.IsTrigger;
 
 			out << YAML::EndMap; // CircleCollider2DComponent
 		}
@@ -379,6 +381,7 @@ namespace Waffle {
 			out << YAML::Key << "Friction" << YAML::Value << pc2dComponent.Friction;
 			out << YAML::Key << "Restitution" << YAML::Value << pc2dComponent.Restitution;
 			out << YAML::Key << "RestitutionThreshold" << YAML::Value << pc2dComponent.RestitutionThreshold;
+			out << YAML::Key << "IsTrigger" << YAML::Value << pc2dComponent.IsTrigger;
 			out << YAML::Key << "Vertices" << YAML::Value << YAML::BeginSeq;
 			for (const auto& v : pc2dComponent.Vertices)
 				out << v;
@@ -649,6 +652,7 @@ namespace Waffle {
 					bc2d.Friction = boxCollider2DComponent["Friction"].as<float>();
 					bc2d.Restitution = boxCollider2DComponent["Restitution"].as<float>();
 					bc2d.RestitutionThreshold = boxCollider2DComponent["RestitutionThreshold"].as<float>();
+					bc2d.IsTrigger = boxCollider2DComponent["IsTrigger"] ? boxCollider2DComponent["IsTrigger"].as<bool>() : false;
 				}
 
 				auto circleCollider2DComponent = entity["CircleCollider2DComponent"];
@@ -661,6 +665,7 @@ namespace Waffle {
 					cc2d.Friction = circleCollider2DComponent["Friction"].as<float>();
 					cc2d.Restitution = circleCollider2DComponent["Restitution"].as<float>();
 					cc2d.RestitutionThreshold = circleCollider2DComponent["RestitutionThreshold"].as<float>();
+					cc2d.IsTrigger = circleCollider2DComponent["IsTrigger"] ? circleCollider2DComponent["IsTrigger"].as<bool>() : false;
 				}
 
 				auto polygonCollider2DComponent = entity["PolygonCollider2DComponent"];
@@ -672,6 +677,7 @@ namespace Waffle {
 					pc2d.Friction = polygonCollider2DComponent["Friction"].as<float>();
 					pc2d.Restitution = polygonCollider2DComponent["Restitution"].as<float>();
 					pc2d.RestitutionThreshold = polygonCollider2DComponent["RestitutionThreshold"].as<float>();
+					pc2d.IsTrigger = polygonCollider2DComponent["IsTrigger"] ? polygonCollider2DComponent["IsTrigger"].as<bool>() : false;
 					auto vertices = polygonCollider2DComponent["Vertices"];
 					if (vertices)
 					{
