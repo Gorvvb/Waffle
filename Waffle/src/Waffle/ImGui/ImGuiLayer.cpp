@@ -42,8 +42,13 @@ namespace Waffle {
 		io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
 		io.ConfigFlags |= ImGuiConfigFlags_ViewportsEnable;
 
-		io.Fonts->AddFontFromFileTTF("assets/fonts/OpenSans/OpenSans-Bold.ttf", 18.0f);
-		io.FontDefault = io.Fonts->AddFontFromFileTTF("assets/fonts/OpenSans/OpenSans-Regular.ttf", 18.0f);
+		if (std::filesystem::exists("assets/fonts/OpenSans/OpenSans-Bold.ttf"))
+			io.Fonts->AddFontFromFileTTF("assets/fonts/OpenSans/OpenSans-Bold.ttf", 18.0f);
+
+		if (std::filesystem::exists("assets/fonts/OpenSans/OpenSans-Regular.ttf"))
+			io.FontDefault = io.Fonts->AddFontFromFileTTF("assets/fonts/OpenSans/OpenSans-Regular.ttf", 18.0f);
+		else
+			io.FontDefault = io.Fonts->AddFontDefault();
 
 		ImGui::StyleColorsDark();
 

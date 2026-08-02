@@ -83,10 +83,21 @@ namespace Waffle {
 		SceneState m_SceneState = SceneState::Edit;
 
 		bool m_ShowNewProjectModal = false;
+		bool m_ShowExportModal = false;
+		std::string m_ExportStatusMessage;
+		bool m_ExportSuccess = false;
 		char m_ProjectNameBuffer[128] = "NewProject";
 		std::string m_ProjectName;
 
+		char m_ExportAppNameBuffer[128] = "";
+		char m_ExportIconPathBuffer[256] = "";
+		int m_SelectedExportSceneIndex = 0;
+		std::vector<std::filesystem::path> m_ExportAvailableScenes;
+
+		void ExportProject();
 		void UpdateWindowTitle();
+		void OpenProjectAtPath(const std::filesystem::path& projectPath);
+		static std::filesystem::path FindDefaultProjectPath();
 
 		SceneHierarchyPanel m_SceneHierarchyPanel;
 		ContentBrowserPanel m_ContentBrowserPanel;

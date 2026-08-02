@@ -1,9 +1,9 @@
-project "Waffle-Editor"
+project "Waffle-Runtime"
 	language "C++"
 	cppdialect "C++20"
 	staticruntime "off"
 	buildoptions { "/utf-8" }
-	
+
 	targetdir ("%{wks.location}/bin/" .. outputdir .. "/%{prj.name}")
 	objdir ("%{wks.location}/bin-int/" .. outputdir .. "/%{prj.name}")
 
@@ -26,7 +26,7 @@ project "Waffle-Editor"
 		"%{wks.location}/Waffle/vendor",
 		"%{Includedir.glm}",
 		"%{Includedir.entt}",
-		"%{Includedir.ImGuizmo}",
+		"%{Includedir.Lua}",
 		"%{Includedir.yaml_cpp}"
 	}
 
@@ -37,9 +37,7 @@ project "Waffle-Editor"
 
 	postbuildcommands
 	{
-		"{COPYDIR} \"Assets\" \"%{cfg.targetdir}/Assets\"",
-		"{COPYDIR} \"Resources\" \"%{cfg.targetdir}/Resources\"",
-		"{COPYFILE} \"imgui.ini\" \"%{cfg.targetdir}/imgui.ini\""
+		"{COPYDIR} \"../Waffle-Editor/Assets\" \"%{cfg.targetdir}/Assets\""
 	}
 
 	filter "system:windows"

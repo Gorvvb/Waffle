@@ -224,7 +224,7 @@ namespace Waffle {
 			out << YAML::Key << "Primary" << YAML::Value << cameraComponent.Primary;
 			out << YAML::Key << "FixedAspectRatio" << YAML::Value << cameraComponent.FixedAspectRatio;
 			out << YAML::Key << "BackgroundColor" << YAML::Value << cameraComponent.BackgroundColor;
-			out << YAML::Key << "BackgroundImagePath" << YAML::Value << cameraComponent.BackgroundImagePath;
+			out << YAML::Key << "BackgroundImagePath" << YAML::Value << GetNormalizedAssetPath(cameraComponent.BackgroundImagePath);
 			out << YAML::Key << "BackgroundTilingFactor" << YAML::Value << cameraComponent.BackgroundTilingFactor;
 			out << YAML::Key << "BackgroundFilterMode" << YAML::Value << static_cast<int>(cameraComponent.BackgroundFilterMode);
 
@@ -240,7 +240,7 @@ namespace Waffle {
 			out << YAML::Key << "Color" << YAML::Value << spriteRendererComponent.Color;
 
 			if (spriteRendererComponent.Texture)
-				out << YAML::Key << "TexturePath" << YAML::Value << spriteRendererComponent.Texture->GetPath();
+				out << YAML::Key << "TexturePath" << YAML::Value << GetNormalizedAssetPath(spriteRendererComponent.Texture->GetPath());
 
 			out << YAML::Key << "FilterMode" << YAML::Value << static_cast<int>(spriteRendererComponent.FilterMode);
 
@@ -505,9 +505,13 @@ namespace Waffle {
 					if (cameraComponent["BackgroundImagePath"])
 					{
 						cc.BackgroundImagePath = cameraComponent["BackgroundImagePath"].as<std::string>();
-						if (!cc.BackgroundImagePath.empty() && std::filesystem::exists(cc.BackgroundImagePath))
+						if (!cc.BackgroundImagePath.empty())
 						{
-							cc.BackgroundImage = Texture2D::Create(cc.BackgroundImagePath, cc.BackgroundFilterMode);
+							std::filesystem::path resolved = ResolveTexturePath(cc.BackgroundImagePath);
+							if (std::filesystem::exists(resolved))
+							{
+								cc.BackgroundImage = Texture2D::Create(resolved.string(), cc.BackgroundFilterMode);
+							}
 						}
 					}
 				}
@@ -521,7 +525,8 @@ namespace Waffle {
 					if (spriteRendererComponent["TexturePath"])
 					{
 						std::string texturePath = spriteRendererComponent["TexturePath"].as<std::string>();
-						src.Texture = Texture2D::Create(texturePath, src.FilterMode);
+						std::filesystem::path resolved = ResolveTexturePath(texturePath);
+						src.Texture = Texture2D::Create(resolved.string(), src.FilterMode);
 					}
 
 					if (spriteRendererComponent["FilterMode"])

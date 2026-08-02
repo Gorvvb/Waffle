@@ -484,7 +484,7 @@ namespace Waffle {
 				{
 					const wchar_t* path = (const wchar_t*)payload->Data;
 					std::filesystem::path texturePath = std::filesystem::path(g_AssetPath) / path;
-					component.BackgroundImagePath = texturePath.string();
+					component.BackgroundImagePath = GetNormalizedAssetPath(texturePath.string());
 					component.BackgroundImage = Texture2D::Create(texturePath.string(), component.BackgroundFilterMode);
 				}
 				ImGui::EndDragDropTarget();
@@ -496,7 +496,7 @@ namespace Waffle {
 				std::string filepath = FileDialogs::OpenFile("Texture Files (*.png;*.jpg;*.jpeg)\0*.png;*.jpg;*.jpeg\0All Files (*.*)\0*.*\0");
 				if (!filepath.empty())
 				{
-					component.BackgroundImagePath = filepath;
+					component.BackgroundImagePath = GetNormalizedAssetPath(filepath);
 					component.BackgroundImage = Texture2D::Create(filepath, component.BackgroundFilterMode);
 				}
 			}

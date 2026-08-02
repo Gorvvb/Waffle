@@ -217,11 +217,11 @@ namespace Waffle {
 				auto& bc2d = entity.GetComponent<BoxCollider2DComponent>();
 
 				b2PolygonShape boxShape;
-				boxShape.SetAsBox(bc2d.Size.x * transform.Scale.x, bc2d.Size.y * transform.Scale.y);
+				boxShape.SetAsBox(bc2d.Size.x * transform.Scale.x, bc2d.Size.y * transform.Scale.y, b2Vec2(bc2d.Offset.x, bc2d.Offset.y), 0.0f);
 
 				b2FixtureDef fixtureDef;
 				fixtureDef.shape = &boxShape;
-				fixtureDef.density = bc2d.Density;
+				fixtureDef.density = bc2d.Density > 0.0f ? bc2d.Density : 1.0f;
 				fixtureDef.friction = bc2d.Friction;
 				fixtureDef.restitution = bc2d.Restitution;
 				fixtureDef.restitutionThreshold = bc2d.RestitutionThreshold;
@@ -238,10 +238,46 @@ namespace Waffle {
 
 				b2FixtureDef fixtureDef;
 				fixtureDef.shape = &circleShape;
-				fixtureDef.density = cc2d.Density;
+				fixtureDef.density = cc2d.Density > 0.0f ? cc2d.Density : 1.0f;
 				fixtureDef.friction = cc2d.Friction;
 				fixtureDef.restitution = cc2d.Restitution;
 				fixtureDef.restitutionThreshold = cc2d.RestitutionThreshold;
+				body->CreateFixture(&fixtureDef);
+			}
+
+			if (entity.HasComponent<PolygonCollider2DComponent>())
+			{
+				auto& pc2d = entity.GetComponent<PolygonCollider2DComponent>();
+
+				if (pc2d.Vertices.size() >= 3)
+				{
+					b2PolygonShape polyShape;
+					std::vector<b2Vec2> b2Verts(pc2d.Vertices.size());
+					for (size_t i = 0; i < pc2d.Vertices.size(); ++i)
+					{
+						b2Verts[i].Set(pc2d.Vertices[i].x * transform.Scale.x + pc2d.Offset.x, pc2d.Vertices[i].y * transform.Scale.y + pc2d.Offset.y);
+					}
+					polyShape.Set(b2Verts.data(), (int32)b2Verts.size());
+
+					b2FixtureDef fixtureDef;
+					fixtureDef.shape = &polyShape;
+					fixtureDef.density = pc2d.Density > 0.0f ? pc2d.Density : 1.0f;
+					fixtureDef.friction = pc2d.Friction;
+					fixtureDef.restitution = pc2d.Restitution;
+					fixtureDef.restitutionThreshold = pc2d.RestitutionThreshold;
+					body->CreateFixture(&fixtureDef);
+				}
+			}
+
+			if (body->GetFixtureList() == nullptr && rb2d.Type == Rigidbody2DComponent::BodyType::Dynamic)
+			{
+				b2PolygonShape boxShape;
+				boxShape.SetAsBox(transform.Scale.x * 0.5f, transform.Scale.y * 0.5f);
+
+				b2FixtureDef fixtureDef;
+				fixtureDef.shape = &boxShape;
+				fixtureDef.density = 1.0f;
+				fixtureDef.friction = 0.5f;
 				body->CreateFixture(&fixtureDef);
 			}
 		}

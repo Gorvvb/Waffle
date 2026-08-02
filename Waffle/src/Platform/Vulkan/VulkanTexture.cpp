@@ -30,10 +30,30 @@ namespace Waffle {
 	{
 		WF_PROFILE_FUNCTION();
 
+		std::filesystem::path resolvedPath = ResolveTexturePath(path);
+
 		stbi_set_flip_vertically_on_load(1);
-		int width, height, channels;
-		stbi_uc* data = stbi_load(path.c_str(), &width, &height, &channels, STBI_rgb_alpha);
-		WF_CORE_ASSERT(data, "Failed to load texture!");
+		int width = 0, height = 0, channels = 0;
+		stbi_uc* data = stbi_load(resolvedPath.string().c_str(), &width, &height, &channels, STBI_rgb_alpha);
+		if (!data && resolvedPath != path)
+		{
+			data = stbi_load(path.c_str(), &width, &height, &channels, STBI_rgb_alpha);
+		}
+
+		if (!data)
+		{
+			WF_CORE_ERROR("Failed to load texture image from path: '{0}' (Resolved: '{1}')", path, resolvedPath.string());
+
+			m_Width = 1;
+			m_Height = 1;
+			m_Channels = 4;
+
+			std::vector<uint8_t> fallbackData(4, 255);
+			CreateTextureFromData(fallbackData.data(), 1, 1, 4);
+			CreateSampler(filter);
+			CreateImGuiDescriptorSet();
+			return;
+		}
 
 		m_Width    = width;
 		m_Height   = height;

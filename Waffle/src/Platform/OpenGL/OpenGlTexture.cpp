@@ -49,14 +49,44 @@ namespace Waffle {
 	{
 		WF_PROFILE_FUNCTION();
 
-		int width, height, channels;
+		std::filesystem::path resolvedPath = ResolveTexturePath(path);
+
+		int width = 0, height = 0, channels = 0;
 		stbi_set_flip_vertically_on_load(1);
 		stbi_uc* data = nullptr;
 		{
 			WF_PROFILE_SCOPE("stbi_load - OpenGlTexture2D::OpenGlTexture2D(const std::string& path)");
+			data = stbi_load(resolvedPath.string().c_str(), &width, &height, &channels, 0);
+		}
+
+		if (!data && resolvedPath != path)
+		{
 			data = stbi_load(path.c_str(), &width, &height, &channels, 0);
 		}
-		WF_CORE_ASSERT(data, "Failed to load image!");
+
+		if (!data)
+		{
+			WF_CORE_ERROR("Failed to load texture image from path: '{0}' (Resolved: '{1}')", path, resolvedPath.string());
+
+			m_Width = 1;
+			m_Height = 1;
+			m_InternalFormat = GL_RGBA8;
+			m_DataFormat = GL_RGBA;
+
+			glCreateTextures(GL_TEXTURE_2D, 1, &m_RendererID);
+			glTextureStorage2D(m_RendererID, 1, m_InternalFormat, m_Width, m_Height);
+
+			GLenum minFilter = (filter == TextureFilter::Nearest) ? GL_NEAREST : GL_LINEAR;
+			GLenum magFilter = (filter == TextureFilter::Nearest) ? GL_NEAREST : GL_LINEAR;
+			glTextureParameteri(m_RendererID, GL_TEXTURE_MIN_FILTER, minFilter);
+			glTextureParameteri(m_RendererID, GL_TEXTURE_MAG_FILTER, magFilter);
+			glTextureParameteri(m_RendererID, GL_TEXTURE_WRAP_S, GL_REPEAT);
+			glTextureParameteri(m_RendererID, GL_TEXTURE_WRAP_T, GL_REPEAT);
+
+			uint32_t whitePixel = 0xffffffff;
+			glTextureSubImage2D(m_RendererID, 0, 0, 0, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, &whitePixel);
+			return;
+		}
 
 		m_Width = width;
 		m_Height = height;
@@ -76,7 +106,30 @@ namespace Waffle {
 		m_InternalFormat = internalFormat;
 		m_DataFormat = dataFormat;
 
-		WF_CORE_ASSERT(internalFormat & dataFormat, "Format not supported");
+		if (!(internalFormat && dataFormat))
+		{
+			WF_CORE_ERROR("Unsupported texture format for path: '{0}' (channels: {1})", path, channels);
+			stbi_image_free(data);
+
+			m_Width = 1;
+			m_Height = 1;
+			m_InternalFormat = GL_RGBA8;
+			m_DataFormat = GL_RGBA;
+
+			glCreateTextures(GL_TEXTURE_2D, 1, &m_RendererID);
+			glTextureStorage2D(m_RendererID, 1, m_InternalFormat, m_Width, m_Height);
+
+			GLenum minFilter = (filter == TextureFilter::Nearest) ? GL_NEAREST : GL_LINEAR;
+			GLenum magFilter = (filter == TextureFilter::Nearest) ? GL_NEAREST : GL_LINEAR;
+			glTextureParameteri(m_RendererID, GL_TEXTURE_MIN_FILTER, minFilter);
+			glTextureParameteri(m_RendererID, GL_TEXTURE_MAG_FILTER, magFilter);
+			glTextureParameteri(m_RendererID, GL_TEXTURE_WRAP_S, GL_REPEAT);
+			glTextureParameteri(m_RendererID, GL_TEXTURE_WRAP_T, GL_REPEAT);
+
+			uint32_t whitePixel = 0xffffffff;
+			glTextureSubImage2D(m_RendererID, 0, 0, 0, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, &whitePixel);
+			return;
+		}
 
 		glCreateTextures(GL_TEXTURE_2D, 1, &m_RendererID);
 		glTextureStorage2D(m_RendererID, 1, m_InternalFormat, m_Width, m_Height);
@@ -89,7 +142,6 @@ namespace Waffle {
 
 		glTextureParameteri(m_RendererID, GL_TEXTURE_WRAP_S, GL_REPEAT);
 		glTextureParameteri(m_RendererID, GL_TEXTURE_WRAP_T, GL_REPEAT);
-
 
 		glTextureSubImage2D(m_RendererID, 0, 0, 0, m_Width, m_Height, m_DataFormat, GL_UNSIGNED_BYTE, data);
 

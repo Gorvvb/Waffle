@@ -254,7 +254,21 @@ namespace Waffle {
 				if (!newName.empty() && std::filesystem::exists(m_ItemToRename))
 				{
 					std::filesystem::path newPath = m_ItemToRename.parent_path() / newName;
-					std::filesystem::rename(m_ItemToRename, newPath);
+					if (!newPath.has_extension() && m_ItemToRename.has_extension())
+					{
+						newPath += m_ItemToRename.extension();
+					}
+
+					if (newPath != m_ItemToRename)
+					{
+						std::filesystem::path oldPath = m_ItemToRename;
+						std::filesystem::rename(m_ItemToRename, newPath);
+
+						if (oldPath.extension() == ".waffle" && m_SceneRenamedCallback)
+						{
+							m_SceneRenamedCallback(oldPath, newPath);
+						}
+					}
 				}
 				m_ItemToRename.clear();
 				ImGui::CloseCurrentPopup();

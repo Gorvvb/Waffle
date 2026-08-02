@@ -3,9 +3,13 @@
 #include "Waffle/Core/Base.h"
 #include "TextureFilter.h"
 
+#include <filesystem>
 #include <string>
 
 namespace Waffle {
+
+	std::filesystem::path ResolveTexturePath(const std::string& texturePath);
+	std::string GetNormalizedAssetPath(const std::string& fullPath);
 
 	class Texture
 	{

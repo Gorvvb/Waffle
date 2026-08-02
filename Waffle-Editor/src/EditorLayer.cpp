@@ -1,4 +1,5 @@
 #include "EditorLayer.h"
+#include "ProjectExporter.h"
 
 #include "Waffle/Scene/SceneSerializer.h"
 #include "Waffle/Utils/PlatformUtils.h"
@@ -63,8 +64,15 @@ namespace Waffle {
 		if (commandLineArgs.Count > 1)
 		{
 			auto sceneFilePath = commandLineArgs[1];
-			SceneSerializer serializer(m_ActiveScene);
-			serializer.Deserialize(sceneFilePath);
+			OpenScene(sceneFilePath);
+		}
+		else
+		{
+			std::filesystem::path defaultProj = FindDefaultProjectPath();
+			if (!defaultProj.empty())
+			{
+				OpenProjectAtPath(defaultProj);
+			}
 		}
 
 		m_EditorCamera = EditorCamera(30.0f, 1.778f, 0.1f, 1000.0f);
@@ -72,6 +80,33 @@ namespace Waffle {
 		m_SceneHierarchyPanel.SetContext(m_ActiveScene);
 
 		m_ContentBrowserPanel.SetOpenSceneCallback([this](const std::filesystem::path& path) { OpenScene(path); });
+		m_ContentBrowserPanel.SetSceneRenamedCallback([this](const std::filesystem::path& oldPath, const std::filesystem::path& newPath) {
+			std::string oldAbs = std::filesystem::absolute(oldPath).string();
+			std::string currAbs = !m_EditorScenePath.empty() ? std::filesystem::absolute(m_EditorScenePath).string() : "";
+			for (auto& c : oldAbs) c = (char)tolower(c);
+			for (auto& c : currAbs) c = (char)tolower(c);
+
+			if (!currAbs.empty() && oldAbs == currAbs)
+			{
+				m_EditorScenePath = newPath;
+				if (m_EditorScene)
+				{
+					m_EditorScene->SetName(newPath.stem().string());
+					SerializeScene(m_EditorScene, newPath);
+				}
+				UpdateWindowTitle();
+			}
+			else
+			{
+				Ref<Scene> tempScene = CreateRef<Scene>();
+				SceneSerializer serializer(tempScene);
+				if (serializer.Deserialize(newPath.string()))
+				{
+					tempScene->SetName(newPath.stem().string());
+					serializer.Serialize(newPath.string());
+				}
+			}
+		});
 	}
 
 	void EditorLayer::OnDetach()
@@ -235,7 +270,19 @@ namespace Waffle {
 
 				ImGui::Separator();
 
+				if (ImGui::MenuItem("Export Project..."))
+					ExportProject();
+
+				ImGui::Separator();
+
 				if (ImGui::MenuItem("Exit")) Application::Get().Close();
+				ImGui::EndMenu();
+			}
+
+			if (ImGui::BeginMenu("Export"))
+			{
+				if (ImGui::MenuItem("Export Windows Application (.exe)"))
+					ExportProject();
 				ImGui::EndMenu();
 			}
 
@@ -268,6 +315,108 @@ namespace Waffle {
 			{
 				ImGui::CloseCurrentPopup();
 			}
+			ImGui::EndPopup();
+		}
+
+		// Export Project Modal Popup
+		if (m_ShowExportModal)
+		{
+			ImGui::OpenPopup("Export Project");
+			m_ShowExportModal = false;
+		}
+
+		if (ImGui::BeginPopupModal("Export Project", NULL, ImGuiWindowFlags_AlwaysAutoResize))
+		{
+			std::string projName = m_ProjectName.empty() ? "MyGame" : m_ProjectName;
+			std::string appNameStr = m_ExportAppNameBuffer[0] != '\0' ? m_ExportAppNameBuffer : projName;
+
+			ImGui::Text("Project: %s", projName.c_str());
+			ImGui::Text("Target OS: Windows (x64)");
+			ImGui::Separator();
+
+			ImGui::InputText("Application Name", m_ExportAppNameBuffer, sizeof(m_ExportAppNameBuffer));
+
+			// Scene selection combo
+			if (!m_ExportAvailableScenes.empty())
+			{
+				std::vector<std::string> sceneDisplayNames;
+				std::vector<const char*> sceneItems;
+				for (const auto& scenePath : m_ExportAvailableScenes)
+				{
+					sceneDisplayNames.push_back(scenePath.filename().string());
+				}
+				for (const auto& name : sceneDisplayNames)
+				{
+					sceneItems.push_back(name.c_str());
+				}
+
+				if (m_SelectedExportSceneIndex < 0 || m_SelectedExportSceneIndex >= (int)sceneItems.size())
+					m_SelectedExportSceneIndex = 0;
+
+				ImGui::Combo("Start Scene", &m_SelectedExportSceneIndex, sceneItems.data(), (int)sceneItems.size());
+			}
+			else
+			{
+				ImGui::TextColored(ImVec4(0.9f, 0.6f, 0.2f, 1.0f), "No .waffle scenes found in project!");
+			}
+
+			// Custom Icon selector
+			ImGui::InputText("App Icon / Image", m_ExportIconPathBuffer, sizeof(m_ExportIconPathBuffer));
+			ImGui::SameLine();
+			if (ImGui::Button("Browse...##IconBrowse"))
+			{
+				std::string selected = FileDialogs::OpenFile("Image Files (*.png;*.jpg;*.ico)\0*.png;*.jpg;*.ico\0");
+				if (!selected.empty())
+				{
+					strcpy_s(m_ExportIconPathBuffer, sizeof(m_ExportIconPathBuffer), selected.c_str());
+				}
+			}
+
+			ImGui::Separator();
+			ImGui::Text("Output File: Projects/%s/Exports/%s.exe", projName.c_str(), appNameStr.c_str());
+			ImGui::Separator();
+
+			if (!m_ExportStatusMessage.empty())
+			{
+				if (m_ExportSuccess)
+					ImGui::TextColored(ImVec4(0.2f, 0.8f, 0.2f, 1.0f), "%s", m_ExportStatusMessage.c_str());
+				else
+					ImGui::TextColored(ImVec4(0.9f, 0.2f, 0.2f, 1.0f), "%s", m_ExportStatusMessage.c_str());
+				ImGui::Separator();
+			}
+
+			if (ImGui::Button("Export Executable", ImVec2(160, 0)))
+			{
+				ProjectExporter::ExportOptions options;
+				options.ProjectName = projName;
+				options.ProjectPath = m_ProjectName.empty() ? std::filesystem::path() : (std::filesystem::path("Projects") / m_ProjectName);
+				options.AppName = appNameStr;
+				options.CustomIconPath = m_ExportIconPathBuffer;
+
+				if (!m_ExportAvailableScenes.empty() && m_SelectedExportSceneIndex >= 0 && m_SelectedExportSceneIndex < (int)m_ExportAvailableScenes.size())
+				{
+					options.SelectedScenePath = m_ExportAvailableScenes[m_SelectedExportSceneIndex].string();
+				}
+
+				std::string errorMsg;
+				if (ProjectExporter::ExportProject(options, errorMsg))
+				{
+					m_ExportSuccess = true;
+					m_ExportStatusMessage = "Exported to Projects/" + projName + "/Exports/" + appNameStr + ".exe";
+				}
+				else
+				{
+					m_ExportSuccess = false;
+					m_ExportStatusMessage = "Export failed: " + errorMsg;
+				}
+			}
+
+			ImGui::SameLine();
+			if (ImGui::Button("Close", ImVec2(120, 0)))
+			{
+				ImGui::CloseCurrentPopup();
+			}
+
 			ImGui::EndPopup();
 		}
 
@@ -730,30 +879,150 @@ namespace Waffle {
 		m_ShowNewProjectModal = true;
 	}
 
+	void EditorLayer::ExportProject()
+	{
+		m_ExportStatusMessage = "";
+		m_ExportSuccess = false;
+
+		std::string defaultName = m_ProjectName.empty() ? "MyGame" : m_ProjectName;
+		strcpy_s(m_ExportAppNameBuffer, sizeof(m_ExportAppNameBuffer), defaultName.c_str());
+		m_ExportIconPathBuffer[0] = '\0';
+
+		m_ExportAvailableScenes.clear();
+		std::filesystem::path assetsPath = m_ProjectName.empty() ? std::filesystem::path("Assets") : (std::filesystem::path("Projects") / m_ProjectName / "Assets");
+
+		if (std::filesystem::exists(assetsPath))
+		{
+			for (auto& entry : std::filesystem::recursive_directory_iterator(assetsPath))
+			{
+				if (entry.is_regular_file() && entry.path().extension() == ".waffle")
+				{
+					m_ExportAvailableScenes.push_back(entry.path());
+				}
+			}
+		}
+
+		m_SelectedExportSceneIndex = 0;
+		if (!m_EditorScenePath.empty())
+		{
+			for (size_t i = 0; i < m_ExportAvailableScenes.size(); i++)
+			{
+				std::error_code ec;
+				if (std::filesystem::equivalent(m_ExportAvailableScenes[i], m_EditorScenePath, ec))
+				{
+					m_SelectedExportSceneIndex = (int)i;
+					break;
+				}
+			}
+		}
+
+		m_ShowExportModal = true;
+	}
+
 	void EditorLayer::UpdateWindowTitle()
 	{
 		std::string title = "Waffle Editor";
 		if (!m_ProjectName.empty())
 			title += " - " + m_ProjectName;
+		if (!m_EditorScenePath.empty())
+			title += " [" + m_EditorScenePath.filename().string() + "]";
 		Application::Get().GetWindow().SetTitle(title);
+	}
+
+	std::filesystem::path EditorLayer::FindDefaultProjectPath()
+	{
+		std::vector<std::filesystem::path> candidates = {
+			"Projects/DefaultProject",
+			"Waffle-Editor/Projects/DefaultProject",
+			"../Waffle-Editor/Projects/DefaultProject"
+		};
+
+		for (const auto& path : candidates)
+		{
+			if (std::filesystem::exists(path) && std::filesystem::is_directory(path))
+				return path;
+		}
+		return "";
+	}
+
+	void EditorLayer::OpenProjectAtPath(const std::filesystem::path& projectPath)
+	{
+		if (!std::filesystem::exists(projectPath))
+			return;
+
+		std::filesystem::path assetsPath = projectPath / "Assets";
+		if (!std::filesystem::exists(assetsPath))
+			assetsPath = projectPath / "assets";
+		if (!std::filesystem::exists(assetsPath))
+			assetsPath = projectPath;
+
+		m_ProjectName = projectPath.filename().string();
+		m_ContentBrowserPanel.SetAssetDirectory(assetsPath);
+		UpdateWindowTitle();
+
+		std::filesystem::path defaultScene;
+		if (std::filesystem::exists(assetsPath / "Scenes"))
+		{
+			for (const auto& entry : std::filesystem::directory_iterator(assetsPath / "Scenes"))
+			{
+				if (entry.is_regular_file() && entry.path().extension() == ".waffle")
+				{
+					defaultScene = entry.path();
+					break;
+				}
+			}
+		}
+
+		if (defaultScene.empty() && std::filesystem::exists(assetsPath))
+		{
+			for (const auto& entry : std::filesystem::recursive_directory_iterator(assetsPath))
+			{
+				if (entry.is_regular_file() && entry.path().extension() == ".waffle")
+				{
+					defaultScene = entry.path();
+					break;
+				}
+			}
+		}
+
+		if (!defaultScene.empty())
+		{
+			OpenScene(defaultScene);
+		}
+		else
+		{
+			NewScene();
+		}
 	}
 
 	void EditorLayer::CreateProject(const std::string& projectName)
 	{
 		std::filesystem::path projectsDir = "Projects";
 		std::filesystem::path projectPath = projectsDir / projectName;
-		std::filesystem::path assetsPath = projectPath / "Assets";
+		std::filesystem::path defaultProjPath = FindDefaultProjectPath();
+		std::error_code ec;
 
-		std::filesystem::create_directories(assetsPath / "Scenes");
-		std::filesystem::create_directories(assetsPath / "Textures");
-		std::filesystem::create_directories(assetsPath / "Scripts");
-		std::filesystem::create_directories(projectPath / "Exports");
+		if (!defaultProjPath.empty() && std::filesystem::exists(defaultProjPath))
+		{
+			std::filesystem::create_directories(projectPath, ec);
+			std::filesystem::copy(defaultProjPath, projectPath, std::filesystem::copy_options::overwrite_existing | std::filesystem::copy_options::recursive, ec);
 
-		m_ProjectName = projectName;
-		UpdateWindowTitle();
+			if (std::filesystem::exists(projectPath / "Exports"))
+			{
+				std::filesystem::remove_all(projectPath / "Exports", ec);
+			}
+			std::filesystem::create_directories(projectPath / "Exports", ec);
+		}
+		else
+		{
+			std::filesystem::path assetsPath = projectPath / "Assets";
+			std::filesystem::create_directories(assetsPath / "Scenes");
+			std::filesystem::create_directories(assetsPath / "Textures");
+			std::filesystem::create_directories(assetsPath / "Scripts");
+			std::filesystem::create_directories(projectPath / "Exports");
+		}
 
-		m_ContentBrowserPanel.SetAssetDirectory(assetsPath);
-		NewScene();
+		OpenProjectAtPath(projectPath);
 	}
 
 	void EditorLayer::OpenProject()
@@ -761,18 +1030,7 @@ namespace Waffle {
 		std::string folderpath = FileDialogs::OpenFolder();
 		if (!folderpath.empty())
 		{
-			std::filesystem::path projectPath(folderpath);
-			std::filesystem::path assetsPath = projectPath / "Assets";
-			if (!std::filesystem::exists(assetsPath))
-				assetsPath = projectPath / "assets";
-			if (!std::filesystem::exists(assetsPath))
-				assetsPath = projectPath;
-
-			m_ProjectName = projectPath.filename().string();
-			UpdateWindowTitle();
-
-			m_ContentBrowserPanel.SetAssetDirectory(assetsPath);
-			NewScene();
+			OpenProjectAtPath(folderpath);
 		}
 	}
 
@@ -785,6 +1043,7 @@ namespace Waffle {
 		m_SceneHierarchyPanel.SetContext(m_ActiveScene);
 
 		m_EditorScenePath = std::filesystem::path();
+		UpdateWindowTitle();
 	}
 
 	void EditorLayer::OpenScene()
@@ -810,13 +1069,13 @@ namespace Waffle {
 		if (serializer.Deserialize(path.string()))
 		{
 			m_EditorScene = newScene;
-			if (m_EditorScene->GetName() == "Untitled" || m_EditorScene->GetName().empty())
-				m_EditorScene->SetName(path.stem().string());
+			m_EditorScene->SetName(path.stem().string());
 			m_EditorScene->OnViewportResize((uint32_t)m_ViewportSize.x, (uint32_t)m_ViewportSize.y);
 			m_SceneHierarchyPanel.SetContext(m_EditorScene);
 
 			m_ActiveScene = m_EditorScene;
 			m_EditorScenePath = path;
+			UpdateWindowTitle();
 		}
 	}
 
@@ -837,6 +1096,7 @@ namespace Waffle {
 			m_ActiveScene->SetName(path.stem().string());
 			SerializeScene(m_ActiveScene, filepath);
 			m_EditorScenePath = filepath;
+			UpdateWindowTitle();
 		}
 	}
 

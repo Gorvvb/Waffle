@@ -30,6 +30,7 @@ namespace Waffle {
 		std::filesystem::path m_SelectedItem;
 
 		std::function<void(const std::filesystem::path&)> m_OpenSceneCallback;
+		std::function<void(const std::filesystem::path&, const std::filesystem::path&)> m_SceneRenamedCallback;
 
 	public:
 		ContentBrowserPanel();
@@ -38,5 +39,6 @@ namespace Waffle {
 		const std::filesystem::path& GetCurrentDirectory() const { return m_CurrentDirectory; }
 		void SetAssetDirectory(const std::filesystem::path& path);
 		void SetOpenSceneCallback(const std::function<void(const std::filesystem::path&)>& callback) { m_OpenSceneCallback = callback; }
+		void SetSceneRenamedCallback(const std::function<void(const std::filesystem::path&, const std::filesystem::path&)>& callback) { m_SceneRenamedCallback = callback; }
 	};
 }
