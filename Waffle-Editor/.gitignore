@@ -1,0 +1,6 @@
+# Ignore user projects except DefaultProject
+Projects/*
+!Projects/DefaultProject/
+!Projects/DefaultProject/**
+Projects/DefaultProject/Exports/
+**/Exports/

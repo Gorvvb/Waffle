@@ -6,6 +6,7 @@
 #include "Waffle/Events/KeyEvent.h"
 
 #include "Waffle/Renderer/RendererAPI.h"
+#include "Waffle/Renderer/Texture.h"
 
 #include "Platform/OpenGL/OpenGLContext.h"
 #include "Platform/Vulkan/VulkanContext.h"
@@ -231,12 +232,18 @@ namespace Waffle {
 		std::string iconPath = path;
 		if (!std::filesystem::exists(iconPath))
 		{
-			if (std::filesystem::exists("assets/textures/logo.png"))
-				iconPath = "assets/textures/logo.png";
-			else if (std::filesystem::exists("Waffle-Editor/assets/textures/logo.png"))
-				iconPath = "Waffle-Editor/assets/textures/logo.png";
-			else if (std::filesystem::exists("C:\\Dev\\Waffle\\Waffle-Editor\\assets\\textures\\logo.png"))
-				iconPath = "C:\\Dev\\Waffle\\Waffle-Editor\\assets\\textures\\logo.png";
+			std::filesystem::path resolved = ResolveTexturePath(path);
+			std::error_code ec;
+			if (std::filesystem::exists(resolved, ec))
+				iconPath = resolved.string();
+			else if (std::filesystem::exists("Assets/images/logo.png", ec))
+				iconPath = "Assets/images/logo.png";
+			else if (std::filesystem::exists("Waffle-Editor/Assets/images/logo.png", ec))
+				iconPath = "Waffle-Editor/Assets/images/logo.png";
+			else if (std::filesystem::exists("../Waffle-Editor/Assets/images/logo.png", ec))
+				iconPath = "../Waffle-Editor/Assets/images/logo.png";
+			else if (std::filesystem::exists("Resources/Icons/Icon.ico", ec))
+				iconPath = "Resources/Icons/Icon.ico";
 		}
 
 		int width, height, channels;
@@ -249,6 +256,7 @@ namespace Waffle {
 			image.pixels = pixels;
 			glfwSetWindowIcon(m_Window, 1, &image);
 			stbi_image_free(pixels);
+			WF_CORE_INFO("Set window icon: {0}", iconPath);
 		}
 		else
 		{

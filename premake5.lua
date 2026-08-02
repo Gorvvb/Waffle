@@ -32,5 +32,5 @@ group "Dependencies"
 group ""
 
 include "Waffle"
-include "Sandbox"
 include "Waffle-Editor"
+include "Waffle-Runtime"

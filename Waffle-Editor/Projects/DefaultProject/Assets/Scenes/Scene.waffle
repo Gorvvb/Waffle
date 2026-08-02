@@ -1,0 +1,24 @@
+Scene: NewScene
+Entities:
+  - Entity: 8185513918266057845
+    TagComponent:
+      Tag: Main Camera
+    TransformComponent:
+      Translation: [0, 0, 0]
+      Rotation: [0, 0, 0]
+      Scale: [1, 1, 1]
+    CameraComponent:
+      Camera:
+        ProjectionType: 1
+        PerspectiveFov: 0.7853982
+        PerspectiveNear: 0.01
+        PerspectiveFar: 1000
+        OrthographicSize: 10
+        OrthographicNear: -1
+        OrthographicFar: 1
+      Primary: true
+      FixedAspectRatio: false
+      BackgroundColor: [0.1, 0.1, 0.1, 1]
+      BackgroundImagePath: ""
+      BackgroundTilingFactor: [1, 1]
+      BackgroundFilterMode: 1

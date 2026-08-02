@@ -1,0 +1,4 @@
+# Ignore build outputs and exported assets
+bin/
+bin-int/
+Assets/
