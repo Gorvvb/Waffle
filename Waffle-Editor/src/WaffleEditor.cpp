@@ -30,7 +30,7 @@ namespace Waffle {
 	{
 		ApplicationSpecification spec;
 		spec.Name = "Waffle Editor";
-		spec.IconPath = "Assets/images/logo.png";
+		spec.IconPath = "Resources/Icons/logo.png";
 		spec.CommandLineArgs = args;
 		return new WaffleEditor(spec);
 	}

@@ -236,12 +236,12 @@ namespace Waffle {
 			std::error_code ec;
 			if (std::filesystem::exists(resolved, ec))
 				iconPath = resolved.string();
-			else if (std::filesystem::exists("Assets/images/logo.png", ec))
-				iconPath = "Assets/images/logo.png";
+			else if (std::filesystem::exists("Resources/Icons/logo.png", ec))
+				iconPath = "Resources/Icons/logo.png";
 			else if (std::filesystem::exists("Waffle-Editor/Assets/images/logo.png", ec))
-				iconPath = "Waffle-Editor/Assets/images/logo.png";
-			else if (std::filesystem::exists("../Waffle-Editor/Assets/images/logo.png", ec))
-				iconPath = "../Waffle-Editor/Assets/images/logo.png";
+				iconPath = "Waffle-Editor/Resources/Icons/logo.png";
+			else if (std::filesystem::exists("../Waffle-Editor/Resources/Icons/logo.png", ec))
+				iconPath = "../Waffle-Editor/Resources/Icons/logo.png";
 			else if (std::filesystem::exists("Resources/Icons/Icon.ico", ec))
 				iconPath = "Resources/Icons/Icon.ico";
 		}
