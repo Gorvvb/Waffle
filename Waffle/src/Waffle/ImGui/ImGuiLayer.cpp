@@ -19,12 +19,12 @@
 
 namespace Waffle {
 
-	static bool s_IsVulkan = false;
+	static bool   s_IsVulkan = false;
+	static GLuint s_NearestSampler = 0; // forces GL_NEAREST for all ImGui texture draws
 
 	ImGuiLayer::ImGuiLayer()
 		: Layer("ImGuiLayer")
-	{
-	}
+	{}
 
 	ImGuiLayer::~ImGuiLayer() {}
 
@@ -61,8 +61,8 @@ namespace Waffle {
 
 		SetDarkThemeColors();
 
-		Application& app     = Application::Get();
-		GLFWwindow*  window  = static_cast<GLFWwindow*>(app.GetWindow().GetNativeWindow());
+		Application& app = Application::Get();
+		GLFWwindow* window = static_cast<GLFWwindow*>(app.GetWindow().GetNativeWindow());
 
 		if (s_IsVulkan)
 		{
@@ -84,8 +84,7 @@ namespace Waffle {
 				.UseDynamicRendering = true
 			};
 
-			// Pipeline info now lives in PipelineInfoMain
-			initInfo.PipelineInfoMain.RenderPass = VK_NULL_HANDLE;  // dynamic rendering, no render pass
+			initInfo.PipelineInfoMain.RenderPass = VK_NULL_HANDLE;
 			initInfo.PipelineInfoMain.MSAASamples = VK_SAMPLE_COUNT_1_BIT;
 
 #ifdef IMGUI_IMPL_VULKAN_HAS_DYNAMIC_RENDERING
@@ -113,6 +112,18 @@ namespace Waffle {
 		{
 			ImGui_ImplGlfw_InitForOpenGL(window, true);
 			ImGui_ImplOpenGL3_Init("#version 460");
+
+			// Create a persistent nearest-neighbour sampler object.
+			// ImGui's OpenGL backend calls glBindTexture directly without
+			// touching sampler state. Binding this sampler to unit 0 before
+			// RenderDrawData forces GL_NEAREST for every texture ImGui draws,
+			// overriding whatever the texture object's own parameters say.
+			// A sampler object always takes precedence over glTexParameteri.
+			glGenSamplers(1, &s_NearestSampler);
+			glSamplerParameteri(s_NearestSampler, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+			glSamplerParameteri(s_NearestSampler, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+			glSamplerParameteri(s_NearestSampler, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+			glSamplerParameteri(s_NearestSampler, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 		}
 	}
 
@@ -131,6 +142,12 @@ namespace Waffle {
 		{
 			ImGui_ImplOpenGL3_Shutdown();
 			ImGui_ImplGlfw_Shutdown();
+
+			if (s_NearestSampler)
+			{
+				glDeleteSamplers(1, &s_NearestSampler);
+				s_NearestSampler = 0;
+			}
 		}
 		ImGui::DestroyContext();
 	}
@@ -158,7 +175,7 @@ namespace Waffle {
 		if (m_BlockEvents)
 		{
 			ImGuiIO& io = ImGui::GetIO();
-			e.handled |= e.IsInCategory(EventCategoryMouse)    && io.WantCaptureMouse;
+			e.handled |= e.IsInCategory(EventCategoryMouse) && io.WantCaptureMouse;
 			e.handled |= e.IsInCategory(EventCategoryKeyboard) && io.WantCaptureKeyboard;
 		}
 	}
@@ -167,9 +184,10 @@ namespace Waffle {
 	{
 		WF_PROFILE_FUNCTION();
 
-		ImGuiIO& io     = ImGui::GetIO();
+		ImGuiIO& io = ImGui::GetIO();
 		Application& app = Application::Get();
-		io.DisplaySize  = ImVec2((float)app.GetWindow().GetWidth(), (float)app.GetWindow().GetHeight());
+		io.DisplaySize = ImVec2((float)app.GetWindow().GetWidth(),
+			(float)app.GetWindow().GetHeight());
 
 		ImGui::Render();
 
@@ -178,10 +196,9 @@ namespace Waffle {
 			auto* ctx = VulkanContext::Get();
 			VkCommandBuffer cmd = ctx->GetCurrentCommandBuffer();
 
-			// Ensure rendering is active (swap-chain dynamic rendering)
 			if (!ctx->IsRenderingActive())
 			{
-				VkClearColorValue    clearCol = ctx->GetClearColor();
+				VkClearColorValue        clearCol = ctx->GetClearColor();
 				VkClearDepthStencilValue clearDepth{ 1.0f, 0 };
 				ctx->BeginSwapChainRendering(clearCol, clearDepth);
 
@@ -201,7 +218,18 @@ namespace Waffle {
 		}
 		else
 		{
+			// Bind the nearest-neighbour sampler to unit 0 so that every
+			// texture ImGui draws (content browser thumbnails, spritesheet
+			// canvas, etc.) uses GL_NEAREST regardless of what ImGui's
+			// internal SetupRenderState does to the GL state.
+			// The sampler object takes precedence over per-texture parameters.
+			glBindSampler(0, s_NearestSampler);
+
 			ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+
+			// Unbind the sampler so the scene renderer's Bind() calls
+			// (which also call glBindSampler(slot, 0)) work as expected.
+			glBindSampler(0, 0);
 
 			if (io.ConfigFlags & ImGuiConfigFlags_ViewportsEnable)
 			{
@@ -216,65 +244,57 @@ namespace Waffle {
 	void ImGuiLayer::SetDarkThemeColors()
 	{
 		auto& style = ImGui::GetStyle();
-		style.WindowMinSize    = ImVec2(160.0f, 100.0f);
-		style.FramePadding     = ImVec2(6.0f, 4.0f);
-		style.ItemSpacing      = ImVec2(6.0f, 5.0f);
+		style.WindowMinSize = ImVec2(160.0f, 100.0f);
+		style.FramePadding = ImVec2(6.0f, 4.0f);
+		style.ItemSpacing = ImVec2(6.0f, 5.0f);
 		style.ItemInnerSpacing = ImVec2(6.0f, 4.0f);
-		style.WindowRounding   = 4.0f;
-		style.FrameRounding    = 4.0f;
-		style.PopupRounding    = 6.0f;
+		style.WindowRounding = 4.0f;
+		style.FrameRounding = 4.0f;
+		style.PopupRounding = 6.0f;
 		style.ScrollbarRounding = 4.0f;
-		style.GrabRounding     = 3.0f;
-		style.TabRounding      = 4.0f;
+		style.GrabRounding = 3.0f;
+		style.TabRounding = 4.0f;
 		style.WindowBorderSize = 1.0f;
-		style.FrameBorderSize  = 0.0f;
-		style.PopupBorderSize  = 1.0f;
+		style.FrameBorderSize = 0.0f;
+		style.PopupBorderSize = 1.0f;
 
 		auto& colors = style.Colors;
 
-		// Main Backgrounds
-		colors[ImGuiCol_WindowBg]  = ImVec4{ 0.11f, 0.114f, 0.125f, 1.0f };
-		colors[ImGuiCol_ChildBg]   = ImVec4{ 0.11f, 0.114f, 0.125f, 1.0f };
-		colors[ImGuiCol_PopupBg]   = ImVec4{ 0.14f, 0.145f, 0.16f,  0.98f };
-		colors[ImGuiCol_Border]    = ImVec4{ 0.22f, 0.23f,  0.25f,  0.6f };
+		colors[ImGuiCol_WindowBg] = ImVec4{ 0.11f, 0.114f, 0.125f, 1.0f };
+		colors[ImGuiCol_ChildBg] = ImVec4{ 0.11f, 0.114f, 0.125f, 1.0f };
+		colors[ImGuiCol_PopupBg] = ImVec4{ 0.14f, 0.145f, 0.16f,  0.98f };
+		colors[ImGuiCol_Border] = ImVec4{ 0.22f, 0.23f,  0.25f,  0.6f };
 		colors[ImGuiCol_BorderShadow] = ImVec4{ 0.0f, 0.0f, 0.0f, 0.0f };
 
-		// Headers
-		colors[ImGuiCol_Header]        = ImVec4{ 0.19f, 0.20f, 0.22f, 1.0f };
+		colors[ImGuiCol_Header] = ImVec4{ 0.19f, 0.20f, 0.22f, 1.0f };
 		colors[ImGuiCol_HeaderHovered] = ImVec4{ 0.26f, 0.27f, 0.30f, 1.0f };
-		colors[ImGuiCol_HeaderActive]  = ImVec4{ 0.22f, 0.23f, 0.25f, 1.0f };
+		colors[ImGuiCol_HeaderActive] = ImVec4{ 0.22f, 0.23f, 0.25f, 1.0f };
 
-		// Buttons
-		colors[ImGuiCol_Button]        = ImVec4{ 0.18f, 0.19f, 0.21f, 1.0f };
+		colors[ImGuiCol_Button] = ImVec4{ 0.18f, 0.19f, 0.21f, 1.0f };
 		colors[ImGuiCol_ButtonHovered] = ImVec4{ 0.26f, 0.27f, 0.30f, 1.0f };
-		colors[ImGuiCol_ButtonActive]  = ImVec4{ 0.15f, 0.16f, 0.18f, 1.0f };
+		colors[ImGuiCol_ButtonActive] = ImVec4{ 0.15f, 0.16f, 0.18f, 1.0f };
 
-		// Frame Background
-		colors[ImGuiCol_FrameBg]        = ImVec4{ 0.16f, 0.17f, 0.19f, 1.0f };
+		colors[ImGuiCol_FrameBg] = ImVec4{ 0.16f, 0.17f, 0.19f, 1.0f };
 		colors[ImGuiCol_FrameBgHovered] = ImVec4{ 0.22f, 0.23f, 0.26f, 1.0f };
-		colors[ImGuiCol_FrameBgActive]  = ImVec4{ 0.14f, 0.15f, 0.17f, 1.0f };
+		colors[ImGuiCol_FrameBgActive] = ImVec4{ 0.14f, 0.15f, 0.17f, 1.0f };
 
-		// Tabs
-		colors[ImGuiCol_Tab]                = ImVec4{ 0.14f, 0.145f, 0.16f, 1.0f };
-		colors[ImGuiCol_TabHovered]         = ImVec4{ 0.26f, 0.27f,  0.30f, 1.0f };
-		colors[ImGuiCol_TabActive]          = ImVec4{ 0.20f, 0.21f,  0.23f, 1.0f };
-		colors[ImGuiCol_TabUnfocused]       = ImVec4{ 0.14f, 0.145f, 0.16f, 1.0f };
+		colors[ImGuiCol_Tab] = ImVec4{ 0.14f, 0.145f, 0.16f, 1.0f };
+		colors[ImGuiCol_TabHovered] = ImVec4{ 0.26f, 0.27f,  0.30f, 1.0f };
+		colors[ImGuiCol_TabActive] = ImVec4{ 0.20f, 0.21f,  0.23f, 1.0f };
+		colors[ImGuiCol_TabUnfocused] = ImVec4{ 0.14f, 0.145f, 0.16f, 1.0f };
 		colors[ImGuiCol_TabUnfocusedActive] = ImVec4{ 0.18f, 0.19f,  0.21f, 1.0f };
 
-		// Title
-		colors[ImGuiCol_TitleBg]          = ImVec4{ 0.14f, 0.145f, 0.16f, 1.0f };
-		colors[ImGuiCol_TitleBgActive]    = ImVec4{ 0.14f, 0.145f, 0.16f, 1.0f };
+		colors[ImGuiCol_TitleBg] = ImVec4{ 0.14f, 0.145f, 0.16f, 1.0f };
+		colors[ImGuiCol_TitleBgActive] = ImVec4{ 0.14f, 0.145f, 0.16f, 1.0f };
 		colors[ImGuiCol_TitleBgCollapsed] = ImVec4{ 0.14f, 0.145f, 0.16f, 1.0f };
 
-		// Resize Grip & Separator
-		colors[ImGuiCol_Separator]        = ImVec4{ 0.22f, 0.23f, 0.25f, 1.0f };
+		colors[ImGuiCol_Separator] = ImVec4{ 0.22f, 0.23f, 0.25f, 1.0f };
 		colors[ImGuiCol_SeparatorHovered] = ImVec4{ 0.35f, 0.37f, 0.42f, 1.0f };
-		colors[ImGuiCol_SeparatorActive]  = ImVec4{ 0.45f, 0.47f, 0.52f, 1.0f };
+		colors[ImGuiCol_SeparatorActive] = ImVec4{ 0.45f, 0.47f, 0.52f, 1.0f };
 
-		// Scrollbar
-		colors[ImGuiCol_ScrollbarBg]          = ImVec4{ 0.11f, 0.114f, 0.125f, 0.6f };
-		colors[ImGuiCol_ScrollbarGrab]        = ImVec4{ 0.20f, 0.21f,  0.23f,  1.0f };
+		colors[ImGuiCol_ScrollbarBg] = ImVec4{ 0.11f, 0.114f, 0.125f, 0.6f };
+		colors[ImGuiCol_ScrollbarGrab] = ImVec4{ 0.20f, 0.21f,  0.23f,  1.0f };
 		colors[ImGuiCol_ScrollbarGrabHovered] = ImVec4{ 0.28f, 0.29f,  0.32f,  1.0f };
-		colors[ImGuiCol_ScrollbarGrabActive]  = ImVec4{ 0.35f, 0.37f,  0.40f,  1.0f };
+		colors[ImGuiCol_ScrollbarGrabActive] = ImVec4{ 0.35f, 0.37f,  0.40f,  1.0f };
 	}
 }

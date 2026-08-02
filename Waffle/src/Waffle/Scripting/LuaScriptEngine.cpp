@@ -6,6 +6,8 @@
 #include "Waffle/Core/KeyCodes.h"
 #include "Waffle/Core/MouseCodes.h"
 #include "Waffle/Scene/Components.h"
+#include "Waffle/Scene/SceneSerializer.h"
+#include "Waffle/Audio/AudioEngine.h"
 
 #include <box2d/b2_body.h>
 #include <box2d/b2_fixture.h>
@@ -676,7 +678,7 @@ namespace Waffle {
 	{
 		const char* msg = lua_tostring(L, 1);
 		if (msg)
-			WF_CORE_INFO("Lua: {0}", msg);
+			WF_INFO("Lua: {0}", msg);
 		return 0;
 	}
 
@@ -684,7 +686,7 @@ namespace Waffle {
 	{
 		const char* msg = lua_tostring(L, 1);
 		if (msg)
-			WF_CORE_WARN("Lua: {0}", msg);
+			WF_WARN("Lua: {0}", msg);
 		return 0;
 	}
 
@@ -692,7 +694,7 @@ namespace Waffle {
 	{
 		const char* msg = lua_tostring(L, 1);
 		if (msg)
-			WF_CORE_ERROR("Lua: {0}", msg);
+			WF_ERROR("Lua: {0}", msg);
 		return 0;
 	}
 
@@ -1008,6 +1010,15 @@ namespace Waffle {
 		return 1;
 	}
 
+	static int Lua_GetAxis(lua_State* L)
+	{
+		const char* axisName = lua_tostring(L, 1);
+		if (!axisName) { lua_pushnumber(L, 0); return 1; }
+		float val = Input::GetAxis(axisName);
+		lua_pushnumber(L, val);
+		return 1;
+	}
+
 	// =========================================================================
 	// NEW BINDINGS — Color / Visual
 	// =========================================================================
@@ -1072,22 +1083,94 @@ namespace Waffle {
 
 	static int Lua_SetTexture(lua_State* L)
 	{
-		uint32_t entityID  = (uint32_t)lua_tonumber(L, 1);
-		const char* path   = lua_tostring(L, 2);
-		if (!path) return 0;
+		uint32_t entityID = (uint32_t)lua_tonumber(L, 1);
+		const char* pathStr = lua_tostring(L, 2);
+		if (!pathStr) return 0;
 
 		Scene* scene = LuaScriptEngine::GetSceneContext();
 		if (!scene) return 0;
 		Entity entity{ (entt::entity)entityID, scene };
 		if (!entity || !entity.HasComponent<SpriteRendererComponent>()) return 0;
 
-		auto& src = entity.GetComponent<SpriteRendererComponent>();
-		std::filesystem::path fullPath = LuaScriptEngine::GetAssetPath() / path;
+		std::filesystem::path fullPath = LuaScriptEngine::GetAssetPath() / pathStr;
 		if (!std::filesystem::exists(fullPath))
-			fullPath = path; // try as-is
+			fullPath = pathStr;
+
 		if (std::filesystem::exists(fullPath))
+		{
+			auto& src = entity.GetComponent<SpriteRendererComponent>();
 			src.Texture = Texture2D::Create(fullPath.string(), src.FilterMode);
+		}
 		return 0;
+	}
+
+	// =========================================================================
+	// NEW BINDINGS — Animator / Animation
+	// =========================================================================
+
+	static int Lua_PlayAnimation(lua_State* L)
+	{
+		uint32_t entityID = (uint32_t)lua_tonumber(L, 1);
+		const char* clipName = lua_tostring(L, 2);
+		if (!clipName) return 0;
+
+		Scene* scene = LuaScriptEngine::GetSceneContext();
+		if (!scene) return 0;
+		Entity entity{ (entt::entity)entityID, scene };
+		if (!entity || !entity.HasComponent<AnimatorComponent>()) return 0;
+
+		entity.GetComponent<AnimatorComponent>().Play(clipName);
+		return 0;
+	}
+
+	static int Lua_StopAnimation(lua_State* L)
+	{
+		uint32_t entityID = (uint32_t)lua_tonumber(L, 1);
+		Scene* scene = LuaScriptEngine::GetSceneContext();
+		if (!scene) return 0;
+		Entity entity{ (entt::entity)entityID, scene };
+		if (!entity || !entity.HasComponent<AnimatorComponent>()) return 0;
+
+		entity.GetComponent<AnimatorComponent>().Stop();
+		return 0;
+	}
+
+	static int Lua_PauseAnimation(lua_State* L)
+	{
+		uint32_t entityID = (uint32_t)lua_tonumber(L, 1);
+		Scene* scene = LuaScriptEngine::GetSceneContext();
+		if (!scene) return 0;
+		Entity entity{ (entt::entity)entityID, scene };
+		if (!entity || !entity.HasComponent<AnimatorComponent>()) return 0;
+
+		entity.GetComponent<AnimatorComponent>().Pause();
+		return 0;
+	}
+
+	static int Lua_SetAnimationFrame(lua_State* L)
+	{
+		uint32_t entityID = (uint32_t)lua_tonumber(L, 1);
+		int frameIndex = (int)lua_tonumber(L, 2);
+		Scene* scene = LuaScriptEngine::GetSceneContext();
+		if (!scene) return 0;
+		Entity entity{ (entt::entity)entityID, scene };
+		if (!entity || !entity.HasComponent<AnimatorComponent>()) return 0;
+
+		entity.GetComponent<AnimatorComponent>().CurrentFrameIndex = frameIndex;
+		return 0;
+	}
+
+	static int Lua_IsAnimationPlaying(lua_State* L)
+	{
+		uint32_t entityID = (uint32_t)lua_tonumber(L, 1);
+		Scene* scene = LuaScriptEngine::GetSceneContext();
+		if (!scene) { lua_pushboolean(L, 0); return 1; }
+		Entity entity{ (entt::entity)entityID, scene };
+		if (!entity || !entity.HasComponent<AnimatorComponent>()) { lua_pushboolean(L, 0); return 1; }
+
+		bool playing = entity.GetComponent<AnimatorComponent>().IsPlaying;
+		lua_pushboolean(L, playing ? 1 : 0);
+		return 1;
 	}
 
 	// =========================================================================
@@ -1151,6 +1234,39 @@ namespace Waffle {
 		for (auto e : view) { newID = (uint32_t)e; } // last iterated is newest
 
 		lua_pushnumber(L, newID);
+		return 1;
+	}
+
+	static int Lua_InstantiatePrefab(lua_State* L)
+	{
+		const char* pathStr = lua_tostring(L, 1);
+		float x = lua_isnumber(L, 2) ? (float)lua_tonumber(L, 2) : 0.0f;
+		float y = lua_isnumber(L, 3) ? (float)lua_tonumber(L, 3) : 0.0f;
+
+		if (!pathStr) { lua_pushnumber(L, -1); return 1; }
+
+		Scene* scene = LuaScriptEngine::GetSceneContext();
+		if (!scene) { lua_pushnumber(L, -1); return 1; }
+
+		std::filesystem::path fullPath = LuaScriptEngine::GetAssetPath() / pathStr;
+		if (!std::filesystem::exists(fullPath))
+			fullPath = pathStr;
+
+		if (!std::filesystem::exists(fullPath))
+		{
+			WF_CORE_ERROR("InstantiatePrefab: Prefab file '{0}' not found", pathStr);
+			lua_pushnumber(L, -1);
+			return 1;
+		}
+
+		Entity entity = SceneSerializer::DeserializePrefabToEntity(scene, fullPath.string(), x, y);
+		if (!entity)
+		{
+			lua_pushnumber(L, -1);
+			return 1;
+		}
+
+		lua_pushnumber(L, (uint32_t)(entt::entity)entity);
 		return 1;
 	}
 
@@ -1585,6 +1701,48 @@ namespace Waffle {
 	}
 
 	// =========================================================================
+	// NEW BINDINGS — Audio Engine
+	// =========================================================================
+
+	static int Lua_PlaySound(lua_State* L)
+	{
+		const char* path = lua_tostring(L, 1);
+		float vol = lua_isnumber(L, 2) ? (float)lua_tonumber(L, 2) : 1.0f;
+		bool loop = lua_isboolean(L, 3) ? (lua_toboolean(L, 3) != 0) : false;
+
+		if (!path) { lua_pushnumber(L, 0); return 1; }
+		uint32_t id = AudioEngine::PlaySound(path, vol, loop);
+		lua_pushnumber(L, id);
+		return 1;
+	}
+
+	static int Lua_StopSound(lua_State* L)
+	{
+		const char* path = lua_tostring(L, 1);
+		if (path)
+			AudioEngine::StopSound(path);
+		else
+			AudioEngine::StopAllSounds();
+		return 0;
+	}
+
+	static int Lua_SetSoundVolume(lua_State* L)
+	{
+		const char* path = lua_tostring(L, 1);
+		float vol = (float)lua_tonumber(L, 2);
+		if (path)
+			AudioEngine::SetSoundVolume(path, vol);
+		return 0;
+	}
+
+	static int Lua_SetMasterVolume(lua_State* L)
+	{
+		float vol = (float)lua_tonumber(L, 1);
+		AudioEngine::SetMasterVolume(vol);
+		return 0;
+	}
+
+	// =========================================================================
 	// REGISTER ALL GLOBALS
 	// =========================================================================
 
@@ -1669,11 +1827,13 @@ namespace Waffle {
 		lua_pushcfunction(L, Lua_IsKeyJustReleased);    lua_setglobal(L, "IsKeyJustReleased");
 		lua_pushcfunction(L, Lua_IsMouseJustPressed);   lua_setglobal(L, "IsMouseJustPressed");
 		lua_pushcfunction(L, Lua_IsMouseJustReleased);  lua_setglobal(L, "IsMouseJustReleased");
+		lua_pushcfunction(L, Lua_GetAxis);              lua_setglobal(L, "GetAxis");
 		lua_getglobal(L, "Input");
 		lua_pushcfunction(L, Lua_IsKeyJustPressed);     lua_setfield(L, -2, "IsKeyJustPressed");
 		lua_pushcfunction(L, Lua_IsKeyJustReleased);    lua_setfield(L, -2, "IsKeyJustReleased");
 		lua_pushcfunction(L, Lua_IsMouseJustPressed);   lua_setfield(L, -2, "IsMouseJustPressed");
 		lua_pushcfunction(L, Lua_IsMouseJustReleased);  lua_setfield(L, -2, "IsMouseJustReleased");
+		lua_pushcfunction(L, Lua_GetAxis);              lua_setfield(L, -2, "GetAxis");
 		lua_pop(L, 1);
 
 		// ---- New: Color / Visual ----
@@ -1681,12 +1841,27 @@ namespace Waffle {
 		lua_pushcfunction(L, Lua_GetColor);             lua_setglobal(L, "GetColor");
 		lua_pushcfunction(L, Lua_SetAlpha);             lua_setglobal(L, "SetAlpha");
 		lua_pushcfunction(L, Lua_SetTexture);           lua_setglobal(L, "SetTexture");
+		lua_pushcfunction(L, Lua_PlayAnimation);        lua_setglobal(L, "PlayAnimation");
+		lua_pushcfunction(L, Lua_StopAnimation);        lua_setglobal(L, "StopAnimation");
+		lua_pushcfunction(L, Lua_PauseAnimation);       lua_setglobal(L, "PauseAnimation");
+		lua_pushcfunction(L, Lua_SetAnimationFrame);   lua_setglobal(L, "SetAnimationFrame");
+		lua_pushcfunction(L, Lua_IsAnimationPlaying);   lua_setglobal(L, "IsAnimationPlaying");
+
+		// Table alias Animator.Play etc.
+		lua_newtable(L);
+		lua_pushcfunction(L, Lua_PlayAnimation);        lua_setfield(L, -2, "Play");
+		lua_pushcfunction(L, Lua_StopAnimation);        lua_setfield(L, -2, "Stop");
+		lua_pushcfunction(L, Lua_PauseAnimation);       lua_setfield(L, -2, "Pause");
+		lua_pushcfunction(L, Lua_SetAnimationFrame);   lua_setfield(L, -2, "SetFrame");
+		lua_pushcfunction(L, Lua_IsAnimationPlaying);   lua_setfield(L, -2, "IsPlaying");
+		lua_setglobal(L, "Animator");
 
 		// ---- New: Entity management ----
 		lua_pushcfunction(L, Lua_CreateEntity);         lua_setglobal(L, "CreateEntity");
 		lua_pushcfunction(L, Lua_DestroyEntity);        lua_setglobal(L, "DestroyEntity");
 		lua_pushcfunction(L, Lua_DestroyEntityDelayed); lua_setglobal(L, "DestroyEntityDelayed");
 		lua_pushcfunction(L, Lua_CloneEntity);          lua_setglobal(L, "CloneEntity");
+		lua_pushcfunction(L, Lua_InstantiatePrefab);     lua_setglobal(L, "InstantiatePrefab");
 		lua_pushcfunction(L, Lua_GetEntityName);        lua_setglobal(L, "GetEntityName");
 		lua_pushcfunction(L, Lua_FindAllEntitiesByName);lua_setglobal(L, "FindAllEntitiesByName");
 		lua_pushcfunction(L, Lua_GetAllEntities);       lua_setglobal(L, "GetAllEntities");
@@ -1721,6 +1896,12 @@ namespace Waffle {
 
 		// ---- New: DeltaTime ----
 		lua_pushcfunction(L, Lua_GetDeltaTime);         lua_setglobal(L, "GetDeltaTime");
+
+		// ---- New: Audio Engine ----
+		lua_pushcfunction(L, Lua_PlaySound);            lua_setglobal(L, "PlaySound");
+		lua_pushcfunction(L, Lua_StopSound);            lua_setglobal(L, "StopSound");
+		lua_pushcfunction(L, Lua_SetSoundVolume);       lua_setglobal(L, "SetSoundVolume");
+		lua_pushcfunction(L, Lua_SetMasterVolume);      lua_setglobal(L, "SetMasterVolume");
 
 		// ---- Pure-Lua Math / Vec2 helpers ----
 		static const char* s_MathLibLua = R"lua(

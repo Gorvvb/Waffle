@@ -13,6 +13,7 @@ namespace Waffle {
 
 		static bool IsMouseButtonPressed(MouseCode button);
 		static glm::vec2 GetMousePosition();
+		static float GetAxis(const std::string& axisName);
 		static float GetMouseX();
 		static float GetMouseY(); 
 	};

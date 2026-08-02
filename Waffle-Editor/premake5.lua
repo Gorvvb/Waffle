@@ -24,6 +24,8 @@ project "Waffle-Editor"
 		"%{wks.location}/Waffle/vendor/spdlog/include",
 		"%{wks.location}/Waffle/src",
 		"%{wks.location}/Waffle/vendor",
+		"%{Includedir.GLFW}",
+		"%{Includedir.GLAD}",
 		"%{Includedir.glm}",
 		"%{Includedir.entt}",
 		"%{Includedir.ImGuizmo}",

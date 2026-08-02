@@ -3,6 +3,9 @@
 #include "Waffle.h"
 #include "Panels/SceneHierarchyPanel.h"
 #include "Panels/ContentBrowserPanel.h"
+#include "Panels/ConsolePanel.h"
+#include "Panels/AnimationEditorPanel.h"
+#include "Panels/SpritesheetEditorPanel.h"
 
 #include "Waffle/Renderer/EditorCamera.h"
 
@@ -33,6 +36,9 @@ namespace Waffle {
 		void SaveSceneAs();
 
 		void SaveProjectSettings();
+		void SaveEditorConfig();
+		void LoadEditorConfig();
+		void SetCurrentProjectAsDefaultTemplate();
 
 		void NewProject();
 		void OpenProject();
@@ -108,6 +114,11 @@ namespace Waffle {
 
 		SceneHierarchyPanel m_SceneHierarchyPanel;
 		ContentBrowserPanel m_ContentBrowserPanel;
+		ConsolePanel        m_ConsolePanel;
+		AnimationEditorPanel m_AnimationEditorPanel;
+		SpritesheetEditorPanel m_SpritesheetEditorPanel;
+		bool                m_ShowAnimationEditor = true;
+		bool                m_ShowSpritesheetEditor = true;
 
 		float m_fps = 0.0f;
 

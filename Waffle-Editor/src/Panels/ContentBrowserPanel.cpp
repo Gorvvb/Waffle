@@ -1,9 +1,14 @@
 #include "wfpch.h"
 #include "ContentBrowserPanel.h"
-#include "Waffle/Scene/SceneSerializer.h"
+#include "Waffle/Core/PlatformDetection.h"
 #include "Waffle/Utils/PlatformUtils.h"
+#include "Waffle/Scene/Scene.h"
+#include "Waffle/Scene/Entity.h"
+#include "Waffle/Scene/Components.h"
+#include "Waffle/Scene/SceneSerializer.h"
 
 #include <imgui/imgui.h>
+#include <yaml-cpp/yaml.h>
 #include <fstream>
 
 namespace Waffle {
@@ -61,17 +66,135 @@ namespace Waffle {
 		{
 			for (auto& directoryEntry : std::filesystem::directory_iterator(m_CurrentDirectory))
 			{
-				itemCount++;
 				const auto& path = directoryEntry.path();
+				std::string ext = path.extension().string();
+				for (auto& c : ext) c = (char)tolower(c);
+				std::string fn = path.filename().string();
+
+				// Hide internal engine/project files (.wfp, .wfk, .ini, .log, .yaml, dotfiles) from the user
+				if (ext == ".wfp" || ext == ".wfk" || ext == ".ini" || ext == ".log" || ext == ".yaml" || ext == ".yml" || fn[0] == '.')
+					continue;
+
+				itemCount++;
 				auto relativePath = std::filesystem::relative(path, g_AssetPath);
 				std::string filenameString = relativePath.filename().string();
 
 				ImGui::PushID(filenameString.c_str());
 
 				Ref<Texture2D> icon = directoryEntry.is_directory() ? m_DirectoryIcon : m_FileIcon;
+				if (!directoryEntry.is_directory())
+				{
+					if (ext == ".png" || ext == ".jpg" || ext == ".jpeg")
+					{
+						std::string pathStr = path.string();
+						auto it = m_TextureCache.find(pathStr);
+						if (it != m_TextureCache.end() && it->second)
+						{
+							icon = it->second;
+						}
+						else
+						{
+							// Always load thumbnails as Nearest — clear any stale Linear entry first
+							m_TextureCache.erase(pathStr);
+							Ref<Texture2D> loadedTex = Texture2D::Create(pathStr, TextureFilter::Nearest);
+							if (loadedTex)
+							{
+								m_TextureCache[pathStr] = loadedTex;
+								icon = loadedTex;
+							}
+						}
+					}
+					else if (ext == ".prefab")
+					{
+						std::string pathStr = path.string();
+						auto it = m_TextureCache.find(pathStr);
+						if (it != m_TextureCache.end() && it->second)
+						{
+							icon = it->second;
+						}
+						else
+						{
+							try {
+								YAML::Node data = YAML::LoadFile(pathStr);
+								auto entityNode = data["Entity"];
+								if (entityNode && entityNode["SpriteRendererComponent"] && entityNode["SpriteRendererComponent"]["TexturePath"])
+								{
+									std::string texRelPath = entityNode["SpriteRendererComponent"]["TexturePath"].as<std::string>();
+									if (!texRelPath.empty())
+										texRelPath = (g_AssetPath / texRelPath).string();
+
+									if (std::filesystem::exists(texRelPath))
+									{
+										Ref<Texture2D> loadedTex = Texture2D::Create(texRelPath, TextureFilter::Nearest);
+										if (loadedTex)
+										{
+											m_TextureCache[pathStr] = loadedTex;
+											icon = loadedTex;
+										}
+									}
+								}
+							} catch (...) {}
+						}
+					}
+				}
+
+				ImVec2 iconSize = { thumbnailSize, thumbnailSize };
+				if (icon && icon != m_DirectoryIcon && icon != m_FileIcon)
+				{
+					icon->SetFilter(TextureFilter::Nearest); // reapply every frame before ImGui draws it
+
+					float aspect = (float)icon->GetWidth() / (float)icon->GetHeight();
+					if (aspect > 0.0f)
+					{
+						if (aspect >= 1.0f)
+							iconSize = ImVec2(thumbnailSize, thumbnailSize / aspect);
+						else
+							iconSize = ImVec2(thumbnailSize * aspect, thumbnailSize);
+					}
+				}
+
 				bool isSelected = (m_SelectedItem == path);
 				ImGui::PushStyleColor(ImGuiCol_Button, isSelected ? ImVec4{ 0.2f, 0.4f, 0.8f, 0.5f } : ImVec4{ 0, 0, 0, 0 });
-				ImGui::ImageButton("##", (ImTextureID)(uintptr_t)icon->GetRendererID(), { thumbnailSize, thumbnailSize }, { 0, 1 }, { 1, 0 });
+				ImGui::ImageButton("##", (ImTextureID)(uintptr_t)icon->GetRendererID(), iconSize, { 0, 1 }, { 1, 0 });
+
+				if (icon && icon != m_DirectoryIcon && icon != m_FileIcon)
+				{
+					ImDrawList* dl = ImGui::GetWindowDrawList();
+					dl->AddCallback(ImDrawCallback_ResetRenderState, nullptr);
+				}
+
+				// Drop entity onto item icon to create prefab
+				if (ImGui::BeginDragDropTarget())
+				{
+					if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("SCENE_HIERARCHY_ENTITY"))
+					{
+						UUID entityUUID = *(const UUID*)payload->Data;
+						if (m_SceneContext)
+						{
+							Entity entity = m_SceneContext->GetEntityByUUID(entityUUID);
+							if (entity)
+							{
+								std::string entityName = entity.GetComponent<TagComponent>().Tag;
+								if (entityName.empty()) entityName = "Entity";
+
+								std::filesystem::path prefabsDir = m_CurrentDirectory;
+								if (std::filesystem::exists(g_AssetPath / "Prefabs"))
+									prefabsDir = g_AssetPath / "Prefabs";
+
+								std::filesystem::path prefabPath = prefabsDir / (entityName + ".prefab");
+								int counter = 1;
+								while (std::filesystem::exists(prefabPath))
+								{
+									prefabPath = prefabsDir / (entityName + std::to_string(counter++) + ".prefab");
+								}
+
+								SceneSerializer::SerializeEntityToPrefab(entity, prefabPath.string());
+								WF_CORE_INFO("Saved entity '{0}' to prefab '{1}'", entityName, prefabPath.string());
+							}
+						}
+					}
+					ImGui::EndDragDropTarget();
+				}
 
 				if (ImGui::IsItemClicked(ImGuiMouseButton_Left))
 				{
@@ -89,6 +212,16 @@ namespace Waffle {
 				if (ImGui::BeginPopupContextItem())
 				{
 					m_SelectedItem = path;
+					std::string ext = path.extension().string();
+					for (auto& c : ext) c = (char)tolower(c);
+					if (ext == ".png" || ext == ".jpg" || ext == ".jpeg")
+					{
+						if (ImGui::MenuItem("Create Spritesheet..."))
+						{
+							m_ItemToSlice = path;
+							m_OpenSliceModal = true;
+						}
+					}
 					if (ImGui::MenuItem("Rename"))
 					{
 						m_ItemToRename = path;
@@ -116,6 +249,34 @@ namespace Waffle {
 					{
 						if (m_OpenSceneCallback)
 							m_OpenSceneCallback(path);
+					}
+					else if (path.extension() == ".spritesheet")
+					{
+						m_SelectedSpritesheetPath = path;
+						try {
+							YAML::Node data = YAML::LoadFile(path.string());
+							std::string texName = data["Spritesheet"].as<std::string>("");
+							m_SpritesheetCols = data["Columns"].as<int>(1);
+							m_SpritesheetRows = data["Rows"].as<int>(1);
+
+							std::filesystem::path fullTexPath = path.parent_path() / texName;
+							if (!std::filesystem::exists(fullTexPath)) fullTexPath = g_AssetPath / texName;
+							if (std::filesystem::exists(fullTexPath))
+							{
+								m_SpritesheetTexture = Texture2D::Create(fullTexPath.string(), TextureFilter::Nearest);
+								m_SpritesheetSubTextures.clear();
+								float cellW = (float)m_SpritesheetTexture->GetWidth() / (float)m_SpritesheetCols;
+								float cellH = (float)m_SpritesheetTexture->GetHeight() / (float)m_SpritesheetRows;
+								int total = m_SpritesheetCols * m_SpritesheetRows;
+								for (int i = 0; i < total; i++)
+								{
+									int col = i % m_SpritesheetCols;
+									int row = m_SpritesheetRows - 1 - (i / m_SpritesheetCols);
+									auto sub = SubTexture2D::CreateFromCoords(m_SpritesheetTexture, { (float)col, (float)row }, { cellW, cellH });
+									if (sub) m_SpritesheetSubTextures.push_back(sub);
+								}
+							}
+						} catch (...) {}
 					}
 					else if (path.extension() == ".lua" || path.extension() == ".h" || path.extension() == ".cpp" || path.extension() == ".txt")
 					{
@@ -283,10 +444,82 @@ namespace Waffle {
 			ImGui::EndPopup();
 		}
 
-		// Status Bar
-		ImGui::SetCursorPosY(ImGui::GetWindowHeight() - 24.0f);
-		ImGui::Separator();
-		ImGui::TextDisabled("Items: %u", itemCount);
+		// Modal Dialog: Create Spritesheet
+		if (m_OpenSliceModal)
+		{
+			ImGui::OpenPopup("Create Spritesheet");
+			m_OpenSliceModal = false;
+		}
+
+		if (ImGui::BeginPopupModal("Create Spritesheet", NULL, ImGuiWindowFlags_AlwaysAutoResize))
+		{
+			ImGui::Text("Slicing image: %s", m_ItemToSlice.filename().string().c_str());
+			ImGui::Separator();
+
+			ImGui::DragInt("Columns (Grid Width)", &m_SliceColumns, 1.0f, 1, 64);
+			ImGui::DragInt("Rows (Grid Height)", &m_SliceRows, 1.0f, 1, 64);
+
+			ImGui::Spacing();
+			if (ImGui::Button("Slice & Create Asset", ImVec2(180, 0)))
+			{
+				std::filesystem::path sheetYamlPath = m_ItemToSlice.parent_path() / (m_ItemToSlice.stem().string() + ".spritesheet");
+				YAML::Emitter out;
+				out << YAML::BeginMap;
+				out << YAML::Key << "Spritesheet" << YAML::Value << m_ItemToSlice.filename().string();
+				out << YAML::Key << "Columns" << YAML::Value << m_SliceColumns;
+				out << YAML::Key << "Rows" << YAML::Value << m_SliceRows;
+				out << YAML::EndMap;
+
+				std::ofstream fout(sheetYamlPath);
+				fout << out.c_str();
+				WF_CORE_INFO("Saved spritesheet asset: {0}", sheetYamlPath.string());
+
+				m_ItemToSlice.clear();
+				ImGui::CloseCurrentPopup();
+			}
+			ImGui::SameLine();
+			if (ImGui::Button("Cancel", ImVec2(100, 0)))
+			{
+				m_ItemToSlice.clear();
+				ImGui::CloseCurrentPopup();
+			}
+
+			ImGui::EndPopup();
+		}
+
+		// Invisible dummy covering empty space to receive drag drop
+		ImGui::InvisibleButton("##ContentBrowserWindowDropArea", ImGui::GetContentRegionAvail());
+		if (ImGui::BeginDragDropTarget())
+		{
+			if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("SCENE_HIERARCHY_ENTITY"))
+			{
+				UUID entityUUID = *(const UUID*)payload->Data;
+				if (m_SceneContext)
+				{
+					Entity entity = m_SceneContext->GetEntityByUUID(entityUUID);
+					if (entity)
+					{
+						std::string entityName = entity.GetComponent<TagComponent>().Tag;
+						if (entityName.empty()) entityName = "Entity";
+
+						std::filesystem::path prefabsDir = m_CurrentDirectory;
+						if (std::filesystem::exists(g_AssetPath / "Prefabs"))
+							prefabsDir = g_AssetPath / "Prefabs";
+
+						std::filesystem::path prefabPath = prefabsDir / (entityName + ".prefab");
+						int counter = 1;
+						while (std::filesystem::exists(prefabPath))
+						{
+							prefabPath = prefabsDir / (entityName + std::to_string(counter++) + ".prefab");
+						}
+
+						SceneSerializer::SerializeEntityToPrefab(entity, prefabPath.string());
+						WF_CORE_INFO("Saved entity '{0}' to prefab '{1}'", entityName, prefabPath.string());
+					}
+				}
+			}
+			ImGui::EndDragDropTarget();
+		}
 
 		ImGui::End();
 	}

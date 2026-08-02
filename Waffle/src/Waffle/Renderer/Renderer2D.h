@@ -3,6 +3,7 @@
 #include "OrthographicCamera.h"
 
 #include "Texture.h"
+#include "SubTexture2D.h"
 
 #include "Waffle/Renderer/Camera.h"
 #include "Waffle/Renderer/EditorCamera.h"
@@ -41,6 +42,7 @@ namespace Waffle {
 
 		static void DrawQuad(const glm::mat4& transform, const glm::vec4& color, int entityID = -1);
 		static void DrawQuad(const glm::mat4& transform, const Ref<Texture2D>& texture, const glm::vec2& tilingFactor = glm::vec2(1.0f), const glm::vec4& tintColor = glm::vec4(1.0f), int entityID = -1);
+		static void DrawQuad(const glm::mat4& transform, const Ref<SubTexture2D>& subTexture, const glm::vec2& tilingFactor = glm::vec2(1.0f), const glm::vec4& tintColor = glm::vec4(1.0f), int entityID = -1);
 
 		static void DrawRotatedQuad(const glm::vec2& position, const glm::vec2& size, float rotation, const glm::vec4& color);
 		static void DrawRotatedQuad(const glm::vec3& position, const glm::vec2& size, float rotation, const glm::vec4& color);

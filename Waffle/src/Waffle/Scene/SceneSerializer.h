@@ -16,5 +16,8 @@ namespace Waffle {
 
 		bool Deserialize(const std::string& filepath);
 		bool DeserializeRuntime(const std::string& filepath);
+
+		static bool SerializeEntityToPrefab(Entity entity, const std::string& filepath);
+		static Entity DeserializePrefabToEntity(Scene* scene, const std::string& filepath, float x = 0.0f, float y = 0.0f);
 	};
 }

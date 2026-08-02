@@ -12,6 +12,7 @@ namespace Waffle {
 	private:
 		float m_Time = 0.0f;
 		bool m_BlockEvents = true;
+		uint32_t m_NearestSampler = 0;
 	public:
 		ImGuiLayer();
 		~ImGuiLayer();
