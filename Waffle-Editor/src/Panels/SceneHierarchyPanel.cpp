@@ -3,6 +3,8 @@
 #include "Waffle/Scene/Components.h"
 #include "Waffle/Utils/PlatformUtils.h"
 
+#include "Waffle/Scripting/LuaScriptEngine.h"
+
 #include <imgui/imgui.h>
 #include <imgui/imgui_internal.h>
 
@@ -537,116 +539,188 @@ namespace Waffle {
 		});
 
 		DrawComponent<ScriptComponent>("Script", entity, [](auto& component)
-		{
-			if (component.ScriptPaths.empty() && !component.ClassName.empty())
 			{
-				component.ScriptPaths.push_back(component.ClassName);
-			}
-			if (component.ScriptPaths.empty())
-			{
-				component.ScriptPaths.push_back("");
-			}
-
-			// Gather all .lua files from Assets directory for the dropdown
-			std::vector<std::filesystem::path> luaFiles;
-			if (std::filesystem::exists(g_AssetPath))
-			{
-				for (auto& entry : std::filesystem::recursive_directory_iterator(g_AssetPath))
+				if (component.ScriptPaths.empty() && !component.ClassName.empty())
 				{
-					if (entry.is_regular_file() && entry.path().extension() == ".lua")
-					{
-						luaFiles.push_back(std::filesystem::relative(entry.path(), g_AssetPath));
-					}
+					component.ScriptPaths.push_back(component.ClassName);
 				}
-			}
-
-			for (size_t i = 0; i < component.ScriptPaths.size(); i++)
-			{
-				ImGui::PushID((int)i);
-				std::string label = "##Script" + std::to_string(i + 1);
-
-				std::string currentScript = component.ScriptPaths[i];
-				std::string filenameOnly = currentScript.empty() ? "None (Select .lua Script)" : std::filesystem::path(currentScript).filename().string();
-
-				ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x - 120.0f);
-				if (ImGui::BeginCombo(label.c_str(), filenameOnly.c_str()))
+				if (component.ScriptPaths.empty())
 				{
-					if (ImGui::Selectable("None", currentScript.empty()))
-					{
-						component.ScriptPaths[i] = "";
-					}
+					component.ScriptPaths.push_back("");
+				}
 
-					for (const auto& luaFile : luaFiles)
+				// Gather all .lua files from Assets directory for the dropdown
+				std::vector<std::filesystem::path> luaFiles;
+				if (std::filesystem::exists(g_AssetPath))
+				{
+					for (auto& entry : std::filesystem::recursive_directory_iterator(g_AssetPath))
 					{
-						std::string fileStr = luaFile.string();
-						std::string nameStr = luaFile.filename().string();
-						bool isSelected = (currentScript == fileStr || currentScript == nameStr);
-						if (ImGui::Selectable(nameStr.c_str(), isSelected))
+						if (entry.is_regular_file() && entry.path().extension() == ".lua")
 						{
-							component.ScriptPaths[i] = fileStr;
-						}
-						if (isSelected)
-							ImGui::SetItemDefaultFocus();
-					}
-					ImGui::EndCombo();
-				}
-
-				if (!currentScript.empty() && ImGui::IsItemHovered())
-				{
-					ImGui::SetTooltip("%s", currentScript.c_str());
-				}
-
-				if (ImGui::BeginDragDropTarget())
-				{
-					if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("CONTENT_BROWSER_ITEM"))
-					{
-						const wchar_t* pathStr = (const wchar_t*)payload->Data;
-						std::filesystem::path path(pathStr);
-						if (path.extension() == ".lua")
-						{
-							component.ScriptPaths[i] = path.filename().string();
+							luaFiles.push_back(std::filesystem::relative(entry.path(), g_AssetPath));
 						}
 					}
-					ImGui::EndDragDropTarget();
 				}
 
-				ImGui::SameLine();
-				if (ImGui::Button("Edit"))
+				for (size_t i = 0; i < component.ScriptPaths.size(); i++)
 				{
-					if (!component.ScriptPaths[i].empty())
+					ImGui::PushID((int)i);
+					std::string label = "##Script" + std::to_string(i + 1);
+
+					std::string currentScript = component.ScriptPaths[i];
+					std::string filenameOnly = currentScript.empty() ? "None (Select .lua Script)" : std::filesystem::path(currentScript).filename().string();
+
+					ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x - 120.0f);
+					if (ImGui::BeginCombo(label.c_str(), filenameOnly.c_str()))
 					{
-						std::filesystem::path fullPath = std::filesystem::path(g_AssetPath) / component.ScriptPaths[i];
-						if (!std::filesystem::exists(fullPath) && std::filesystem::exists(g_AssetPath))
+						if (ImGui::Selectable("None", currentScript.empty()))
 						{
-							for (auto& entry : std::filesystem::recursive_directory_iterator(g_AssetPath))
+							component.ScriptPaths[i] = "";
+							component.Fields.erase(currentScript);
+						}
+
+						for (const auto& luaFile : luaFiles)
+						{
+							std::string fileStr = luaFile.string();
+							std::string nameStr = luaFile.filename().string();
+							bool isSelected = (currentScript == fileStr || currentScript == nameStr);
+							if (ImGui::Selectable(nameStr.c_str(), isSelected))
 							{
-								if (entry.is_regular_file() && entry.path().filename() == std::filesystem::path(component.ScriptPaths[i]).filename())
-								{
-									fullPath = entry.path();
-									break;
-								}
+								// If the script changed, clear old fields for this slot
+								if (fileStr != currentScript)
+									component.Fields.erase(currentScript);
+								component.ScriptPaths[i] = fileStr;
+
+								// Scrape fields immediately so they show in the inspector before Play
+								std::filesystem::path fullPath = std::filesystem::path(g_AssetPath) / fileStr;
+								LuaScriptEngine::ScrapeFieldsFromScript(fullPath, fileStr, component);
+							}
+							if (isSelected)
+								ImGui::SetItemDefaultFocus();
+						}
+						ImGui::EndCombo();
+					}
+
+					if (!currentScript.empty() && ImGui::IsItemHovered())
+					{
+						ImGui::SetTooltip("%s", currentScript.c_str());
+					}
+
+					if (ImGui::BeginDragDropTarget())
+					{
+						if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("CONTENT_BROWSER_ITEM"))
+						{
+							const wchar_t* pathStr = (const wchar_t*)payload->Data;
+							std::filesystem::path path(pathStr);
+							if (path.extension() == ".lua")
+							{
+								if (path.filename().string() != std::filesystem::path(currentScript).filename().string())
+									component.Fields.erase(currentScript);
+								component.ScriptPaths[i] = path.filename().string();
+
+								// Scrape fields immediately so they show in the inspector before Play
+								std::filesystem::path fullPath = std::filesystem::path(g_AssetPath) / path.filename();
+								LuaScriptEngine::ScrapeFieldsFromScript(fullPath, path.filename().string(), component);
 							}
 						}
-						PlatformUtils::OpenFileInEditor(fullPath.string());
+
+						ImGui::EndDragDropTarget();
+					}
+
+					ImGui::SameLine();
+					if (ImGui::Button("Edit"))
+					{
+						if (!component.ScriptPaths[i].empty())
+						{
+							std::filesystem::path fullPath = std::filesystem::path(g_AssetPath) / component.ScriptPaths[i];
+							if (!std::filesystem::exists(fullPath) && std::filesystem::exists(g_AssetPath))
+							{
+								for (auto& entry : std::filesystem::recursive_directory_iterator(g_AssetPath))
+								{
+									if (entry.is_regular_file() && entry.path().filename() == std::filesystem::path(component.ScriptPaths[i]).filename())
+									{
+										fullPath = entry.path();
+										break;
+									}
+								}
+							}
+							PlatformUtils::OpenFileInEditor(fullPath.string());
+						}
+					}
+
+					ImGui::SameLine();
+					if (ImGui::Button("Remove"))
+					{
+						component.Fields.erase(currentScript);
+						component.ScriptPaths.erase(component.ScriptPaths.begin() + i);
+						ImGui::PopID();
+						break;
+					}
+
+					ImGui::PopID();
+				}
+
+				if (ImGui::Button("+ Add Another Script"))
+				{
+					component.ScriptPaths.push_back("");
+				}
+
+				// --- Public Fields ---
+				for (auto& [scriptPath, fieldList] : component.Fields)
+				{
+					if (fieldList.empty()) continue;
+
+					// Only show fields for scripts still in the ScriptPaths list
+					bool scriptStillActive = std::any_of(component.ScriptPaths.begin(), component.ScriptPaths.end(),
+						[&scriptPath](const std::string& p) { return p == scriptPath; });
+					if (!scriptStillActive) continue;
+
+					ImGui::Spacing();
+					ImGui::Separator();
+					std::string stem = std::filesystem::path(scriptPath).stem().string();
+					ImGui::TextDisabled("%s", stem.c_str());
+					ImGui::Spacing();
+
+					for (auto& field : fieldList)
+					{
+						ImGui::PushID((scriptPath + field.Name).c_str());
+
+						ImGui::Columns(2, nullptr, false);
+						ImGui::SetColumnWidth(0, 120.0f);
+						ImGui::Text("%s", field.Name.c_str());
+						ImGui::NextColumn();
+						ImGui::SetNextItemWidth(-1);
+
+						switch (field.Type)
+						{
+						case LuaFieldType::Float:
+							ImGui::DragFloat("##v", &field.FloatVal, 0.1f);
+							if (ImGui::IsItemDeactivatedAfterEdit()) field.UserModified = true;
+							break;
+						case LuaFieldType::Int:
+							ImGui::DragInt("##v", &field.IntVal);
+							if (ImGui::IsItemDeactivatedAfterEdit()) field.UserModified = true;
+							break;
+						case LuaFieldType::Bool:
+							ImGui::Checkbox("##v", &field.BoolVal);
+							if (ImGui::IsItemDeactivatedAfterEdit()) field.UserModified = true;
+							break;
+						case LuaFieldType::String:
+						{
+							char buf[256] = {};
+							strncpy_s(buf, field.StringVal.c_str(), sizeof(buf) - 1);
+							if (ImGui::InputText("##v", buf, sizeof(buf)))
+								field.StringVal = buf;
+							if (ImGui::IsItemDeactivatedAfterEdit()) field.UserModified = true;
+							break;
+						}
+						}
+
+						ImGui::Columns(1);
+						ImGui::PopID();
 					}
 				}
-
-				ImGui::SameLine();
-				if (ImGui::Button("Remove"))
-				{
-					component.ScriptPaths.erase(component.ScriptPaths.begin() + i);
-					ImGui::PopID();
-					break;
-				}
-
-				ImGui::PopID();
-			}
-
-			if (ImGui::Button("+ Add Another Script"))
-			{
-				component.ScriptPaths.push_back("");
-			}
-		});
+			});
 
 		DrawComponent<LifetimeComponent>("Lifetime", entity, [](auto& component)
 		{

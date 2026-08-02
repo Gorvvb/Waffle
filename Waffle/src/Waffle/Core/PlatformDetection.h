@@ -25,15 +25,3 @@
 #else
 	#error "Unknown platform!"
 #endif
-
-#ifdef WF_PLATFORM_WINDOWS
-	#if WF_DYNAMIC_LINK
-		#ifdef WF_BUILD_DLL
-			#define WAFLLE_API __declspec(dllexport)
-		#else
-			#define WAFLLE_API __declspec(dllimport)
-		#endif
-	#else
-		#define WAFFLE_API
-	#endif
-#endif

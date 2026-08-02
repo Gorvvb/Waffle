@@ -610,6 +610,252 @@ namespace Waffle {
 	// Internal helpers
 	// -------------------------------------------------------------------------
 
+	static void ApplyFieldToLua(lua_State* L, const std::string& tableKey, const LuaField& field)
+	{
+		lua_getglobal(L, tableKey.c_str());
+		if (!lua_istable(L, -1)) { lua_pop(L, 1); return; }
+		lua_getfield(L, -1, "Public");
+		if (!lua_istable(L, -1)) { lua_pop(L, 2); return; }
+
+		switch (field.Type)
+		{
+		case LuaFieldType::Float:  lua_pushnumber(L, field.FloatVal);           break;
+		case LuaFieldType::Int:    lua_pushinteger(L, field.IntVal);             break;
+		case LuaFieldType::Bool:   lua_pushboolean(L, field.BoolVal ? 1 : 0);   break;
+		case LuaFieldType::String: lua_pushstring(L, field.StringVal.c_str()); break;
+		}
+
+		lua_setfield(L, -2, field.Name.c_str());
+		lua_pop(L, 2);
+	}
+
+	static void ScrapePublicFields(lua_State* L, const std::string& tableKey,
+		const std::string& scriptPath, ScriptComponent& sc)
+	{
+		auto& fields = sc.Fields[scriptPath];
+
+		lua_getglobal(L, tableKey.c_str());
+		if (!lua_istable(L, -1)) { lua_pop(L, 1); return; }
+		lua_getfield(L, -1, "Public");
+		if (!lua_istable(L, -1)) { lua_pop(L, 2); return; }
+
+		lua_pushnil(L);
+		while (lua_next(L, -2))
+		{
+			if (!lua_isstring(L, -2)) { lua_pop(L, 1); continue; }
+
+			const char* name = lua_tostring(L, -2);
+
+			// Skip fields the editor already has a value for
+			bool alreadyExists = std::any_of(fields.begin(), fields.end(),
+				[name](const LuaField& f) { return f.Name == name; });
+
+			if (!alreadyExists)
+			{
+				LuaField field;
+				field.Name = name;
+
+				if (lua_isinteger(L, -1))
+				{
+					field.Type = LuaFieldType::Int;
+					field.IntVal = (int)lua_tointeger(L, -1);
+				}
+				else if (lua_isnumber(L, -1))
+				{
+					field.Type = LuaFieldType::Float;
+					field.FloatVal = (float)lua_tonumber(L, -1);
+				}
+				else if (lua_isboolean(L, -1))
+				{
+					field.Type = LuaFieldType::Bool;
+					field.BoolVal = (lua_toboolean(L, -1) != 0);
+				}
+				else if (lua_isstring(L, -1))
+				{
+					field.Type = LuaFieldType::String;
+					field.StringVal = lua_tostring(L, -1);
+				}
+				else
+				{
+					lua_pop(L, 1);
+					continue;
+				}
+
+				fields.push_back(field);
+			}
+
+			lua_pop(L, 1);
+		}
+
+		lua_pop(L, 2); // pop Public + env
+
+		// Write all stored editor values back into the live Lua env
+		for (const auto& field : fields)
+			ApplyFieldToLua(L, tableKey, field);
+	}
+
+	void LuaScriptEngine::ScrapeFieldsFromScript(const std::filesystem::path& fullPath,
+		const std::string& scriptPath,
+		ScriptComponent& sc)
+	{
+		// Don't overwrite fields that were already loaded (e.g. from the scene file)
+		auto it = sc.Fields.find(scriptPath);
+		if (it != sc.Fields.end() && !it->second.empty())
+			return;
+
+		lua_State* L = luaL_newstate();
+		luaL_openlibs(L);
+
+		std::ifstream file(fullPath, std::ios::binary);
+		if (!file.is_open()) { lua_close(L); return; }
+		std::string source((std::istreambuf_iterator<char>(file)),
+			std::istreambuf_iterator<char>());
+		file.close();
+
+		std::string wrapper = "return function(_ENV)\n" + source + "\nend";
+		if (luaL_loadbufferx(L, wrapper.c_str(), wrapper.size(), "@scrape", "t") != LUA_OK)
+		{
+			lua_close(L); return;
+		}
+		if (lua_pcall(L, 0, 1, 0) != LUA_OK)
+		{
+			lua_close(L); return;
+		}
+
+		// Build a minimal env table with a metatable pointing to _G
+		lua_newtable(L);                                          // env
+		lua_newtable(L);                                          // metatable
+		lua_rawgeti(L, LUA_REGISTRYINDEX, LUA_RIDX_GLOBALS);
+		lua_setfield(L, -2, "__index");
+		lua_setmetatable(L, -2);
+
+		// Call the wrapper with the env — this executes the script top-level,
+		// which defines Public = { ... } inside the env table
+		if (lua_pcall(L, 1, 0, 0) != LUA_OK)
+		{
+			lua_close(L); return;
+		}
+
+		// env is now on the registry — but we left it on the stack before pcall
+		// Actually re-push: the env was consumed. Rebuild by running again.
+		// Simpler: just look for Public as a global since we used _G as __index
+		// Instead, rerun with a named env:
+		lua_close(L);
+
+		// Cleaner second attempt — store the env before calling
+		L = luaL_newstate();
+		luaL_openlibs(L);
+
+		file.open(fullPath, std::ios::binary);
+		if (!file.is_open()) { lua_close(L); return; }
+		source = std::string((std::istreambuf_iterator<char>(file)),
+			std::istreambuf_iterator<char>());
+		file.close();
+
+		wrapper = "return function(_ENV)\n" + source + "\nend";
+		if (luaL_loadbufferx(L, wrapper.c_str(), wrapper.size(), "@scrape", "t") != LUA_OK)
+		{
+			lua_close(L); return;
+		}
+		if (lua_pcall(L, 0, 1, 0) != LUA_OK)
+		{
+			lua_close(L); return;
+		}
+
+		int fnRef = luaL_ref(L, LUA_REGISTRYINDEX);
+
+		lua_newtable(L);
+		lua_newtable(L);
+		lua_rawgeti(L, LUA_REGISTRYINDEX, LUA_RIDX_GLOBALS);
+		lua_setfield(L, -2, "__index");
+		lua_setmetatable(L, -2);
+		int envRef = luaL_ref(L, LUA_REGISTRYINDEX);
+
+		lua_rawgeti(L, LUA_REGISTRYINDEX, fnRef);
+		lua_rawgeti(L, LUA_REGISTRYINDEX, envRef);
+		if (lua_pcall(L, 1, 0, 0) != LUA_OK)
+		{
+			luaL_unref(L, LUA_REGISTRYINDEX, fnRef); luaL_unref(L, LUA_REGISTRYINDEX, envRef); lua_close(L); return;
+		}
+
+		// Read Public from the env table
+		lua_rawgeti(L, LUA_REGISTRYINDEX, envRef);
+		lua_getfield(L, -1, "Public");
+
+		if (lua_istable(L, -1))
+		{
+			auto& fields = sc.Fields[scriptPath];
+			lua_pushnil(L);
+			while (lua_next(L, -2))
+			{
+				if (lua_isstring(L, -2))
+				{
+					const char* name = lua_tostring(L, -2);
+
+					// Check if we already have this field
+					auto it = std::find_if(fields.begin(), fields.end(),
+						[name](const LuaField& f) { return f.Name == name; });
+
+					if (it != fields.end())
+					{
+						// Field exists — only update value if user hasn't modified it
+						if (!it->UserModified)
+						{
+							if (lua_isinteger(L, -1))
+								it->IntVal = (int)lua_tointeger(L, -1);
+							else if (lua_isnumber(L, -1))
+								it->FloatVal = (float)lua_tonumber(L, -1);
+							else if (lua_isboolean(L, -1))
+								it->BoolVal = lua_toboolean(L, -1) != 0;
+							else if (lua_isstring(L, -1))
+								it->StringVal = lua_tostring(L, -1);
+						}
+						lua_pop(L, 1);
+						continue;
+					}
+
+					// New field — read default from script
+					LuaField field;
+					field.Name = name;
+					field.UserModified = false;
+
+					if (lua_isinteger(L, -1))
+					{
+						field.Type = LuaFieldType::Int;
+						field.IntVal = (int)lua_tointeger(L, -1);
+					}
+					else if (lua_isnumber(L, -1))
+					{
+						field.Type = LuaFieldType::Float;
+						field.FloatVal = (float)lua_tonumber(L, -1);
+					}
+					else if (lua_isboolean(L, -1))
+					{
+						field.Type = LuaFieldType::Bool;
+						field.BoolVal = lua_toboolean(L, -1) != 0;
+					}
+					else if (lua_isstring(L, -1))
+					{
+						field.Type = LuaFieldType::String;
+						field.StringVal = lua_tostring(L, -1);
+					}
+					else
+					{
+						lua_pop(L, 1);
+						continue;
+					}
+
+					fields.push_back(field);
+				}
+				lua_pop(L, 1);
+			}
+		}
+
+		luaL_unref(L, LUA_REGISTRYINDEX, fnRef);
+		luaL_unref(L, LUA_REGISTRYINDEX, envRef);
+		lua_close(L);
+	}
+
 	static void RegisterGlobals(lua_State* L)
 	{
 		// ---- Key table ----
@@ -909,6 +1155,8 @@ namespace Waffle {
 				if (!LoadScriptIntoEnv(s_LuaState, fullPath, tableKey))
 					continue;
 
+				ScrapePublicFields(s_LuaState, tableKey, scriptPath, sc);
+
 				WF_CORE_INFO("LuaScriptEngine: Loaded '{0}' -> table '{1}' (entity {2})",
 					fullPath.string(), tableKey, (uint32_t)entityID);
 
@@ -986,8 +1234,48 @@ namespace Waffle {
 					lua_pushnumber(s_LuaState, id);
 					lua_pushnumber(s_LuaState, tsf);
 					});
+
+				// Sync Public table values back into sc.Fields for live inspector display
+				// Find which script path this tableKey belongs to
+				for (auto& [scriptPath, fieldList] : sc.Fields)
+				{
+					if (fieldList.empty()) continue;
+
+					lua_getglobal(s_LuaState, tableKey.c_str());
+					if (!lua_istable(s_LuaState, -1)) { lua_pop(s_LuaState, 1); continue; }
+					lua_getfield(s_LuaState, -1, "Public");
+					if (!lua_istable(s_LuaState, -1)) { lua_pop(s_LuaState, 2); continue; }
+
+					for (auto& field : fieldList)
+					{
+						lua_getfield(s_LuaState, -1, field.Name.c_str());
+
+						switch (field.Type)
+						{
+						case LuaFieldType::Float:
+							if (lua_isnumber(s_LuaState, -1))
+								field.FloatVal = (float)lua_tonumber(s_LuaState, -1);
+							break;
+						case LuaFieldType::Int:
+							if (lua_isinteger(s_LuaState, -1))
+								field.IntVal = (int)lua_tointeger(s_LuaState, -1);
+							break;
+						case LuaFieldType::Bool:
+							if (lua_isboolean(s_LuaState, -1))
+								field.BoolVal = lua_toboolean(s_LuaState, -1) != 0;
+							break;
+						case LuaFieldType::String:
+							if (lua_isstring(s_LuaState, -1))
+								field.StringVal = lua_tostring(s_LuaState, -1);
+							break;
+						}
+
+						lua_pop(s_LuaState, 1); // pop field value
+					}
+
+					lua_pop(s_LuaState, 2); // pop Public + env
+				}
 			}
 		}
 	}
-
 }

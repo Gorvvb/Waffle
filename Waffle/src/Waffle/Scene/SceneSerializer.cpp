@@ -1,5 +1,6 @@
 #include "wfpch.h"
 #include "SceneSerializer.h"
+#include "Waffle/Scripting/LuaScriptEngine.h"
 
 #include "Entity.h"
 #include "Components.h"
@@ -283,10 +284,34 @@ namespace Waffle {
 			out << YAML::Key << "ClassName" << YAML::Value << sc.ClassName;
 			out << YAML::Key << "ScriptPaths" << YAML::Value << YAML::BeginSeq;
 			for (const auto& path : sc.ScriptPaths)
-			{
 				out << path;
-			}
 			out << YAML::EndSeq;
+
+			if (!sc.Fields.empty())
+			{
+				out << YAML::Key << "PublicFields" << YAML::Value << YAML::BeginSeq;
+				for (const auto& [scriptPath, fieldList] : sc.Fields)
+				{
+					for (const auto& field : fieldList)
+					{
+						out << YAML::BeginMap;
+						out << YAML::Key << "Script" << YAML::Value << scriptPath;
+						out << YAML::Key << "Name" << YAML::Value << field.Name;
+						out << YAML::Key << "Type" << YAML::Value << (int)field.Type;
+						out << YAML::Key << "UserModified" << YAML::Value << field.UserModified;
+						switch (field.Type)
+						{
+						case LuaFieldType::Float:  out << YAML::Key << "Value" << YAML::Value << field.FloatVal;  break;
+						case LuaFieldType::Int:    out << YAML::Key << "Value" << YAML::Value << field.IntVal;    break;
+						case LuaFieldType::Bool:   out << YAML::Key << "Value" << YAML::Value << field.BoolVal;   break;
+						case LuaFieldType::String: out << YAML::Key << "Value" << YAML::Value << field.StringVal; break;
+						}
+						out << YAML::EndMap;
+					}
+				}
+				out << YAML::EndSeq;
+			}
+
 			out << YAML::EndMap;
 		}
 
@@ -446,17 +471,62 @@ namespace Waffle {
 					auto& sc = deserializedEntity.AddComponent<ScriptComponent>();
 					if (scriptComponent["ClassName"])
 						sc.ClassName = scriptComponent["ClassName"].as<std::string>();
+
 					auto scriptPaths = scriptComponent["ScriptPaths"];
 					if (scriptPaths)
 					{
 						for (auto pathNode : scriptPaths)
-						{
 							sc.ScriptPaths.push_back(pathNode.as<std::string>());
-						}
 					}
 					if (sc.ScriptPaths.empty() && !sc.ClassName.empty())
-					{
 						sc.ScriptPaths.push_back(sc.ClassName);
+
+					auto publicFields = scriptComponent["PublicFields"];
+					if (publicFields)
+					{
+						for (auto fieldNode : publicFields)
+						{
+							LuaField field;
+							std::string scriptPath = fieldNode["Script"].as<std::string>();
+							field.Name = fieldNode["Name"].as<std::string>();
+							field.Type = (LuaFieldType)fieldNode["Type"].as<int>();
+							field.UserModified = fieldNode["UserModified"] ? fieldNode["UserModified"].as<bool>() : false;
+							switch (field.Type)
+							{
+							case LuaFieldType::Float:  field.FloatVal = fieldNode["Value"].as<float>();       break;
+							case LuaFieldType::Int:    field.IntVal = fieldNode["Value"].as<int>();         break;
+							case LuaFieldType::Bool:   field.BoolVal = fieldNode["Value"].as<bool>();        break;
+							case LuaFieldType::String: field.StringVal = fieldNode["Value"].as<std::string>(); break;
+							}
+							sc.Fields[scriptPath].push_back(field);
+						}
+					}
+
+					// Scrape any scripts that had no saved fields yet, or pick up new fields added to the script
+					for (const auto& scriptPath : sc.ScriptPaths)
+					{
+						if (scriptPath.empty()) continue;
+
+						std::filesystem::path fullPath = scriptPath;
+						if (!std::filesystem::exists(fullPath))
+							fullPath = std::filesystem::path("Assets") / scriptPath;
+						if (!std::filesystem::exists(fullPath) && std::filesystem::exists("Assets"))
+						{
+							std::string searchName = std::filesystem::path(scriptPath).filename().string();
+							if (searchName.find(".lua") == std::string::npos)
+								searchName += ".lua";
+							for (auto& entry : std::filesystem::recursive_directory_iterator("Assets"))
+							{
+								if (entry.is_regular_file() && entry.path().filename().string() == searchName)
+								{
+									fullPath = entry.path();
+									break;
+								}
+							}
+						}
+
+						if (std::filesystem::exists(fullPath))
+							LuaScriptEngine::ScrapeFieldsFromScript(fullPath, scriptPath, sc);
 					}
 				}
 
