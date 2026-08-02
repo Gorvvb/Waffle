@@ -170,6 +170,7 @@ namespace Waffle {
 		enum class BodyType { Static = 0, Dynamic, Kinematic };
 		BodyType Type = BodyType::Static;
 		bool FixedRotation = false;
+		float Mass = 1.0f;
 
 		// Storage for runtime
 		void* RuntimeBody = nullptr;

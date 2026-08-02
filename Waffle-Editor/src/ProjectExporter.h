@@ -10,8 +10,10 @@ namespace Waffle {
 		std::string ProjectName;
 		std::filesystem::path ProjectPath;
 		std::string AppName;
-		std::string SelectedScenePath;
 		std::string CustomIconPath;
+		std::string SelectedScenePath;
+		std::vector<std::string> SceneList;
+		float Gravity = -9.8f;
 	};
 
 	class ProjectExporter

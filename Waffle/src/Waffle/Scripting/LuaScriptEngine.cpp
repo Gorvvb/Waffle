@@ -17,51 +17,56 @@
 #include <cctype>
 #include <unordered_map>
 
-
 namespace Waffle {
 
 	lua_State* LuaScriptEngine::s_LuaState = nullptr;
 	Scene* LuaScriptEngine::s_SceneContext = nullptr;
+	int LuaScriptEngine::s_PendingSceneChange = -1;
+	int LuaScriptEngine::s_CurrentSceneIndex = 0;
 
 	// -------------------------------------------------------------------------
 	// Path resolution
 	// -------------------------------------------------------------------------
 
+	std::filesystem::path LuaScriptEngine::s_AssetPath = "Assets";
+
 	static std::filesystem::path ResolveScriptPath(const std::string& scriptPath)
 	{
-		// 1. Try the path as-is
-		std::filesystem::path fullPath = scriptPath;
-		if (std::filesystem::exists(fullPath))
-			return fullPath;
+		std::filesystem::path normalized = std::filesystem::path(scriptPath).make_preferred();
+		std::filesystem::path assetRoot = LuaScriptEngine::GetAssetPath();
 
-		// 2. Try relative to Assets/
-		fullPath = std::filesystem::path("Assets") / scriptPath;
-		if (std::filesystem::exists(fullPath))
-			return fullPath;
+		// 1. Try as-is
+		if (std::filesystem::exists(normalized))
+			return normalized;
 
-		// 3. Append .lua extension if missing
-		if (!fullPath.has_extension())
+		// 2. Try relative to asset root
+		std::filesystem::path fromAssets = assetRoot / normalized;
+		if (std::filesystem::exists(fromAssets))
+			return fromAssets;
+
+		// 3. Append .lua if missing
+		if (!fromAssets.has_extension())
 		{
-			fullPath += ".lua";
-			if (std::filesystem::exists(fullPath))
-				return fullPath;
+			fromAssets += ".lua";
+			if (std::filesystem::exists(fromAssets))
+				return fromAssets;
 		}
 
-		// 4. Recursive search inside Assets/ for filename match
-		if (std::filesystem::exists("Assets"))
+		// 4. Recursive search inside asset root
+		if (std::filesystem::exists(assetRoot))
 		{
-			std::string searchFilename = std::filesystem::path(scriptPath).filename().string();
+			std::string searchFilename = normalized.filename().string();
 			if (searchFilename.find(".lua") == std::string::npos)
 				searchFilename += ".lua";
 
-			for (auto& entry : std::filesystem::recursive_directory_iterator("Assets"))
+			for (auto& entry : std::filesystem::recursive_directory_iterator(assetRoot))
 			{
 				if (entry.is_regular_file() && entry.path().filename().string() == searchFilename)
 					return entry.path();
 			}
 		}
 
-		return scriptPath;
+		return normalized;
 	}
 
 	// -------------------------------------------------------------------------
@@ -495,6 +500,25 @@ namespace Waffle {
 		return 1;
 	}
 
+	static int Lua_ChangeScene(lua_State* L)
+	{
+		LuaScriptEngine::SetPendingSceneChange((int)lua_tonumber(L, 1));
+		return 0;
+	}
+
+	static int Lua_GetCurrentSceneIndex(lua_State* L)
+	{
+		lua_pushinteger(L, LuaScriptEngine::GetCurrentSceneIndex());
+		return 1;
+	}
+
+	static int Lua_SetCurrentSceneIndex(lua_State* L)
+	{
+		int index = (int)lua_tointeger(L, 1);
+		LuaScriptEngine::SetCurrentSceneIndex(index);
+		return 0;
+	}
+
 	// -------------------------------------------------------------------------
 	// Lua C bindings — Raycasting
 	// -------------------------------------------------------------------------
@@ -552,7 +576,7 @@ namespace Waffle {
 		{
 			uint32_t ignoreID;
 			bool hit = false;
-			std::unordered_map<b2Body*, uint32_t>* bodyMap; // ADD
+			std::unordered_map<b2Body*, uint32_t>* bodyMap;
 
 			float ReportFixture(b2Fixture* fixture,
 				const b2Vec2& /*point*/,
@@ -571,7 +595,7 @@ namespace Waffle {
 
 		GroundCallback cb;
 		cb.ignoreID = entityID;
-		cb.bodyMap = &scene->GetBodyEntityMap(); // ADD
+		cb.bodyMap = &scene->GetBodyEntityMap();
 		scene->GetPhysicsWorld()->RayCast(&cb, origin, end);
 
 		lua_pushboolean(L, cb.hit ? 1 : 0);
@@ -917,16 +941,20 @@ namespace Waffle {
 		lua_pushcfunction(L, Lua_ApplyForce);           lua_setglobal(L, "ApplyForce");
 		lua_pushcfunction(L, Lua_Raycast);              lua_setglobal(L, "Raycast");
 
-		lua_pushcfunction(L, Lua_GetRotation); lua_setglobal(L, "GetRotation");
-		lua_pushcfunction(L, Lua_SetRotation); lua_setglobal(L, "SetRotation");
-		lua_pushcfunction(L, Lua_GetScale);    lua_setglobal(L, "GetScale");
-		lua_pushcfunction(L, Lua_SetScale);    lua_setglobal(L, "SetScale");
+		lua_pushcfunction(L, Lua_GetRotation);          lua_setglobal(L, "GetRotation");
+		lua_pushcfunction(L, Lua_SetRotation);          lua_setglobal(L, "SetRotation");
+		lua_pushcfunction(L, Lua_GetScale);             lua_setglobal(L, "GetScale");
+		lua_pushcfunction(L, Lua_SetScale);             lua_setglobal(L, "SetScale");
 
-		lua_pushcfunction(L, Lua_FindEntityByName); lua_setglobal(L, "FindEntityByName");
+		lua_pushcfunction(L, Lua_FindEntityByName);     lua_setglobal(L, "FindEntityByName");
 
 		lua_pushcfunction(L, Lua_LogInfo);              lua_setglobal(L, "LogInfo");
 		lua_pushcfunction(L, Lua_LogWarn);              lua_setglobal(L, "LogWarn");
 		lua_pushcfunction(L, Lua_LogError);             lua_setglobal(L, "LogError");
+
+		lua_pushcfunction(L, Lua_ChangeScene);          lua_setglobal(L, "ChangeScene");
+		lua_pushcfunction(L, Lua_GetCurrentSceneIndex); lua_setglobal(L, "GetCurrentSceneIndex");
+		lua_pushcfunction(L, Lua_SetCurrentSceneIndex); lua_setglobal(L, "SetCurrentSceneIndex");
 	}
 
 	static std::string MakeTableKey(uint32_t entityID, const std::filesystem::path& scriptPath)

@@ -195,7 +195,13 @@ namespace Waffle {
 						entity.AddComponent<ScriptComponent>();
 
 					auto& sc = entity.GetComponent<ScriptComponent>();
-					sc.ScriptPaths.push_back(path.string());
+					std::filesystem::path fullPath = std::filesystem::path(g_AssetPath) / path;
+					std::filesystem::path relPath = std::filesystem::relative(fullPath, g_AssetPath);
+					std::string relStr = relPath.string();
+					sc.ScriptPaths.push_back(relStr);
+
+					// Scrape fields so they appear immediately without reload
+					LuaScriptEngine::ScrapeFieldsFromScript(fullPath, relStr, sc);
 				}
 			}
 			ImGui::EndDragDropTarget();
@@ -824,6 +830,7 @@ namespace Waffle {
 			}
 
 			ImGui::Checkbox("Fixed Rotation", &component.FixedRotation);
+			ImGui::DragFloat("Mass", &component.Mass, 0.1f, 0.01f, 1000.0f);
 		});
 
 		DrawComponent<BoxCollider2DComponent>("Box Collider (2D)", entity, [](auto& component)
