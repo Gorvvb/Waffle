@@ -31,10 +31,11 @@ namespace Waffle {
 			}
 			else
 			{
-				glTexImage2D(GL_TEXTURE_2D, 0, internalFormat, width, height, 0, format, GL_UNSIGNED_BYTE, nullptr);
+				GLenum dataType = (format == GL_RED_INTEGER) ? GL_INT : GL_UNSIGNED_BYTE;
+				glTexImage2D(GL_TEXTURE_2D, 0, internalFormat, width, height, 0, format, dataType, nullptr);
 
-				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
 				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
 				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
@@ -162,12 +163,12 @@ namespace Waffle {
 		{
 			WF_CORE_ASSERT(m_ColorAttachments.size() <= 4);
 			GLenum buffers[4] = { GL_COLOR_ATTACHMENT0, GL_COLOR_ATTACHMENT1, GL_COLOR_ATTACHMENT2, GL_COLOR_ATTACHMENT3 };
-			glDrawBuffers(static_cast<GLsizei>(m_ColorAttachments.size()), buffers);
+			glNamedFramebufferDrawBuffers(m_RendererID, static_cast<GLsizei>(m_ColorAttachments.size()), buffers);
 		}
 		else if (m_ColorAttachments.empty())
 		{
 			// Only depth-pass
-			glDrawBuffer(GL_NONE);
+			glNamedFramebufferDrawBuffer(m_RendererID, GL_NONE);
 		}
 
 		WF_CORE_ASSERT(glCheckFramebufferStatus(GL_FRAMEBUFFER) == GL_FRAMEBUFFER_COMPLETE, "Framebuffer is incomplete!");
@@ -198,9 +199,15 @@ namespace Waffle {
 	{
 		WF_CORE_ASSERT(attachmentIndex < m_ColorAttachments.size());
 
+		GLint previousFBO = 0;
+		glGetIntegerv(GL_READ_FRAMEBUFFER_BINDING, &previousFBO);
+
+		glBindFramebuffer(GL_READ_FRAMEBUFFER, m_RendererID);
 		glReadBuffer(GL_COLOR_ATTACHMENT0 + attachmentIndex);
-		int pixelData;
+		int pixelData = -1;
 		glReadPixels(x, y, 1, 1, GL_RED_INTEGER, GL_INT, &pixelData);
+
+		glBindFramebuffer(GL_READ_FRAMEBUFFER, previousFBO);
 		return pixelData;
 	}
 
@@ -209,6 +216,13 @@ namespace Waffle {
 		WF_CORE_ASSERT(attachmentIndex < m_ColorAttachments.size());
 
 		auto& spec = m_ColorAttachmentSpecifications[attachmentIndex];
-		glClearTexImage(m_ColorAttachments[attachmentIndex], 0, Utils::WaffleFramebufferTextureFormatToOpenGL(spec.TextureFormat), GL_INT, &value);
+		if (spec.TextureFormat == FramebufferTextureFormat::RED_INTEGER)
+		{
+			glClearNamedFramebufferiv(m_RendererID, GL_COLOR, (GLint)attachmentIndex, &value);
+		}
+		else
+		{
+			glClearTexImage(m_ColorAttachments[attachmentIndex], 0, Utils::WaffleFramebufferTextureFormatToOpenGL(spec.TextureFormat), GL_INT, &value);
+		}
 	}
 }
