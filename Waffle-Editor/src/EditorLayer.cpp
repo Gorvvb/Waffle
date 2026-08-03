@@ -225,29 +225,6 @@ namespace Waffle {
 		}
 		}
 
-		// Entity picking via framebuffer
-		auto [mx, my] = ImGui::GetMousePos();
-		mx -= m_ViewportBounds[0].x;
-		my -= m_ViewportBounds[0].y;
-		glm::vec2 viewportSize = m_ViewportBounds[1] - m_ViewportBounds[0];
-		my = viewportSize.y - my;
-		int mouseX = (int)mx;
-		int mouseY = (int)my;
-
-		if (mouseX >= 0 && mouseY >= 0 &&
-			mouseX < (int)viewportSize.x && mouseY < (int)viewportSize.y)
-		{
-			int pixelData = m_Framebuffer->ReadPixel(1, mouseX, mouseY);
-			if (pixelData != -1 && m_ActiveScene->IsEntityValid((entt::entity)pixelData))
-				m_HoveredEntity = Entity((entt::entity)pixelData, m_ActiveScene.get());
-			else
-				m_HoveredEntity = Entity();
-		}
-		else
-		{
-			m_HoveredEntity = Entity();
-		}
-
 		OnOverlayRender();
 		m_Framebuffer->Unbind();
 	}
@@ -453,23 +430,50 @@ namespace Waffle {
 		ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2{ 0, 0 });
 		ImGui::Begin("Viewport");
 		{
-			auto viewportMinRegion = ImGui::GetWindowContentRegionMin();
-			auto viewportMaxRegion = ImGui::GetWindowContentRegionMax();
-			auto viewportOffset = ImGui::GetWindowPos();
-			m_ViewportBounds[0] = {
-				viewportMinRegion.x + viewportOffset.x,
-				viewportMinRegion.y + viewportOffset.y };
-			m_ViewportBounds[1] = {
-				viewportMaxRegion.x + viewportOffset.x,
-				viewportMaxRegion.y + viewportOffset.y };
+			ImVec2 mousePos = ImGui::GetMousePos();
+			ImVec2 cursorScreenPos = ImGui::GetCursorScreenPos();
+			ImVec2 viewportSize = ImGui::GetContentRegionAvail();
+
+			m_ViewportSize = { viewportSize.x, viewportSize.y };
+
+			m_ViewportBounds[0] = { cursorScreenPos.x, cursorScreenPos.y };
+			m_ViewportBounds[1] = { cursorScreenPos.x + m_ViewportSize.x, cursorScreenPos.y + m_ViewportSize.y };
 
 			m_ViewportFocused = ImGui::IsWindowFocused();
 			m_ViewportHovered = ImGui::IsWindowHovered();
 			Application::Get().GetImGuiLayer()->BlockEvents(
 				!m_ViewportFocused && !m_ViewportHovered);
 
-			ImVec2 viewportPanelSize = ImGui::GetContentRegionAvail();
-			m_ViewportSize = { viewportPanelSize.x, viewportPanelSize.y };
+			// Live local viewport entity picking
+			float mx = mousePos.x - cursorScreenPos.x;
+			float my = mousePos.y - cursorScreenPos.y;
+
+			if (mx >= 0.0f && mx < viewportSize.x && my >= 0.0f && my < viewportSize.y && m_ViewportHovered)
+			{
+				float normalizedX = mx / viewportSize.x;
+				float normalizedY = (viewportSize.y - my) / viewportSize.y;
+
+				const auto& spec = m_Framebuffer->GetSpecification();
+				int pixelX = (int)(normalizedX * (float)spec.Width);
+				int pixelY = (int)(normalizedY * (float)spec.Height);
+
+				if (pixelX >= 0 && pixelX < (int)spec.Width && pixelY >= 0 && pixelY < (int)spec.Height)
+				{
+					int pixelData = m_Framebuffer->ReadPixel(1, pixelX, pixelY);
+					if (pixelData != -1 && m_ActiveScene->IsEntityValid((entt::entity)pixelData))
+						m_HoveredEntity = Entity((entt::entity)pixelData, m_ActiveScene.get());
+					else
+						m_HoveredEntity = Entity();
+				}
+				else
+				{
+					m_HoveredEntity = Entity();
+				}
+			}
+			else
+			{
+				m_HoveredEntity = Entity();
+			}
 
 			uint64_t textureID = m_Framebuffer->GetColorAttachmentRendererID();
 			ImGui::Image(

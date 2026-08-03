@@ -52,7 +52,7 @@ namespace Waffle {
 		VmaAllocation m_Allocation  = VK_NULL_HANDLE;
 		VkImageView   m_ImageView   = VK_NULL_HANDLE;
 		VkSampler     m_Sampler     = VK_NULL_HANDLE;
-		VkFormat      m_Format      = VK_FORMAT_R8G8B8A8_SRGB;
+		VkFormat      m_Format      = VK_FORMAT_R8G8B8A8_UNORM;
 
 		// Pre-allocated descriptor set for use with ImGui and texture slots
 		VkDescriptorSet m_ImGuiDescriptorSet = VK_NULL_HANDLE;

@@ -68,7 +68,7 @@ namespace Waffle {
 		VmaAllocation m_DepthAllocation = VK_NULL_HANDLE;
 		VkImageView   m_DepthView       = VK_NULL_HANDLE;
 
-		VkFormat m_ColorFormat = VK_FORMAT_R8G8B8A8_SRGB;
+		VkFormat m_ColorFormat = VK_FORMAT_R8G8B8A8_UNORM;
 		std::vector<VkFormat> m_ColorFormats;
 		VkFormat m_DepthFormat = VK_FORMAT_D24_UNORM_S8_UINT;
 

@@ -345,6 +345,8 @@ namespace Waffle {
 			staging, stagingAllocation,
 			VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT);
 
+		int actualY = (int)m_Specification.Height - 1 - y;
+
 		VkBufferImageCopy region
 		{
 			.bufferOffset = 0,
@@ -357,7 +359,7 @@ namespace Waffle {
 				.baseArrayLayer = 0,
 				.layerCount = 1
 			},
-			.imageOffset{.x = x, .y = y, .z = 0},
+			.imageOffset{.x = x, .y = actualY, .z = 0},
 			.imageExtent{.width = 1, .height = 1, .depth = 1}
 		};
 
