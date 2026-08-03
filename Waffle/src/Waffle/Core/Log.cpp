@@ -11,6 +11,7 @@ namespace Waffle {
 	std::shared_ptr<spdlog::logger> Log::s_CoreLogger;
 	std::shared_ptr<spdlog::logger> Log::s_ClientLogger;
 	Log::LogCallbackFn Log::s_LogCallback = nullptr;
+	static std::mutex s_LogMutex;
 
 	class CustomLogSink : public spdlog::sinks::base_sink<std::mutex>
 	{
@@ -32,8 +33,9 @@ namespace Waffle {
 			if (!str.empty() && (str.back() == '\n' || str.back() == '\r'))
 				str.pop_back();
 
-			if (Log::GetLogCallback())
-				Log::GetLogCallback()((int)msg.level, str);
+			auto cb = Log::GetLogCallback();
+			if (cb)
+				cb((int)msg.level, str);
 		}
 
 		void flush_() override {}
@@ -41,11 +43,13 @@ namespace Waffle {
 
 	void Log::SetLogCallback(LogCallbackFn callback)
 	{
+		std::lock_guard<std::mutex> lock(s_LogMutex);
 		s_LogCallback = callback;
 	}
 
 	Log::LogCallbackFn Log::GetLogCallback()
 	{
+		std::lock_guard<std::mutex> lock(s_LogMutex);
 		return s_LogCallback;
 	}
 

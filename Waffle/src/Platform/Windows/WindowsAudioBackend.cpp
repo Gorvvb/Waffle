@@ -2,6 +2,7 @@
 #include "WindowsAudioBackend.h"
 #include "Waffle/Core/Log.h"
 
+#include <filesystem>
 #include <windows.h>
 #include <mmsystem.h>
 

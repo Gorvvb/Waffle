@@ -6,6 +6,8 @@
 #include "Waffle/Events/KeyEvent.h"
 #include "Waffle/Events/MouseEvent.h"
 
+struct ImDrawList;
+
 namespace Waffle {
 	class ImGuiLayer : public Layer
 	{
@@ -27,5 +29,8 @@ namespace Waffle {
 		void BlockEvents(bool block) { m_BlockEvents = block; }
 
 		void SetDarkThemeColors();
+
+		static void BeginTextureSamplerPassthrough(ImDrawList* drawList);
+		static void EndTextureSamplerPassthrough(ImDrawList* drawList);
 	};
 }

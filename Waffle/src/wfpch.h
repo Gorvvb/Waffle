@@ -14,6 +14,7 @@
 #include <vector>
 #include <unordered_map>
 #include <unordered_set>
+#include <filesystem>
 
 #include "Waffle/Core/Base.h"
 #include "Waffle/Core/Log.h"

@@ -241,6 +241,22 @@ namespace Waffle {
 		}
 	}
 
+	void ImGuiLayer::BeginTextureSamplerPassthrough(ImDrawList* drawList)
+	{
+		if (s_IsVulkan) return;
+
+		drawList->AddCallback([](const ImDrawList*, const ImDrawCmd*) {
+			glBindSampler(0, 0);
+		}, nullptr);
+	}
+
+	void ImGuiLayer::EndTextureSamplerPassthrough(ImDrawList* drawList)
+	{
+		if (s_IsVulkan) return;
+
+		drawList->AddCallback(ImDrawCallback_ResetRenderState, nullptr);
+	}
+
 	void ImGuiLayer::SetDarkThemeColors()
 	{
 		auto& style = ImGui::GetStyle();

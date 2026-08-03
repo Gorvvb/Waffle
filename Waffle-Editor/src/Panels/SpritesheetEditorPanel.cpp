@@ -2,8 +2,7 @@
 #include "SpritesheetEditorPanel.h"
 #include "Waffle/Utils/PlatformUtils.h"
 #include "Waffle/Core/Log.h"
-
-#include <glad/glad.h>
+#include "Waffle/ImGUI/ImGuiLayer.h"
 
 #include <imgui/imgui.h>
 #include <yaml-cpp/yaml.h>
@@ -422,23 +421,17 @@ namespace Waffle {
                 dl->PopClipRect();
             }
 
-            // Texture image (flip V for OpenGL)
-            GLuint texID = (GLuint)m_Texture->GetRendererID();
+            ImTextureID texID = (ImTextureID)m_Texture->GetRendererID();
 
-            dl->AddCallback([](const ImDrawList*, const ImDrawCmd*) {
-                // Unbind any sampler object so texture params take effect
-                glBindSampler(0, 0);
-            }, nullptr);
+            ImGuiLayer::BeginTextureSamplerPassthrough(dl);
 
             dl->AddImage(
-                (ImTextureID)(uintptr_t)texID,
+                texID,
                 canvasPos,
                 { canvasPos.x + displayW, canvasPos.y + displayH },
                 ImVec2(0, 1), ImVec2(1, 0));
 
-            // Restore after the image — reset is needed so ImGui's own
-            // sampler state (if any) resumes for subsequent draw commands
-            dl->AddCallback(ImDrawCallback_ResetRenderState, nullptr);
+            ImGuiLayer::EndTextureSamplerPassthrough(dl);
 
             // Region overlays
             for (int i = 0; i < (int)m_Regions.size(); i++)
