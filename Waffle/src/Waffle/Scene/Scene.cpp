@@ -97,6 +97,7 @@ namespace Waffle {
 		CopyComponent<BoxCollider2DComponent>(dstSceneRegistry, srcSceneRegistry, enttMap);
 		CopyComponent<CircleCollider2DComponent>(dstSceneRegistry, srcSceneRegistry, enttMap);
 		CopyComponent<PolygonCollider2DComponent>(dstSceneRegistry, srcSceneRegistry, enttMap);
+		CopyComponent<AnimatorComponent>(dstSceneRegistry, srcSceneRegistry, enttMap);
 
 		return newScene;
 	}
@@ -515,6 +516,7 @@ namespace Waffle {
 		CopyComponentIfExists<BoxCollider2DComponent>(newEntity, entity);
 		CopyComponentIfExists<CircleCollider2DComponent>(newEntity, entity);
 		CopyComponentIfExists<PolygonCollider2DComponent>(newEntity, entity);
+		CopyComponentIfExists<AnimatorComponent>(newEntity, entity);
 	}
 
 	Entity Scene::GetPrimaryCameraEntity()

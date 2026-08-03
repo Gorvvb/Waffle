@@ -205,9 +205,11 @@ namespace Waffle {
 				if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("SPRITESHEET_FRAME_ITEM"))
 				{
 					const char* dataStr = (const char*)payload->Data;
-					if (dataStr)
+					if (dataStr && payload->DataSize > 1)
 					{
-						clip.KeyframeImagePaths[i] = dataStr;
+						// Payload is "texturePath|minX,minY,maxX,maxY" — store as keyframe path.
+						// RefreshSubTextures handles the pipe format directly.
+						clip.KeyframeImagePaths[i] = std::string(dataStr);
 						clip.RefreshSubTextures();
 						WF_CORE_INFO("Assigned keyframe [{0}] spritesheet frame: '{1}'", i, dataStr);
 					}

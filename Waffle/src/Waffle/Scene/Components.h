@@ -273,8 +273,31 @@ namespace Waffle {
 					}
 
 					Ref<SubTexture2D> sub = nullptr;
-					size_t colonPos = path.find(':');
-					if (colonPos != std::string::npos)
+					size_t pipePos = path.find('|');
+					size_t colonPos = (pipePos == std::string::npos) ? path.find(':') : std::string::npos;
+					if (pipePos != std::string::npos)
+					{
+						// New pixel-rect format: "texturePath|minX,minY,maxX,maxY"
+						std::string texPath = path.substr(0, pipePos);
+						std::string rectStr = path.substr(pipePos + 1);
+						try {
+							Ref<Texture2D> tex = Texture2D::Create(texPath, TextureFilter::Nearest);
+							if (tex)
+							{
+								float w = (float)tex->GetWidth();
+								float h = (float)tex->GetHeight();
+								float minX, minY, maxX, maxY;
+								if (sscanf_s(rectStr.c_str(), "%f,%f,%f,%f", &minX, &minY, &maxX, &maxY) == 4)
+								{
+									// Convert pixel coords to UV (flip Y for OpenGL)
+									glm::vec2 uvMin = { minX / w, 1.0f - maxY / h };
+									glm::vec2 uvMax = { maxX / w, 1.0f - minY / h };
+									sub = CreateRef<SubTexture2D>(tex, uvMin, uvMax);
+								}
+							}
+						} catch (...) {}
+					}
+					else if (colonPos != std::string::npos)
 					{
 						std::string sheetPath = path.substr(0, colonPos);
 						int frameIdx = std::stoi(path.substr(colonPos + 1));
@@ -300,12 +323,20 @@ namespace Waffle {
 					}
 					else
 					{
-						Ref<Texture2D> tex = Texture2D::Create(path, TextureFilter::Nearest);
-						if (tex)
+						// Only load if the path looks like an image file — guard against
+						// stale keyframe paths that point to .spritesheet / .yaml files.
+						std::string lext = std::filesystem::path(path).extension().string();
+						for (auto& c : lext) c = (char)::tolower(c);
+						if (lext == ".png" || lext == ".jpg" || lext == ".jpeg" || lext == ".bmp" || lext == ".tga")
 						{
-							sub = CreateRef<SubTexture2D>(tex, glm::vec2(0, 0), glm::vec2(1, 1));
+							Ref<Texture2D> tex = Texture2D::Create(path, TextureFilter::Nearest);
+							if (tex)
+							{
+								sub = CreateRef<SubTexture2D>(tex, glm::vec2(0, 0), glm::vec2(1, 1));
+							}
 						}
 					}
+
 					SubTextures.push_back(sub);
 				}
 				return;
@@ -337,7 +368,7 @@ namespace Waffle {
 		std::string CurrentClip = "";
 		int CurrentFrameIndex = 0;
 		float Timer = 0.0f;
-		bool IsPlaying = true;
+		bool IsPlaying = false;
 
 		AnimatorComponent() = default;
 		AnimatorComponent(const AnimatorComponent&) = default;

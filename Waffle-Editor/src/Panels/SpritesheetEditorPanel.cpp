@@ -15,15 +15,9 @@ namespace Waffle {
 
     extern std::filesystem::path g_AssetPath;
 
-    // =========================================================================
-    //  Construction
-    // =========================================================================
-
     SpritesheetEditorPanel::SpritesheetEditorPanel() {}
 
-    // =========================================================================
     //  Private helpers
-    // =========================================================================
 
     void SpritesheetEditorPanel::LoadTexture(const std::filesystem::path& path)
     {
@@ -98,9 +92,7 @@ namespace Waffle {
         WF_CORE_INFO("Saved spritesheet asset: {0}", sheetPath.string());
     }
 
-    // =========================================================================
     //  Main render
-    // =========================================================================
 
     void SpritesheetEditorPanel::OnImGuiRender()
     {
@@ -424,7 +416,7 @@ namespace Waffle {
                         std::ceil(std::max(m_DragStartPixel.y, m_DragCurrentPixel.y))
                     };
 
-                    if ((pMax.x - pMin.x) >= 4.0f && (pMax.y - pMin.y) >= 1.0f)
+                    if ((pMax.x - pMin.x) >= 1.0f && (pMax.y - pMin.y) >= 1.0f)
                     {
                         SpriteRegion reg;
                         reg.Name = "Region_" + std::to_string(m_Regions.size());

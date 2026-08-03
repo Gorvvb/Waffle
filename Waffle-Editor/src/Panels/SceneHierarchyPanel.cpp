@@ -773,6 +773,22 @@ namespace Waffle {
 					std::filesystem::path texturePath = std::filesystem::path(g_AssetPath) / path;
 					component.Texture = Texture2D::Create(texturePath.string(), component.FilterMode);
 				}
+				if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("SPRITESHEET_FRAME_ITEM"))
+				{
+					// Payload: "absoluteTexturePath|minX,minY,maxX,maxY"
+					const char* dataStr = (const char*)payload->Data;
+					if (dataStr && payload->DataSize > 1)
+					{
+						std::string payloadStr(dataStr);
+						size_t pipePos = payloadStr.find('|');
+						if (pipePos != std::string::npos)
+						{
+							std::string texPath = payloadStr.substr(0, pipePos);
+							if (std::filesystem::exists(texPath))
+								component.Texture = Texture2D::Create(texPath, component.FilterMode);
+						}
+					}
+				}
 				ImGui::EndDragDropTarget();
 			}
 
