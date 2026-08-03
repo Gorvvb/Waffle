@@ -10,6 +10,8 @@
 
 #include "Waffle/Scene/Components.h"
 
+#include "Waffle/Renderer/Frustum2D.h"
+
 namespace Waffle {
 
 	class Renderer2D
@@ -23,6 +25,10 @@ namespace Waffle {
 		static void BeginScene(const OrthographicCamera& camera); // TODO: REMOVE
 		static void EndScene();
 		static void Flush();
+
+		static const Frustum2D& GetFrustum();
+		static bool IsVisibleInFrustum(const AABB2D& bounds);
+		static bool IsVisibleInFrustum(const glm::vec2& position, const glm::vec2& size);
 
 		static void DrawLine(const glm::vec3& p0, glm::vec3& p1, const glm::vec4& color, int entityID = -1);
 
@@ -54,6 +60,7 @@ namespace Waffle {
 		{
 			uint32_t DrawCalls = 0;
 			uint32_t QuadCount = 0;
+			uint32_t CulledQuadCount = 0;
 
 			uint32_t GetTotalVertexCount() { return QuadCount * 4; }
 			uint32_t GetTotalIndexCount() { return QuadCount * 6; }

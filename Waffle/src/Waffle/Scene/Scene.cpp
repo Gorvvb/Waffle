@@ -542,12 +542,17 @@ namespace Waffle {
 				Renderer2D::DrawQuad(bgTransform, mainCameraComp->BackgroundImage, mainCameraComp->BackgroundTilingFactor);
 			}
 
-		// Draw sprites — skip disabled entities
+		// Draw sprites — skip disabled or off-screen entities
 		auto group = m_Registry.group<TransformComponent>(entt::get<SpriteRendererComponent>, entt::exclude<DisabledComponent>);
 		for (auto entity : group)
 		{
 			auto [transform, sprite] = group.get<TransformComponent, SpriteRendererComponent>(entity);
 			glm::mat4 worldTransform = GetWorldTransform(Entity{ entity, this });
+
+			glm::vec2 pos = glm::vec2(worldTransform[3]);
+			glm::vec2 scale = glm::vec2(glm::length(worldTransform[0]), glm::length(worldTransform[1]));
+			if (!Renderer2D::IsVisibleInFrustum(pos, scale))
+				continue;
 
 			auto* animator = m_Registry.try_get<AnimatorComponent>(entity);
 			if (animator)
@@ -564,12 +569,19 @@ namespace Waffle {
 			Renderer2D::DrawSprite(worldTransform, sprite, (int)entity);
 		}
 
-		// Draw circles — skip disabled entities
+		// Draw circles — skip disabled or off-screen entities
 		auto view = m_Registry.view<TransformComponent, CircleRendererComponent>(entt::exclude<DisabledComponent>);
 		for (auto entity : view)
 		{
 			auto [transform, circle] = view.get<TransformComponent, CircleRendererComponent>(entity);
-			Renderer2D::DrawCircle(GetWorldTransform(Entity{ entity, this }), circle.Color, circle.Thickness, circle.Fade, (int)entity);
+			glm::mat4 worldTransform = GetWorldTransform(Entity{ entity, this });
+
+			glm::vec2 pos = glm::vec2(worldTransform[3]);
+			glm::vec2 scale = glm::vec2(glm::length(worldTransform[0]), glm::length(worldTransform[1]));
+			if (!Renderer2D::IsVisibleInFrustum(pos, scale))
+				continue;
+
+			Renderer2D::DrawCircle(worldTransform, circle.Color, circle.Thickness, circle.Fade, (int)entity);
 		}
 
 			Renderer2D::EndScene();
@@ -601,12 +613,17 @@ namespace Waffle {
 			}
 		}
 
-		// Draw sprites
+		// Draw sprites — skip off-screen entities
 		auto group = m_Registry.group<TransformComponent>(entt::get<SpriteRendererComponent>);
 		for (auto entity : group)
 		{
 			auto [transform, sprite] = group.get<TransformComponent, SpriteRendererComponent>(entity);
 			glm::mat4 worldTransform = GetWorldTransform(Entity{ entity, this });
+
+			glm::vec2 pos = glm::vec2(worldTransform[3]);
+			glm::vec2 scale = glm::vec2(glm::length(worldTransform[0]), glm::length(worldTransform[1]));
+			if (!Renderer2D::IsVisibleInFrustum(pos, scale))
+				continue;
 
 			auto* animator = m_Registry.try_get<AnimatorComponent>(entity);
 			if (animator)
@@ -623,13 +640,19 @@ namespace Waffle {
 			Renderer2D::DrawSprite(worldTransform, sprite, (int)entity);
 		}
 
-		// Draw circles
+		// Draw circles — skip off-screen entities
 		auto view = m_Registry.view<TransformComponent, CircleRendererComponent>();
 		for (auto entity : view)
 		{
 			auto [transform, circle] = view.get<TransformComponent, CircleRendererComponent>(entity);
+			glm::mat4 worldTransform = GetWorldTransform(Entity{ entity, this });
 
-			Renderer2D::DrawCircle(GetWorldTransform(Entity{ entity, this }), circle.Color, circle.Thickness, circle.Fade, (int)entity);
+			glm::vec2 pos = glm::vec2(worldTransform[3]);
+			glm::vec2 scale = glm::vec2(glm::length(worldTransform[0]), glm::length(worldTransform[1]));
+			if (!Renderer2D::IsVisibleInFrustum(pos, scale))
+				continue;
+
+			Renderer2D::DrawCircle(worldTransform, circle.Color, circle.Thickness, circle.Fade, (int)entity);
 		}
 
 		Renderer2D::EndScene();

@@ -84,6 +84,7 @@ namespace Waffle {
 		glm::vec4 QuadVertexPositions[4];
 
 		Renderer2D::Statistics Stats;
+		Frustum2D ActiveFrustum;
 
 		struct CameraData
 		{
@@ -199,6 +200,7 @@ namespace Waffle {
 
 		s_Data.CameraBuffer.ViewProjection = camera.GetViewProjectionMatrix();
 		s_Data.CameraUniformBuffer->SetData(&s_Data.CameraBuffer, sizeof(Renderer2DData::CameraData));
+		s_Data.ActiveFrustum = Frustum2D::FromProjectionAndView(camera.GetProjectionMatrix(), camera.GetViewMatrix());
 
 		StartBatch();
 	}
@@ -209,6 +211,7 @@ namespace Waffle {
 
 		s_Data.CameraBuffer.ViewProjection = camera.GetProjection() * glm::inverse(transform);
 		s_Data.CameraUniformBuffer->SetData(&s_Data.CameraBuffer, sizeof(Renderer2DData::CameraData));
+		s_Data.ActiveFrustum = Frustum2D::FromProjectionAndView(camera.GetProjection(), glm::inverse(transform));
 
 		StartBatch();
 	}
@@ -219,8 +222,24 @@ namespace Waffle {
 
 		s_Data.CameraBuffer.ViewProjection = camera.GetViewProjection();
 		s_Data.CameraUniformBuffer->SetData(&s_Data.CameraBuffer, sizeof(Renderer2DData::CameraData));
+		s_Data.ActiveFrustum = Frustum2D::FromProjectionAndView(camera.GetProjection(), camera.GetViewMatrix());
 
 		StartBatch();
+	}
+
+	const Frustum2D& Renderer2D::GetFrustum()
+	{
+		return s_Data.ActiveFrustum;
+	}
+
+	bool Renderer2D::IsVisibleInFrustum(const AABB2D& bounds)
+	{
+		return s_Data.ActiveFrustum.IsVisible(bounds);
+	}
+
+	bool Renderer2D::IsVisibleInFrustum(const glm::vec2& position, const glm::vec2& size)
+	{
+		return s_Data.ActiveFrustum.IsVisible(position, size);
 	}
 
 	void Renderer2D::EndScene()
