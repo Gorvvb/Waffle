@@ -65,12 +65,22 @@ namespace Waffle {
 
 		ImGuiLayer* GetImGuiLayer() { return m_ImGuiLayer; }
 
+		float GetFixedTimestep() const { return m_FixedTimestep; }
+		void SetFixedTimestep(float seconds) { m_FixedTimestep = seconds; }
+
+		float GetTimeScale() const { return m_TimeScale; }
+		void SetTimeScale(float scale) { m_TimeScale = scale; }
+
 		static Application& Get() { return *s_Instance; }
 
 		const ApplicationSpecification& GetSpecification() const { return m_Specification; }
 	private:
 		bool OnWindowClose(WindowCloseEvent& e);
 		bool OnWindowResize(WindowResizeEvent& e);
+
+		float m_FixedTimestep = 1.0f / 60.0f;
+		float m_Accumulator = 0.0f;
+		float m_TimeScale = 1.0f;
 	};
 
 	// Remember to define in client

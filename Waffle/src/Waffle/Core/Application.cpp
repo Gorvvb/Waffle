@@ -2,8 +2,10 @@
 #include "Application.h"
 
 #include "Waffle/Core/Input.h"
+#include "Waffle/Core/JobSystem.h"
+#include "Waffle/Core/Subsystem.h"
+#include "Waffle/Core/EventQueue.h"
 #include "Waffle/Renderer/Renderer.h"
-
 #include "Waffle/Core/Log.h"
 
 #include <GLFW/glfw3.h>
@@ -24,6 +26,11 @@ namespace Waffle {
 		if (!m_Specification.WorkingDirectory.empty())
 			std::filesystem::current_path(m_Specification.WorkingDirectory);
 
+		// Core engine services initialization
+		JobSystem::Init();
+		EventQueue::Init();
+		SubsystemManager::Init();
+
 		m_Window = Window::Create(WindowProps(m_Specification.Name, 1600, 900, m_Specification.IconPath));
 		m_Window->SetEventCallback(WF_BIND_EVENT_FN(Application::OnEvent));
 		m_Window->SetVSync(false);
@@ -37,6 +44,10 @@ namespace Waffle {
 	Application::~Application()
 	{
 		WF_PROFILE_FUNCTION();
+
+		SubsystemManager::Shutdown();
+		EventQueue::Shutdown();
+		JobSystem::Shutdown();
 
 		//Renderer::Shutdown();
 	}
@@ -86,10 +97,28 @@ namespace Waffle {
 			m_lastFrameTime = time;
 			Timestep timestep = std::min(rawDelta, 0.1f); // Cap timestep to 100ms to prevent dt explosion
 
+			// Dispatch queued deferred events from background threads / systems
+			EventQueue::DispatchPendingEvents(WF_BIND_EVENT_FN(Application::OnEvent));
+
 			if (!m_Minimized)
 			{
+				// 1. Fixed Timestep Accumulator Step (Physics & Fixed Logic)
+				m_Accumulator += timestep.GetSeconds() * m_TimeScale;
+				while (m_Accumulator >= m_FixedTimestep)
+				{
+					WF_PROFILE_SCOPE("LayerStack OnFixedUpdate");
+					SubsystemManager::OnFixedUpdate(m_FixedTimestep);
+
+					for (Layer* layer : m_LayerStack)
+						layer->OnFixedUpdate(m_FixedTimestep);
+
+					m_Accumulator -= m_FixedTimestep;
+				}
+
+				// 2. Variable Frame Update Step (Render & Frame Logic)
 				{
 					WF_PROFILE_SCOPE("LayerStack OnUpdate");
+					SubsystemManager::OnUpdate(timestep);
 
 					for (Layer* layer : m_LayerStack)
 						layer->OnUpdate(timestep);

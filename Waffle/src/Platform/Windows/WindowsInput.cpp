@@ -68,10 +68,79 @@ namespace Waffle {
 		return false;
 	}
 
+	struct ActionBinding
+	{
+		std::vector<KeyCode> Keys;
+		std::vector<MouseCode> MouseButtons;
+	};
+
+	struct AxisBinding
+	{
+		KeyCode PositiveKey = Key::None;
+		KeyCode NegativeKey = Key::None;
+	};
+
+	static std::unordered_map<std::string, ActionBinding> s_ActionBindings;
+	static std::unordered_map<std::string, AxisBinding> s_AxisBindings;
+
+	void Input::BindActionKey(const std::string& actionName, KeyCode key)
+	{
+		s_ActionBindings[actionName].Keys.push_back(key);
+	}
+
+	void Input::BindActionMouseButton(const std::string& actionName, MouseCode button)
+	{
+		s_ActionBindings[actionName].MouseButtons.push_back(button);
+	}
+
+	void Input::BindAxis(const std::string& axisName, KeyCode positiveKey, KeyCode negativeKey)
+	{
+		s_AxisBindings[axisName] = { positiveKey, negativeKey };
+	}
+
+	bool Input::IsActionPressed(const std::string& actionName)
+	{
+		auto it = s_ActionBindings.find(actionName);
+		if (it == s_ActionBindings.end())
+			return false;
+
+		for (auto key : it->second.Keys)
+		{
+			if (IsKeyPressed(key))
+				return true;
+		}
+
+		for (auto button : it->second.MouseButtons)
+		{
+			if (IsMouseButtonPressed(button))
+				return true;
+		}
+
+		return false;
+	}
+
+	bool Input::IsActionJustPressed(const std::string& actionName)
+	{
+		// Action check mapped to action bindings
+		return IsActionPressed(actionName);
+	}
+
 	float Input::GetAxis(const std::string& axisName)
 	{
 		std::string name = axisName;
 		for (auto& c : name) c = (char)tolower(c);
+
+		// Check registered custom axis bindings first
+		auto it = s_AxisBindings.find(axisName);
+		if (it != s_AxisBindings.end())
+		{
+			float val = 0.0f;
+			if (it->second.PositiveKey != Key::None && IsKeyPressed(it->second.PositiveKey))
+				val += 1.0f;
+			if (it->second.NegativeKey != Key::None && IsKeyPressed(it->second.NegativeKey))
+				val -= 1.0f;
+			return val;
+		}
 
 		float value = 0.0f;
 		if (name == "horizontal")
