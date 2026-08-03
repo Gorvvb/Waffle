@@ -1,6 +1,7 @@
 #include "wfpch.h"
 #include "WindowsAudioBackend.h"
 #include "Waffle/Core/Log.h"
+#include "Waffle/Scripting/LuaScriptEngine.h"
 
 #include <filesystem>
 #include <windows.h>
@@ -13,6 +14,22 @@
 #endif
 
 namespace Waffle {
+
+	static std::filesystem::path ResolveAudioPath(const std::string& filepath)
+	{
+		std::filesystem::path p(filepath);
+
+		// 1. Direct path check (as-is)
+		if (std::filesystem::exists(p))
+			return p;
+
+		// 2. Relative to active project AssetPath
+		std::filesystem::path assetPath = LuaScriptEngine::GetAssetPath() / p;
+		if (std::filesystem::exists(assetPath))
+			return assetPath;
+
+		return p;
+	}
 
 	WindowsAudioBackend::WindowsAudioBackend()
 	{
@@ -38,28 +55,31 @@ namespace Waffle {
 	{
 		std::lock_guard<std::mutex> lock(m_AudioMutex);
 
-		if (!std::filesystem::exists(filepath))
+		std::filesystem::path resolved = ResolveAudioPath(filepath);
+
+		if (!std::filesystem::exists(resolved))
 		{
-			WF_CORE_WARN("WindowsAudioBackend: Audio file not found '{0}'", filepath);
+			WF_CORE_WARN("WindowsAudioBackend: Audio file not found '{0}' (Resolved: '{1}')", filepath, resolved.string());
 			return false;
 		}
 
+		std::string resolvedStr = resolved.string();
 		std::string alias = "audio_" + std::to_string(std::hash<std::string>{}(filepath));
 
 		std::string closeCmd = "close " + alias;
 		mciSendStringA(closeCmd.c_str(), NULL, 0, NULL);
 
-		std::string openCmd = "open \"" + filepath + "\" type mpegvideo alias " + alias;
+		std::string openCmd = "open \"" + resolvedStr + "\" type mpegvideo alias " + alias;
 		MCIERROR err = mciSendStringA(openCmd.c_str(), NULL, 0, NULL);
 		if (err != 0)
 		{
-			openCmd = "open \"" + filepath + "\" alias " + alias;
+			openCmd = "open \"" + resolvedStr + "\" alias " + alias;
 			err = mciSendStringA(openCmd.c_str(), NULL, 0, NULL);
 		}
 
 		if (err != 0)
 		{
-			WF_CORE_ERROR("WindowsAudioBackend: Failed to open audio '{0}', MCI error code: {1}", filepath, err);
+			WF_CORE_ERROR("WindowsAudioBackend: Failed to open audio '{0}' (Resolved: '{1}'), MCI error code: {2}", filepath, resolvedStr, err);
 			return false;
 		}
 

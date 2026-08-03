@@ -19,6 +19,12 @@ workspace "Waffle"
 
 	multiprocessorcompile "On"
 
+	disablewarnings
+	{
+		"4996",
+		"4005"
+	}
+
 outputdir = "%{cfg.buildcfg}-%{cfg.system}-%{cfg.architecture}"
 
 group "Dependencies"

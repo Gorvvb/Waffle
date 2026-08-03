@@ -4,6 +4,7 @@
 #include "Components.h"
 #include "ScriptableEntity.h"
 #include "Waffle/Scripting/LuaScriptEngine.h"
+#include "Waffle/Audio/AudioEngine.h"
 #include "Waffle/Renderer/Renderer2D.h"
 #include "Waffle/Math/Math.h"
 
@@ -403,6 +404,7 @@ namespace Waffle {
 	{
 		m_IsRunning = false;
 		LuaScriptEngine::OnRuntimeStop(this);
+		AudioEngine::StopAllSounds();
 
 		delete m_PhysicsWorld;
 		m_PhysicsWorld = nullptr;

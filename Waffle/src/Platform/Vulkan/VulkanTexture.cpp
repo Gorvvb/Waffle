@@ -179,7 +179,7 @@ namespace Waffle {
 		VkDevice dev = ctx->GetDevice();
 		VmaAllocator allocator = ctx->GetVmaAllocator();
 
-		m_Format = (channels == 4) ? VK_FORMAT_R8G8B8A8_SRGB : VK_FORMAT_R8G8B8_SRGB;
+		m_Format = (channels == 4) ? VK_FORMAT_R8G8B8A8_UNORM : VK_FORMAT_R8G8B8_UNORM;
 		VkDeviceSize imageSize = width * height * channels;
 
 		// Upload via staging buffer using VMA
