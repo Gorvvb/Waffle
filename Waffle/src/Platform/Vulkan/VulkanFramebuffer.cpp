@@ -213,7 +213,10 @@ namespace Waffle {
 		vkCmdBeginRendering(cmd, &renderingInfo);
 		ctx->SetRenderingActive(true);
 
-		// Update viewport / scissor for this FBO's size
+		// Update viewport / scissor for this FBO's size.
+		// NOTE: Do NOT use the negative-height Y-flip here — the FBO texture is
+		// displayed by ImGui which handles UV flipping itself. The Y-flip only
+		// belongs on the swapchain path (runtime/export).
 		VkViewport vp
 		{
 			.x = 0.0f, .y = 0.0f,
@@ -259,13 +262,16 @@ namespace Waffle {
 				VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT);
 		}
 
-		// Restore swap-chain viewport
+		// Restore swap-chain viewport (negative height for Y-flip applies to
+		// the swapchain/runtime path only — ImGui sets its own viewport so this
+		// flip does not affect editor UI rendering).
 		auto swapExtent = ctx->GetSwapChainExtent();
 		VkViewport vp
 		{
-			.x = 0.0f, .y = 0.0f,
+			.x = 0.0f,
+			.y = static_cast<float>(swapExtent.height),
 			.width = static_cast<float>(swapExtent.width),
-			.height = static_cast<float>(swapExtent.height),
+			.height = -static_cast<float>(swapExtent.height),
 			.minDepth = 0.0f, .maxDepth = 1.0f
 		};
 		VkRect2D sc{ .offset{.x = 0, .y = 0}, .extent = swapExtent };

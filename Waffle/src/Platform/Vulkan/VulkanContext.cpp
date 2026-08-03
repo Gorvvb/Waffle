@@ -198,11 +198,12 @@ namespace Waffle {
 		m_ActiveColorFormats = { m_SwapChainImageFormat };
 		m_ActiveDepthFormat  = m_DepthFormat;
 
-		// Set default viewport / scissor
+		// Set default viewport / scissor.
+		// Negative height flips Vulkan's Y-down NDC to match OpenGL/GLM's Y-up.
 		m_CurrentViewport.x        = 0.0f;
-		m_CurrentViewport.y        = 0.0f;
+		m_CurrentViewport.y        = (float)m_SwapChainExtent.height;
 		m_CurrentViewport.width    = (float)m_SwapChainExtent.width;
-		m_CurrentViewport.height   = (float)m_SwapChainExtent.height;
+		m_CurrentViewport.height   = -(float)m_SwapChainExtent.height;
 		m_CurrentViewport.minDepth = 0.0f;
 		m_CurrentViewport.maxDepth = 1.0f;
 		m_CurrentScissor.offset    = { 0, 0 };
@@ -1019,9 +1020,10 @@ namespace Waffle {
 		CreateSwapChainImageViews();
 		CreateDepthResources();
 
-		// Update viewport/scissor
+		// Update viewport/scissor (negative height for Y-flip)
+		m_CurrentViewport.y      = (float)m_SwapChainExtent.height;
 		m_CurrentViewport.width  = (float)m_SwapChainExtent.width;
-		m_CurrentViewport.height = (float)m_SwapChainExtent.height;
+		m_CurrentViewport.height = -(float)m_SwapChainExtent.height;
 		m_CurrentScissor.extent  = m_SwapChainExtent;
 	}
 
@@ -1144,12 +1146,18 @@ namespace Waffle {
 	VkSurfaceFormatKHR VulkanContext::ChooseSwapSurfaceFormat(
 		const std::vector<VkSurfaceFormatKHR>& available) const
 	{
+		// Prefer RGBA so the swapchain format matches the FBO attachment format
+		// (VK_FORMAT_R8G8B8A8_UNORM), avoiding R<->B channel swapping.
 		for (auto& fmt : available)
-			if ((fmt.format == VK_FORMAT_B8G8R8A8_UNORM || fmt.format == VK_FORMAT_R8G8B8A8_UNORM)
+			if (fmt.format == VK_FORMAT_R8G8B8A8_UNORM
 				&& fmt.colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR)
 				return fmt;
 		for (auto& fmt : available)
-			if ((fmt.format == VK_FORMAT_B8G8R8A8_SRGB || fmt.format == VK_FORMAT_R8G8B8A8_SRGB)
+			if (fmt.format == VK_FORMAT_B8G8R8A8_UNORM
+				&& fmt.colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR)
+				return fmt;
+		for (auto& fmt : available)
+			if ((fmt.format == VK_FORMAT_R8G8B8A8_SRGB || fmt.format == VK_FORMAT_B8G8R8A8_SRGB)
 				&& fmt.colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR)
 				return fmt;
 		return available[0];
