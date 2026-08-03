@@ -10,7 +10,7 @@
 #include <imgui/imgui.h>
 #include <yaml-cpp/yaml.h>
 #include <fstream>
-#include <glad/glad.h>
+#include "Waffle/ImGui/ImGuiLayer.h"
 #include <glm/glm.hpp>
 
 namespace Waffle {
@@ -560,7 +560,7 @@ namespace Waffle {
 				const auto& sub = m_SpritesheetSubTextures[i];
 				const auto& region = (i < (int)m_SpritesheetRegions.size()) ? m_SpritesheetRegions[i] : SpritesheetRegionInfo{};
 
-				GLuint texID = (GLuint)m_SpritesheetTexture->GetRendererID();
+				ImTextureID texID = (ImTextureID)m_SpritesheetTexture->GetRendererID();
 				const glm::vec2* uvs = sub->GetTexCoords();
 
 				// Show actual sprite aspect inside a fixed square slot
@@ -578,17 +578,15 @@ namespace Waffle {
 
 				// Sampler reset so Nearest filter takes effect
 				ImDrawList* dl = ImGui::GetWindowDrawList();
-				dl->AddCallback([](const ImDrawList*, const ImDrawCmd*) {
-					glBindSampler(0, 0);
-				}, nullptr);
+				ImGuiLayer::BeginTextureSamplerPassthrough(dl);
 
 				ImGui::ImageButton("##SprBtn",
-					(ImTextureID)(uintptr_t)texID,
+					texID,
 					dispSize,
 					ImVec2(uvs[3].x, uvs[3].y),
 					ImVec2(uvs[1].x, uvs[1].y));
 
-				dl->AddCallback(ImDrawCallback_ResetRenderState, nullptr);
+				ImGuiLayer::EndTextureSamplerPassthrough(dl);
 
 				// Drag source: payload = "texturePath|minX,minY,maxX,maxY"
 				if (ImGui::BeginDragDropSource(ImGuiDragDropFlags_SourceAllowNullID))
@@ -601,14 +599,12 @@ namespace Waffle {
 						payloadBuf, strlen(payloadBuf) + 1);
 
 					// Drag preview thumbnail
-					dl->AddCallback([](const ImDrawList*, const ImDrawCmd*) {
-						glBindSampler(0, 0);
-					}, nullptr);
-					ImGui::Image((ImTextureID)(uintptr_t)texID,
+					ImGuiLayer::BeginTextureSamplerPassthrough(dl);
+					ImGui::Image(texID,
 						ImVec2(sprThumb, sprThumb),
 						ImVec2(uvs[3].x, uvs[3].y),
 						ImVec2(uvs[1].x, uvs[1].y));
-					dl->AddCallback(ImDrawCallback_ResetRenderState, nullptr);
+					ImGuiLayer::EndTextureSamplerPassthrough(dl);
 
 					ImGui::Text("%s", region.Name.c_str());
 					ImGui::EndDragDropSource();

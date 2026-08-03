@@ -61,9 +61,9 @@ namespace Waffle {
 	{
 		WF_PROFILE_FUNCTION();
 
-		EventDispatcher dispacher(e);
-		dispacher.Dispatch<WindowCloseEvent>(WF_BIND_EVENT_FN(Application::OnWindowClose));
-		dispacher.Dispatch<WindowResizeEvent>(WF_BIND_EVENT_FN(Application::OnWindowRisize));
+		EventDispatcher dispatcher(e);
+		dispatcher.Dispatch<WindowCloseEvent>(WF_BIND_EVENT_FN(Application::OnWindowClose));
+		dispatcher.Dispatch<WindowResizeEvent>(WF_BIND_EVENT_FN(Application::OnWindowResize));
 
 		for (auto it = m_LayerStack.end(); it != m_LayerStack.begin();)
 		{
@@ -82,8 +82,9 @@ namespace Waffle {
 			WF_PROFILE_SCOPE("RunLoop");
 
 			float time = (float)glfwGetTime(); // Platform::GetTime()
-			Timestep timestep = time - m_lastFrameTime;
+			float rawDelta = time - m_lastFrameTime;
 			m_lastFrameTime = time;
+			Timestep timestep = std::min(rawDelta, 0.1f); // Cap timestep to 100ms to prevent dt explosion
 
 			if (!m_Minimized)
 			{
@@ -117,7 +118,7 @@ namespace Waffle {
 		m_Running = false;
 		return true;
 	}
-	bool Application::OnWindowRisize(WindowResizeEvent& e)
+	bool Application::OnWindowResize(WindowResizeEvent& e)
 	{
 		WF_PROFILE_FUNCTION();
 

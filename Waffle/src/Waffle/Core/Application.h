@@ -70,7 +70,7 @@ namespace Waffle {
 		const ApplicationSpecification& GetSpecification() const { return m_Specification; }
 	private:
 		bool OnWindowClose(WindowCloseEvent& e);
-		bool OnWindowRisize(WindowResizeEvent& e);
+		bool OnWindowResize(WindowResizeEvent& e);
 	};
 
 	// Remember to define in client

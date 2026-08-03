@@ -55,9 +55,9 @@ namespace Waffle {
 	{
 		WF_PROFILE_FUNCTION();
 
-		EventDispatcher dispacher(e);
-		dispacher.Dispatch<MouseScrolledEvent>(WF_BIND_EVENT_FN(OrthographicCameraController::OnMouseScrolled));
-		dispacher.Dispatch<WindowResizeEvent>(WF_BIND_EVENT_FN(OrthographicCameraController::OnWindowResized));
+		EventDispatcher dispatcher(e);
+		dispatcher.Dispatch<MouseScrolledEvent>(WF_BIND_EVENT_FN(OrthographicCameraController::OnMouseScrolled));
+		dispatcher.Dispatch<WindowResizeEvent>(WF_BIND_EVENT_FN(OrthographicCameraController::OnWindowResized));
 	}
 
 	void OrthographicCameraController::OnResize(float width, float height)

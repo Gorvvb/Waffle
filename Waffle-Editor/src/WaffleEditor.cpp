@@ -1,8 +1,6 @@
 #include <Waffle.h>
 #include <Waffle/Core/EntryPoint.h>
 
-#include "Platform/OpenGL/OpenGLShader.h"
-
 #include "imgui/imgui.h"
 
 #include "glm/gtc/matrix_transform.hpp"
