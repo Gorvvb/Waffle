@@ -74,7 +74,7 @@ namespace Waffle {
 				std::string fn = path.filename().string();
 
 				// Hide internal engine/project files (.wfp, .wfk, .ini, .log, .yaml, dotfiles) from the user
-				if (ext == ".wfp" || ext == ".wfk" || ext == ".ini" || ext == ".log" || ext == ".yaml" || ext == ".yml" || fn[0] == '.')
+				if (ext == ".wfp" || ext == ".wfk" || ext == ".ini" || ext == ".log" || ext == ".yaml" || ext == ".yml" || (!fn.empty() && fn[0] == '.'))
 					continue;
 
 				itemCount++;
@@ -256,6 +256,7 @@ namespace Waffle {
 								m_SpritesheetTexture = Texture2D::Create(fullTexPath.string(), TextureFilter::Nearest);
 								m_SpritesheetSubTextures.clear();
 								m_SpritesheetRegions.clear();
+								m_SpritesheetTexAbsPath = std::filesystem::absolute(fullTexPath).string();
 
 								// New named-region format (from Spritesheet Editor)
 								if (data["Regions"] && data["Regions"].IsSequence())
@@ -535,6 +536,7 @@ namespace Waffle {
 				m_SpritesheetSubTextures.clear();
 				m_SpritesheetRegions.clear();
 				m_SpritesheetTexture = nullptr;
+				m_SpritesheetTexAbsPath.clear();
 			}
 
 			ImGui::PopStyleVar();
@@ -544,15 +546,9 @@ namespace Waffle {
 				ImGuiWindowFlags_HorizontalScrollbar);
 
 			const float sprThumb = 64.0f;
-			// Derive actual texture path from the spritesheet YAML
-			std::string texPathForPayload;
-			try {
-				YAML::Node shData = YAML::LoadFile(m_SelectedSpritesheetPath.string());
-				std::string tName = shData["Spritesheet"].as<std::string>("");
-				std::filesystem::path tp = m_SelectedSpritesheetPath.parent_path() / tName;
-				if (std::filesystem::exists(tp))
-					texPathForPayload = std::filesystem::absolute(tp).string();
-			} catch (...) {}
+			// Texture path for drag payloads — cached when the spritesheet was
+			// opened, so we don't re-parse the YAML from disk every frame.
+			const std::string& texPathForPayload = m_SpritesheetTexAbsPath;
 
 			for (int i = 0; i < (int)m_SpritesheetSubTextures.size(); i++)
 			{

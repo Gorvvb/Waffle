@@ -49,7 +49,8 @@ namespace Waffle {
 				}
 			}
 
-			if (m_SelectionContext && ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows) && ImGui::IsKeyPressed(ImGuiKey_Delete))
+			// Don't delete while a rename/text edit is in progress — Delete is a text-editing key there
+			if (m_SelectionContext && !m_RenamingEntity && !ImGui::IsAnyItemActive() && ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows) && ImGui::IsKeyPressed(ImGuiKey_Delete))
 			{
 				m_Context->DestroyEntity(m_SelectionContext);
 				m_SelectionContext = {};
@@ -58,7 +59,9 @@ namespace Waffle {
 			if (ImGui::IsMouseDown(0) && ImGui::IsWindowHovered())
 				m_SelectionContext = {};
 
-			// Drag and drop onto empty hierarchy space to unparent
+			// Drag and drop onto empty hierarchy space:
+			// - entities are unparented
+			// - prefabs from the Content Browser are instantiated as root entities
 			ImGui::Dummy(ImGui::GetContentRegionAvail());
 			if (ImGui::BeginDragDropTarget())
 			{
@@ -68,6 +71,23 @@ namespace Waffle {
 					Entity droppedEntity = m_Context->GetEntityByUUID(droppedEntityUUID);
 					if (droppedEntity)
 						m_Context->UnparentEntity(droppedEntity);
+				}
+				if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("CONTENT_BROWSER_ITEM"))
+				{
+					const wchar_t* pathStr = (const wchar_t*)payload->Data;
+					std::filesystem::path path = std::filesystem::path(g_AssetPath) / pathStr;
+					std::string ext = path.extension().string();
+					for (auto& c : ext) c = (char)tolower(c);
+					if (ext == ".prefab")
+					{
+						Entity instantiated = SceneSerializer::DeserializePrefabToEntity(
+							m_Context.get(), path.string());
+						if (instantiated)
+						{
+							m_Context->CreateRuntimePhysicsBody(instantiated); // no-op in edit mode
+							m_SelectionContext = instantiated;
+						}
+					}
 				}
 				ImGui::EndDragDropTarget();
 			}
@@ -204,35 +224,20 @@ namespace Waffle {
 					// Scrape fields so they appear immediately without reload
 					LuaScriptEngine::ScrapeFieldsFromScript(fullPath, relStr, sc);
 				}
-			}
-			ImGui::EndDragDropTarget();
-
-			if (ImGui::BeginDragDropTarget())
-			{
-				if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("SCENE_HIERARCHY_ENTITY"))
+				else if (ext == ".prefab")
 				{
-					UUID droppedEntityUUID = *(const UUID*)payload->Data;
-					Entity droppedEntity = m_Context->GetEntityByUUID(droppedEntityUUID);
-					if (droppedEntity)
-						m_Context->UnparentEntity(droppedEntity);
-				}
-				// ADD THIS:
-				if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("CONTENT_BROWSER_ITEM"))
-				{
-					const wchar_t* pathStr = (const wchar_t*)payload->Data;
-					std::filesystem::path path = std::filesystem::path(g_AssetPath) / pathStr;
-					std::string ext = path.extension().string();
-					for (auto& c : ext) c = (char)tolower(c);
-					if (ext == ".prefab")
+					// Instantiate the prefab as a child of the drop-target entity
+					Entity instantiated = SceneSerializer::DeserializePrefabToEntity(
+						m_Context.get(), path.string());
+					if (instantiated)
 					{
-						Entity instantiated = SceneSerializer::DeserializePrefabToEntity(
-							m_Context.get(), path.string());
-						if (instantiated)
-							m_SelectionContext = instantiated;
+						m_Context->CreateRuntimePhysicsBody(instantiated); // no-op in edit mode
+						m_Context->ParentEntity(instantiated, entity);
+						m_SelectionContext = instantiated;
 					}
 				}
-				ImGui::EndDragDropTarget();
 			}
+			ImGui::EndDragDropTarget();
 		}
 
 		bool entityDeleted = false;
@@ -663,16 +668,18 @@ namespace Waffle {
 						if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("CONTENT_BROWSER_ITEM"))
 						{
 							const wchar_t* pathStr = (const wchar_t*)payload->Data;
-							std::filesystem::path path(pathStr);
+							std::filesystem::path path(pathStr); // relative to the asset root
 							if (path.extension() == ".lua")
 							{
-								if (path.filename().string() != std::filesystem::path(currentScript).filename().string())
+								// Keep the full asset-relative path — filename alone breaks scripts in subfolders
+								std::string relStr = path.string();
+								if (relStr != currentScript)
 									component.Fields.erase(currentScript);
-								component.ScriptPaths[i] = path.filename().string();
+								component.ScriptPaths[i] = relStr;
 
 								// Scrape fields immediately so they show in the inspector before Play
-								std::filesystem::path fullPath = std::filesystem::path(g_AssetPath) / path.filename();
-								LuaScriptEngine::ScrapeFieldsFromScript(fullPath, path.filename().string(), component);
+								std::filesystem::path fullPath = std::filesystem::path(g_AssetPath) / path;
+								LuaScriptEngine::ScrapeFieldsFromScript(fullPath, relStr, component);
 							}
 						}
 

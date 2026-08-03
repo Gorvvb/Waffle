@@ -55,6 +55,7 @@ namespace Waffle {
 			glm::vec2   Max = { 0.0f, 0.0f };
 		};
 		std::vector<SpritesheetRegionInfo> m_SpritesheetRegions; // filled when Regions key present
+		std::string m_SpritesheetTexAbsPath; // cached absolute texture path for drag payloads
 		bool m_ShowSpritesheetViewer = false;
 
 

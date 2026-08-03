@@ -497,7 +497,10 @@ namespace Waffle {
 					{
 						Entity instantiated = SceneSerializer::DeserializePrefabToEntity(m_ActiveScene.get(), path.string());
 						if (instantiated)
+						{
+							m_ActiveScene->CreateRuntimePhysicsBody(instantiated); // no-op in edit mode
 							m_SceneHierarchyPanel.SetSelectedEntity(instantiated);
+						}
 					}
 					else if (ext == ".png" || ext == ".jpg" || ext == ".jpeg")
 					{
@@ -550,7 +553,8 @@ namespace Waffle {
 					m_ViewportBounds[1].y - m_ViewportBounds[0].y);
 
 				auto& tc = selectedEntity.GetComponent<TransformComponent>();
-				glm::mat4 transform = tc.GetTransform();
+				// Manipulate in world space so parented entities show the gizmo where they render
+				glm::mat4 transform = m_ActiveScene->GetWorldTransform(selectedEntity);
 
 				bool  snap = Input::IsKeyPressed(Key::LeftControl);
 				float snapValue = (m_GizmoType == ImGuizmo::OPERATION::ROTATE)
@@ -570,9 +574,15 @@ namespace Waffle {
 
 					if (ImGuizmo::IsUsing())
 					{
+						// Convert the manipulated world matrix back into parent-local space
+						glm::mat4 localTransform = transform;
+						Entity parentEntity = m_ActiveScene->GetParent(selectedEntity);
+						if (parentEntity && parentEntity.HasComponent<TransformComponent>())
+							localTransform = glm::inverse(m_ActiveScene->GetWorldTransform(parentEntity)) * transform;
+
 						glm::vec3 translation, rotationDeg, scale;
 						ImGuizmo::DecomposeMatrixToComponents(
-							glm::value_ptr(transform),
+							glm::value_ptr(localTransform),
 							glm::value_ptr(translation),
 							glm::value_ptr(rotationDeg),
 							glm::value_ptr(scale));
@@ -1167,7 +1177,7 @@ namespace Waffle {
 			Entity sel = m_SceneHierarchyPanel.GetSelectedEntity();
 			if (sel && sel.HasComponent<TransformComponent>())
 				m_EditorCamera.SetFocalPoint(
-					sel.GetComponent<TransformComponent>().Translation);
+					glm::vec3(m_ActiveScene->GetWorldTransform(sel)[3]));
 			break;
 		}
 		}
@@ -1199,7 +1209,7 @@ namespace Waffle {
 			if (!camera) return;
 			Renderer2D::BeginScene(
 				camera.GetComponent<CameraComponent>().Camera,
-				camera.GetComponent<TransformComponent>().GetTransform());
+				m_ActiveScene->GetWorldTransform(camera));
 		}
 		else
 		{
@@ -1216,13 +1226,18 @@ namespace Waffle {
 				auto [tc, bc2d] = boxView.get<
 					TransformComponent, BoxCollider2DComponent>(entity);
 
+				glm::vec3 wTrans = tc.Translation, wRot = tc.Rotation, wScale = tc.Scale;
+				Math::DecomposeTransform(
+					m_ActiveScene->GetWorldTransform(Entity{ entity, m_ActiveScene.get() }),
+					wTrans, wRot, wScale);
+
 				glm::mat4 transform =
 					glm::translate(glm::mat4(1.0f),
-						tc.Translation + glm::vec3(bc2d.Offset, 0.001f))
-					* glm::rotate(glm::mat4(1.0f), tc.Rotation.z,
+						wTrans + glm::vec3(bc2d.Offset, 0.001f))
+					* glm::rotate(glm::mat4(1.0f), wRot.z,
 						glm::vec3(0.0f, 0.0f, 1.0f))
 					* glm::scale(glm::mat4(1.0f),
-						tc.Scale * glm::vec3(bc2d.Size * 2.0f, 1.0f));
+						wScale * glm::vec3(bc2d.Size * 2.0f, 1.0f));
 
 				Renderer2D::DrawRect(transform, glm::vec4(0, 1, 0, 1));
 			}
@@ -1235,11 +1250,16 @@ namespace Waffle {
 				auto [tc, cc2d] = circleView.get<
 					TransformComponent, CircleCollider2DComponent>(entity);
 
+				glm::vec3 wTrans = tc.Translation, wRot = tc.Rotation, wScale = tc.Scale;
+				Math::DecomposeTransform(
+					m_ActiveScene->GetWorldTransform(Entity{ entity, m_ActiveScene.get() }),
+					wTrans, wRot, wScale);
+
 				glm::mat4 transform =
 					glm::translate(glm::mat4(1.0f),
-						tc.Translation + glm::vec3(cc2d.Offset, 0.001f))
+						wTrans + glm::vec3(cc2d.Offset, 0.001f))
 					* glm::scale(glm::mat4(1.0f),
-						tc.Scale * glm::vec3(cc2d.Radius * 2.0f));
+						wScale * glm::vec3(cc2d.Radius * 2.0f));
 
 				Renderer2D::DrawCircle(transform, glm::vec4(0, 1, 0, 1), 0.01f);
 			}
@@ -1249,7 +1269,7 @@ namespace Waffle {
 		if (Entity sel = m_SceneHierarchyPanel.GetSelectedEntity())
 		{
 			Renderer2D::DrawRect(
-				sel.GetComponent<TransformComponent>().GetTransform(),
+				m_ActiveScene->GetWorldTransform(sel),
 				glm::vec4(1.0f, 1.0f, 0.0f, 1.0f));
 		}
 

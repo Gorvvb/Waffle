@@ -1222,18 +1222,9 @@ namespace Waffle {
 		Entity source{ (entt::entity)sourceID, scene };
 		if (!source) { lua_pushnumber(L, -1); return 1; }
 
-		// DuplicateEntity copies all components
-		scene->DuplicateEntity(source);
-
-		// DuplicateEntity doesn't return the new entity — find the newest entity
-		// by scanning for one with no match to existing UUIDs (brittle but workable).
-		// Better: search by iterating and finding the most recently added IDComponent.
-		// We use the fact that entt creates entities with incrementing IDs.
-		uint32_t newID = (uint32_t)entt::null;
-		auto view = scene->GetRegistry().view<IDComponent>();
-		for (auto e : view) { newID = (uint32_t)e; } // last iterated is newest
-
-		lua_pushnumber(L, newID);
+		// DuplicateEntity copies all components and returns the new entity
+		Entity newEntity = scene->DuplicateEntity(source);
+		lua_pushnumber(L, newEntity ? (uint32_t)(entt::entity)newEntity : (uint32_t)entt::null);
 		return 1;
 	}
 
@@ -1265,6 +1256,10 @@ namespace Waffle {
 			lua_pushnumber(L, -1);
 			return 1;
 		}
+
+		// Create the Box2D body right away so physics works (and the physics
+		// write-back loop doesn't hit a null RuntimeBody) on this same frame.
+		scene->CreateRuntimePhysicsBody(entity);
 
 		lua_pushnumber(L, (uint32_t)(entt::entity)entity);
 		return 1;

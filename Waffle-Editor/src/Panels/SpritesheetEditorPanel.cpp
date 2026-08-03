@@ -25,7 +25,137 @@ namespace Waffle {
         m_Texture = Texture2D::Create(path.string(), TextureFilter::Nearest);
         m_CanvasZoom = 1.0f;
         m_CanvasOffset = { 0.0f, 0.0f };
+        m_SelectedRegionIndex = -1;
+        m_SelectedGroupIndex = -1;
+        m_Groups.clear();
         AutoSliceGrid();
+    }
+
+    void SpritesheetEditorPanel::LoadSpritesheetAsset(const std::filesystem::path& path)
+    {
+        try
+        {
+            YAML::Node data = YAML::LoadFile(path.string());
+            std::string texName = data["Spritesheet"].as<std::string>("");
+
+            std::filesystem::path texPath = path.parent_path() / texName;
+            if (!std::filesystem::exists(texPath))
+                texPath = g_AssetPath / texName;
+            if (!std::filesystem::exists(texPath))
+            {
+                WF_CORE_WARN("Spritesheet '{0}' references missing texture '{1}'",
+                    path.string(), texName);
+                return;
+            }
+
+            m_TexturePath = texPath;
+            m_Texture = Texture2D::Create(texPath.string(), TextureFilter::Nearest);
+            m_CanvasZoom = 1.0f;
+            m_CanvasOffset = { 0.0f, 0.0f };
+            m_SelectedRegionIndex = -1;
+            m_SelectedGroupIndex = -1;
+
+            m_GridCols = data["Columns"].as<int>(1);
+            m_GridRows = data["Rows"].as<int>(1);
+            m_PaddingX = data["PaddingX"].as<int>(0);
+            m_PaddingY = data["PaddingY"].as<int>(0);
+
+            m_Regions.clear();
+            m_Groups.clear();
+
+            if (data["Regions"] && data["Regions"].IsSequence())
+            {
+                for (auto regNode : data["Regions"])
+                {
+                    SpriteRegion region;
+                    region.Name = regNode["Name"].as<std::string>("Sprite");
+                    if (regNode["Min"] && regNode["Min"].IsSequence() &&
+                        regNode["Max"] && regNode["Max"].IsSequence())
+                    {
+                        region.Min = { regNode["Min"][0].as<float>(0.0f), regNode["Min"][1].as<float>(0.0f) };
+                        region.Max = { regNode["Max"][0].as<float>(0.0f), regNode["Max"][1].as<float>(0.0f) };
+                    }
+                    m_Regions.push_back(region);
+                }
+            }
+            else
+            {
+                // Legacy grid-only asset
+                AutoSliceGrid();
+            }
+
+            if (data["Groups"] && data["Groups"].IsSequence())
+            {
+                for (auto groupNode : data["Groups"])
+                {
+                    SpriteGroup group;
+                    group.Name = groupNode["Name"].as<std::string>("Group");
+                    if (groupNode["Regions"] && groupNode["Regions"].IsSequence())
+                    {
+                        for (auto idxNode : groupNode["Regions"])
+                        {
+                            int idx = idxNode.as<int>(-1);
+                            if (idx >= 0 && idx < (int)m_Regions.size())
+                                group.RegionIndices.push_back(idx);
+                        }
+                    }
+                    m_Groups.push_back(group);
+                }
+            }
+
+            WF_CORE_INFO("Loaded spritesheet asset: {0}", path.string());
+        }
+        catch (const std::exception& e)
+        {
+            WF_CORE_ERROR("Failed to load spritesheet '{0}': {1}", path.string(), e.what());
+        }
+    }
+
+    // Shared drag-and-drop handler for the canvas / drop-zone.
+    // Accepts image files and .spritesheet assets from the Content Browser.
+    void SpritesheetEditorPanel::HandleContentBrowserDrop()
+    {
+        if (!ImGui::BeginDragDropTarget())
+            return;
+
+        if (const ImGuiPayload* payload =
+            ImGui::AcceptDragDropPayload("CONTENT_BROWSER_ITEM"))
+        {
+            const wchar_t* pathStr = (const wchar_t*)payload->Data;
+            std::filesystem::path path =
+                std::filesystem::path(g_AssetPath) / pathStr;
+            std::string ext = path.extension().string();
+            for (auto& c : ext) c = (char)tolower(c);
+
+            if (ext == ".png" || ext == ".jpg" || ext == ".jpeg")
+                LoadTexture(path);
+            else if (ext == ".spritesheet")
+                LoadSpritesheetAsset(path);
+        }
+        ImGui::EndDragDropTarget();
+    }
+
+    void SpritesheetEditorPanel::RemoveRegion(int index)
+    {
+        if (index < 0 || index >= (int)m_Regions.size())
+            return;
+
+        m_Regions.erase(m_Regions.begin() + index);
+
+        // Fix up group membership: drop the removed index, shift the rest
+        for (auto& group : m_Groups)
+        {
+            auto& indices = group.RegionIndices;
+            indices.erase(std::remove(indices.begin(), indices.end(), index), indices.end());
+            for (auto& idx : indices)
+                if (idx > index)
+                    idx--;
+        }
+
+        if (m_SelectedRegionIndex == index)
+            m_SelectedRegionIndex = -1;
+        else if (m_SelectedRegionIndex > index)
+            m_SelectedRegionIndex--;
     }
 
     void SpritesheetEditorPanel::AutoSliceGrid()
@@ -33,6 +163,9 @@ namespace Waffle {
         if (!m_Texture || m_GridCols <= 0 || m_GridRows <= 0) return;
 
         m_Regions.clear();
+        m_Groups.clear(); // region indices are invalidated by re-slicing
+        m_SelectedRegionIndex = -1;
+        m_SelectedGroupIndex = -1;
         const float totalW = (float)m_Texture->GetWidth();
         const float totalH = (float)m_Texture->GetHeight();
 
@@ -85,6 +218,24 @@ namespace Waffle {
             out << YAML::EndMap;
         }
         out << YAML::EndSeq;
+
+        if (!m_Groups.empty())
+        {
+            out << YAML::Key << "Groups" << YAML::Value << YAML::BeginSeq;
+            for (const auto& group : m_Groups)
+            {
+                out << YAML::BeginMap;
+                out << YAML::Key << "Name" << YAML::Value << group.Name;
+                out << YAML::Key << "Regions" << YAML::Value << YAML::Flow
+                    << YAML::BeginSeq;
+                for (int idx : group.RegionIndices)
+                    out << idx;
+                out << YAML::EndSeq;
+                out << YAML::EndMap;
+            }
+            out << YAML::EndSeq;
+        }
+
         out << YAML::EndMap;
 
         std::ofstream fout(sheetPath);
@@ -102,9 +253,16 @@ namespace Waffle {
         if (ImGui::Button("Browse..."))
         {
             const std::string file = FileDialogs::OpenFile(
-                "Image Files (*.png *.jpg *.jpeg)\0*.png;*.jpg;*.jpeg\0All Files (*.*)\0*.*\0");
+                "Spritesheet Files (*.png *.jpg *.jpeg *.spritesheet)\0*.png;*.jpg;*.jpeg;*.spritesheet\0All Files (*.*)\0*.*\0");
             if (!file.empty())
-                LoadTexture(file);
+            {
+                std::string ext = std::filesystem::path(file).extension().string();
+                for (auto& c : ext) c = (char)tolower(c);
+                if (ext == ".spritesheet")
+                    LoadSpritesheetAsset(file);
+                else
+                    LoadTexture(file);
+            }
         }
 
         ImGui::SameLine();
@@ -136,7 +294,13 @@ namespace Waffle {
         ImGui::SameLine();
         if (ImGui::Button("Auto Slice")) AutoSliceGrid();
         ImGui::SameLine();
-        if (ImGui::Button("Clear All")) { m_Regions.clear(); m_SelectedRegionIndex = -1; }
+        if (ImGui::Button("Clear All"))
+        {
+            m_Regions.clear();
+            m_Groups.clear();
+            m_SelectedRegionIndex = -1;
+            m_SelectedGroupIndex = -1;
+        }
         ImGui::SameLine();
         ImGui::SetNextItemWidth(90);
         if (ImGui::DragFloat("Zoom", &m_CanvasZoom, 0.05f, 0.1f, 8.0f, "%.2fx"))
@@ -194,21 +358,7 @@ namespace Waffle {
             ImGui::InvisibleButton("##DropZone",
                 ImVec2(canvasW - 2.0f, availH - 2.0f));
 
-            if (ImGui::BeginDragDropTarget())
-            {
-                if (const ImGuiPayload* payload =
-                    ImGui::AcceptDragDropPayload("CONTENT_BROWSER_ITEM"))
-                {
-                    const wchar_t* pathStr = (const wchar_t*)payload->Data;
-                    std::filesystem::path path =
-                        std::filesystem::path(g_AssetPath) / pathStr;
-                    std::string ext = path.extension().string();
-                    for (auto& c : ext) c = (char)tolower(c);
-                    if (ext == ".png" || ext == ".jpg" || ext == ".jpeg")
-                        LoadTexture(path);
-                }
-                ImGui::EndDragDropTarget();
-            }
+            HandleContentBrowserDrop();
         }
         else
         {
@@ -297,9 +447,22 @@ namespace Waffle {
                 const ImVec2 pMin = PixelToScreen(reg.Min);
                 const ImVec2 pMax = PixelToScreen(reg.Max);
                 const bool   sel = (m_SelectedRegionIndex == i);
+
+                // Highlight members of the selected group
+                bool inSelectedGroup = false;
+                if (m_SelectedGroupIndex >= 0 &&
+                    m_SelectedGroupIndex < (int)m_Groups.size())
+                {
+                    const auto& gi = m_Groups[m_SelectedGroupIndex].RegionIndices;
+                    inSelectedGroup =
+                        std::find(gi.begin(), gi.end(), i) != gi.end();
+                }
+
                 const ImU32  col = sel ? IM_COL32(0, 230, 120, 255)
+                    : inSelectedGroup ? IM_COL32(80, 160, 255, 255)
                     : IM_COL32(255, 60, 60, 200);
                 const ImU32  fillCol = sel ? IM_COL32(0, 230, 120, 28)
+                    : inSelectedGroup ? IM_COL32(80, 160, 255, 30)
                     : IM_COL32(255, 60, 60, 14);
                 dl->AddRectFilled(pMin, pMax, fillCol);
                 dl->AddRect(pMin, pMax, col, 0.0f, 0,
@@ -428,25 +591,10 @@ namespace Waffle {
                 }
             }
 
-            // Allow dropping a replacement texture onto the canvas
-            ImGui::SetCursorScreenPos(childTL);
-            ImGui::InvisibleButton("##CanvasDrop",
-                ImVec2(canvasW - 2.0f, availH - 2.0f));
-            if (ImGui::BeginDragDropTarget())
-            {
-                if (const ImGuiPayload* payload =
-                    ImGui::AcceptDragDropPayload("CONTENT_BROWSER_ITEM"))
-                {
-                    const wchar_t* pathStr = (const wchar_t*)payload->Data;
-                    std::filesystem::path path =
-                        std::filesystem::path(g_AssetPath) / pathStr;
-                    std::string ext = path.extension().string();
-                    for (auto& c : ext) c = (char)tolower(c);
-                    if (ext == ".png" || ext == ".jpg" || ext == ".jpeg")
-                        LoadTexture(path);
-                }
-                ImGui::EndDragDropTarget();
-            }
+            // Allow dropping a replacement texture / spritesheet onto the canvas.
+            // The interaction InvisibleButton above is also the drop target — a second
+            // overlapping button would steal hover and break canvas interaction.
+            HandleContentBrowserDrop();
         }
 
         ImGui::EndChild(); // CanvasChild
@@ -518,10 +666,106 @@ namespace Waffle {
             ImGui::TextDisabled("Size: %d x %d px", (int)sz.x, (int)sz.y);
 
             ImGui::Spacing();
+
+            // Quick add to an existing group
+            if (!m_Groups.empty())
+            {
+                if (ImGui::BeginCombo("##AddToGroup", "Add to group..."))
+                {
+                    for (int g = 0; g < (int)m_Groups.size(); g++)
+                    {
+                        auto& indices = m_Groups[g].RegionIndices;
+                        const bool alreadyIn =
+                            std::find(indices.begin(), indices.end(),
+                                m_SelectedRegionIndex) != indices.end();
+                        if (ImGui::Selectable(m_Groups[g].Name.c_str(), alreadyIn,
+                            alreadyIn ? ImGuiSelectableFlags_Disabled : 0))
+                        {
+                            indices.push_back(m_SelectedRegionIndex);
+                        }
+                    }
+                    ImGui::EndCombo();
+                }
+            }
+
             if (ImGui::Button("Delete##reg", ImVec2(-1, 0)))
             {
-                m_Regions.erase(m_Regions.begin() + m_SelectedRegionIndex);
-                m_SelectedRegionIndex = -1;
+                RemoveRegion(m_SelectedRegionIndex);
+            }
+        }
+
+        // ── Groups ────────────────────────────────────────────────────────────
+        ImGui::Separator();
+        ImGui::TextDisabled("Groups  (%zu)", m_Groups.size());
+        ImGui::SameLine();
+        if (ImGui::SmallButton("+ Group"))
+        {
+            SpriteGroup group;
+            group.Name = "Group_" + std::to_string(m_Groups.size());
+            m_Groups.push_back(group);
+            m_SelectedGroupIndex = (int)m_Groups.size() - 1;
+        }
+
+        ImGui::BeginChild("##GroupList", ImVec2(0, 120.0f), true);
+        for (int g = 0; g < (int)m_Groups.size(); g++)
+        {
+            ImGui::PushID(1000 + g);
+            const bool sel = (m_SelectedGroupIndex == g);
+            const std::string lbl = m_Groups[g].Name
+                + "  (" + std::to_string(m_Groups[g].RegionIndices.size()) + ")";
+            if (ImGui::Selectable(lbl.c_str(), sel))
+                m_SelectedGroupIndex = sel ? -1 : g; // click again to deselect
+            ImGui::PopID();
+        }
+        ImGui::EndChild();
+
+        // Selected group details
+        if (m_SelectedGroupIndex >= 0 &&
+            m_SelectedGroupIndex < (int)m_Groups.size())
+        {
+            auto& group = m_Groups[m_SelectedGroupIndex];
+
+            ImGui::Text("Group Properties");
+
+            char groupNameBuf[64];
+            strcpy_s(groupNameBuf, sizeof(groupNameBuf), group.Name.c_str());
+            if (ImGui::InputText("Name##group", groupNameBuf, sizeof(groupNameBuf)))
+                group.Name = groupNameBuf;
+
+            const bool canAdd = m_SelectedRegionIndex >= 0 &&
+                m_SelectedRegionIndex < (int)m_Regions.size() &&
+                std::find(group.RegionIndices.begin(), group.RegionIndices.end(),
+                    m_SelectedRegionIndex) == group.RegionIndices.end();
+            ImGui::BeginDisabled(!canAdd);
+            if (ImGui::Button("Add Selected Region", ImVec2(-1, 0)))
+                group.RegionIndices.push_back(m_SelectedRegionIndex);
+            ImGui::EndDisabled();
+
+            // Member list
+            int removeAt = -1;
+            for (int m = 0; m < (int)group.RegionIndices.size(); m++)
+            {
+                const int regIdx = group.RegionIndices[m];
+                if (regIdx < 0 || regIdx >= (int)m_Regions.size())
+                    continue;
+
+                ImGui::PushID(2000 + m);
+                if (ImGui::SmallButton("x"))
+                    removeAt = m;
+                ImGui::SameLine();
+                if (ImGui::Selectable(m_Regions[regIdx].Name.c_str(),
+                    m_SelectedRegionIndex == regIdx))
+                    m_SelectedRegionIndex = regIdx;
+                ImGui::PopID();
+            }
+            if (removeAt >= 0)
+                group.RegionIndices.erase(group.RegionIndices.begin() + removeAt);
+
+            ImGui::Spacing();
+            if (ImGui::Button("Delete Group", ImVec2(-1, 0)))
+            {
+                m_Groups.erase(m_Groups.begin() + m_SelectedGroupIndex);
+                m_SelectedGroupIndex = -1;
             }
         }
 
