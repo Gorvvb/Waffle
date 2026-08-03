@@ -524,13 +524,20 @@ namespace Waffle {
 			if (component.BackgroundImage)
 			{
 				if (component.BackgroundFilterMode == TextureFilter::Nearest)
-					ImGui::GetWindowDrawList()->AddCallback(ImGui::GetPlatformIO().DrawCallback_SetSamplerNearest, nullptr);
+				{
+					if (ImGui::GetPlatformIO().DrawCallback_SetSamplerNearest)
+						ImGui::GetWindowDrawList()->AddCallback(ImGui::GetPlatformIO().DrawCallback_SetSamplerNearest, nullptr);
+				}
 				else
-					ImGui::GetWindowDrawList()->AddCallback(ImGui::GetPlatformIO().DrawCallback_SetSamplerLinear, nullptr);
+				{
+					if (ImGui::GetPlatformIO().DrawCallback_SetSamplerLinear)
+						ImGui::GetWindowDrawList()->AddCallback(ImGui::GetPlatformIO().DrawCallback_SetSamplerLinear, nullptr);
+				}
 
 				ImGui::ImageButton("##BgTexture", (void*)(intptr_t)component.BackgroundImage->GetRendererID(), ImVec2(100.0f, 100.0f), ImVec2(0, 1), ImVec2(1, 0));
 
-				ImGui::GetWindowDrawList()->AddCallback(ImGui::GetPlatformIO().DrawCallback_SetSamplerLinear, nullptr);
+				if (ImGui::GetPlatformIO().DrawCallback_SetSamplerLinear)
+					ImGui::GetWindowDrawList()->AddCallback(ImGui::GetPlatformIO().DrawCallback_SetSamplerLinear, nullptr);
 			}
 			else
 			{

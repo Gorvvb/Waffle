@@ -1261,6 +1261,11 @@ namespace Waffle {
 		// write-back loop doesn't hit a null RuntimeBody) on this same frame.
 		scene->CreateRuntimePhysicsBody(entity);
 
+		// Initialize and call OnCreate for any scripts on the prefab entity so
+		// they start running immediately (ScriptTableKeys would otherwise be
+		// empty and OnRuntimeUpdate would silently skip this entity).
+		LuaScriptEngine::InitScriptsForEntity(scene, entity);
+
 		lua_pushnumber(L, (uint32_t)(entt::entity)entity);
 		return 1;
 	}
@@ -2259,6 +2264,56 @@ if Global == nil then Global = {} end
 		// It is meant to persist across ChangeScene calls.
 
 		s_SceneContext = nullptr;
+	}
+
+	// -------------------------------------------------------------------------
+	// InitScriptsForEntity — load + OnCreate for a single entity.
+	// Called for prefabs that are instantiated at runtime via Lua so their
+	// ScriptTableKeys are populated and OnUpdate/OnCreate actually fire.
+	// -------------------------------------------------------------------------
+	void LuaScriptEngine::InitScriptsForEntity(Scene* scene, Entity entity)
+	{
+		if (!scene || !s_LuaState || !entity) return;
+
+		auto entityID = (entt::entity)(uint32_t)entity;
+		if (!scene->m_Registry.all_of<ScriptComponent>(entityID)) return;
+
+		auto& sc = scene->m_Registry.get<ScriptComponent>(entityID);
+
+		std::vector<std::string> scriptsToLoad = sc.ScriptPaths;
+		if (scriptsToLoad.empty() && !sc.ClassName.empty())
+			scriptsToLoad.push_back(sc.ClassName);
+
+		sc.ScriptTableKeys.clear();
+
+		for (const auto& scriptPath : scriptsToLoad)
+		{
+			if (scriptPath.empty()) continue;
+
+			std::filesystem::path fullPath = ResolveScriptPath(scriptPath);
+			if (!std::filesystem::exists(fullPath))
+			{
+				WF_CORE_WARN("LuaScriptEngine::InitScriptsForEntity: Script not found: '{0}'", scriptPath);
+				continue;
+			}
+
+			std::string tableKey = MakeTableKey((uint32_t)entityID, fullPath);
+
+			if (!LoadScriptIntoEnv(s_LuaState, fullPath, tableKey))
+				continue;
+
+			ScrapePublicFields(s_LuaState, tableKey, scriptPath, sc);
+
+			WF_CORE_INFO("LuaScriptEngine: Loaded '{0}' -> table '{1}' (entity {2}, runtime-spawned)",
+				fullPath.string(), tableKey, (uint32_t)entityID);
+
+			sc.ScriptTableKeys.push_back(tableKey);
+
+			uint32_t id = (uint32_t)entityID;
+			CallEnvFunction(s_LuaState, tableKey, "OnCreate", 1, [&]() {
+				lua_pushnumber(s_LuaState, id);
+				});
+		}
 	}
 
 	void LuaScriptEngine::OnRuntimeUpdate(Scene* scene, Timestep ts)

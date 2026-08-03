@@ -56,6 +56,10 @@ namespace Waffle {
 
 		static void ScrapeFieldsFromScript(const std::filesystem::path& fullPath, const std::string& scriptPath, ScriptComponent& sc);
 
+		// Initialize Lua scripts for a single entity — used when prefabs are
+		// instantiated at runtime so their scripts get loaded and OnCreate fired.
+		static void InitScriptsForEntity(Scene* scene, Entity entity);
+
 		static void SetAssetPath(const std::filesystem::path& path) { s_AssetPath = path; }
 		static std::filesystem::path GetAssetPath() { return s_AssetPath; }
 

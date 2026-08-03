@@ -169,9 +169,11 @@ namespace Waffle {
 				auto tex = clip.SubTextures[i]->GetTexture();
 				const glm::vec2* uvs = clip.SubTextures[i]->GetTexCoords();
 
-				// Compute aspect from the UV region size, not the full texture
+				// Compute aspect from the UV region size, not the full texture.
+				// uvs[0] = (min.x, min.y), uvs[2] = (max.x, max.y), so
+				// height = max.y - min.y (may be negative due to OpenGL flip).
 				float framePixelW = (uvs[1].x - uvs[0].x) * (float)tex->GetWidth();
-				float framePixelH = (uvs[0].y - uvs[2].y) * (float)tex->GetHeight();
+				float framePixelH = std::abs((uvs[2].y - uvs[0].y) * (float)tex->GetHeight());
 				if (framePixelW > 0.0f && framePixelH > 0.0f)
 				{
 					float aspect = framePixelW / framePixelH;

@@ -19,11 +19,12 @@ namespace Waffle {
 		auto* ctx = VulkanContext::Get();
 		VkCommandBuffer cmd = ctx->GetCurrentCommandBuffer();
 
+		// Negative height flips Vulkan's Y-down NDC to match OpenGL/GLM conventions.
 		VkViewport vp{};
 		vp.x        = (float)x;
-		vp.y        = (float)y;
+		vp.y        = (float)(y + height);  // start at bottom of region
 		vp.width    = (float)width;
-		vp.height   = (float)height;
+		vp.height   = -(float)height;       // render upward
 		vp.minDepth = 0.0f;
 		vp.maxDepth = 1.0f;
 
