@@ -529,5 +529,4 @@ namespace Waffle {
 
         ImGui::End();
     }
-
 }

@@ -631,12 +631,9 @@ namespace Waffle {
 			ImGui::PopStyleColor();
 		}
 
-		// Invisible dummy covering remaining empty space to receive drag drop
-		// (only take up whatever space is left after the viewer)
-		ImVec2 dropAreaSize = ImGui::GetContentRegionAvail();
-		if (dropAreaSize.x <= 0.0f) dropAreaSize.x = 1.0f;
-		if (dropAreaSize.y <= 0.0f) dropAreaSize.y = 1.0f;
-		ImGui::InvisibleButton("##ContentBrowserWindowDropArea", dropAreaSize);
+
+		ImGui::SetCursorPos(ImVec2(0, 0));
+		ImGui::Dummy(ImVec2(0, 0));
 		if (ImGui::BeginDragDropTarget())
 		{
 			if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("SCENE_HIERARCHY_ENTITY"))

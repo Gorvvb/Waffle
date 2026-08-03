@@ -934,6 +934,14 @@ namespace Waffle {
 			}
 		}
 
+		auto lifetimeComponent = entityNode["LifetimeComponent"];
+		if (lifetimeComponent)
+		{
+			auto& lc = deserializedEntity.AddComponent<LifetimeComponent>();
+			lc.Lifetime = lifetimeComponent["Lifetime"].as<float>();
+			lc.RemainingTime = lc.Lifetime;
+		}
+
 		auto scriptComponent = entityNode["ScriptComponent"];
 		if (scriptComponent)
 		{

@@ -206,6 +206,33 @@ namespace Waffle {
 				}
 			}
 			ImGui::EndDragDropTarget();
+
+			if (ImGui::BeginDragDropTarget())
+			{
+				if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("SCENE_HIERARCHY_ENTITY"))
+				{
+					UUID droppedEntityUUID = *(const UUID*)payload->Data;
+					Entity droppedEntity = m_Context->GetEntityByUUID(droppedEntityUUID);
+					if (droppedEntity)
+						m_Context->UnparentEntity(droppedEntity);
+				}
+				// ADD THIS:
+				if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("CONTENT_BROWSER_ITEM"))
+				{
+					const wchar_t* pathStr = (const wchar_t*)payload->Data;
+					std::filesystem::path path = std::filesystem::path(g_AssetPath) / pathStr;
+					std::string ext = path.extension().string();
+					for (auto& c : ext) c = (char)tolower(c);
+					if (ext == ".prefab")
+					{
+						Entity instantiated = SceneSerializer::DeserializePrefabToEntity(
+							m_Context.get(), path.string());
+						if (instantiated)
+							m_SelectionContext = instantiated;
+					}
+				}
+				ImGui::EndDragDropTarget();
+			}
 		}
 
 		bool entityDeleted = false;
