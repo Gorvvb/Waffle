@@ -6,6 +6,8 @@
 
 #include "entt.hpp"
 
+#include <glm/glm.hpp>
+
 class b2World;
 class b2Body;
 
@@ -26,6 +28,7 @@ namespace Waffle {
 
 		b2World* m_PhysicsWorld = nullptr;
 		std::unordered_map<b2Body*, uint32_t> m_BodyEntityMap;
+		std::unordered_map<UUID, entt::entity> m_EntityMap; // fast UUID -> entity lookup
 
 		float m_GravityY = -9.8f;
 
@@ -50,13 +53,23 @@ namespace Waffle {
 		void OnRuntimeStart();
 		void OnRuntimeStop();
 
+		// Creates the Box2D body/fixtures for an entity spawned while the scene
+		// is running (e.g. prefabs instantiated from scripts). No-op outside runtime
+		// or if the body already exists.
+		void CreateRuntimePhysicsBody(Entity entity);
+
 		int OnUpdateRuntime(Timestep ts);
 		void OnUpdateEditor(Timestep ts, EditorCamera& camera);
 		void OnViewportResize(uint32_t width, uint32_t height);
 
-		void DuplicateEntity(Entity entity);
+		Entity DuplicateEntity(Entity entity);
 		void ParentEntity(Entity child, Entity parent);
 		void UnparentEntity(Entity child);
+
+		// Hierarchy helpers
+		Entity GetParent(Entity entity);
+		// Returns the entity's transform in world space, composed with all ancestor transforms.
+		glm::mat4 GetWorldTransform(Entity entity);
 
 		uint32_t GetViewportWidth()  const { return m_ViewportWidth; }
 		uint32_t GetViewportHeight() const { return m_ViewportHeight; }
@@ -88,6 +101,8 @@ namespace Waffle {
 
 		entt::registry& GetRegistry() { return m_Registry; }
 	private:
+		Entity DuplicateEntityRecursive(Entity entity, Entity parent);
+
 		template<typename T>
 		void OnComponentAdded(Entity entity, T& component);
 	};

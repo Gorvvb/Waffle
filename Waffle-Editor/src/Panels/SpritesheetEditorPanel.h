@@ -17,6 +17,13 @@ namespace Waffle {
         glm::vec2   Max = { 32.0f, 32.0f }; // Pixel coords in texture space
     };
 
+    // A named collection of sprite regions (e.g. "Walk", "Idle", "Attack")
+    struct SpriteGroup
+    {
+        std::string      Name = "Group";
+        std::vector<int> RegionIndices; // Indices into the region list
+    };
+
     class SpritesheetEditorPanel
     {
     public:
@@ -40,6 +47,10 @@ namespace Waffle {
         std::vector<SpriteRegion> m_Regions;
         int                       m_SelectedRegionIndex = -1;
 
+        // Named groups of regions
+        std::vector<SpriteGroup> m_Groups;
+        int                      m_SelectedGroupIndex = -1;
+
         // Canvas drag-draw state (pixel-space coords)
         bool      m_IsDraggingBox = false;
         glm::vec2 m_DragStartPixel = { 0.0f, 0.0f };
@@ -52,6 +63,9 @@ namespace Waffle {
         glm::vec2 m_PanLastMouse = { 0.0f, 0.0f }; // glm, not ImVec2
 
         void LoadTexture(const std::filesystem::path& path);
+        void LoadSpritesheetAsset(const std::filesystem::path& path);
+        void HandleContentBrowserDrop();
+        void RemoveRegion(int index);
         void AutoSliceGrid();
         void SaveSpritesheetAsset();
     };
