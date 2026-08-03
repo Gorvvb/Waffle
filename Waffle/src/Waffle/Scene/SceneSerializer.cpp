@@ -632,8 +632,14 @@ namespace Waffle {
 					if (spriteRendererComponent["TexturePath"])
 					{
 						std::string texturePath = spriteRendererComponent["TexturePath"].as<std::string>();
-						std::filesystem::path resolved = ResolveTexturePath(texturePath);
-						src.Texture = Texture2D::Create(resolved.string(), src.FilterMode);
+						std::filesystem::path p(texturePath);
+						std::string ext = p.extension().string();
+						std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
+						if (ext == ".png" || ext == ".jpg" || ext == ".jpeg")
+					    {
+							std::filesystem::path resolved = ResolveTexturePath(texturePath);
+							src.Texture = Texture2D::Create(resolved.string(), src.FilterMode);
+						}
 					}
 
 					if (spriteRendererComponent["FilterMode"])
@@ -837,8 +843,14 @@ namespace Waffle {
 			if (spriteRendererComponent["TexturePath"])
 			{
 				std::string texturePath = spriteRendererComponent["TexturePath"].as<std::string>();
-				std::filesystem::path resolved = ResolveTexturePath(texturePath);
-				src.Texture = Texture2D::Create(resolved.string(), src.FilterMode);
+				std::filesystem::path p(texturePath);
+				std::string ext = p.extension().string();
+				std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
+				if (ext == ".png" || ext == ".jpg" || ext == ".jpeg")
+				{
+					std::filesystem::path resolved = ResolveTexturePath(texturePath);
+					src.Texture = Texture2D::Create(resolved.string(), src.FilterMode);
+				}
 			}
 
 			if (spriteRendererComponent["FilterMode"])

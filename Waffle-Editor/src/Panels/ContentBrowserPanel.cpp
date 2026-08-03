@@ -10,6 +10,8 @@
 #include <imgui/imgui.h>
 #include <yaml-cpp/yaml.h>
 #include <fstream>
+#include <glad/glad.h>
+#include <glm/glm.hpp>
 
 namespace Waffle {
 
@@ -212,16 +214,6 @@ namespace Waffle {
 				if (ImGui::BeginPopupContextItem())
 				{
 					m_SelectedItem = path;
-					std::string ext = path.extension().string();
-					for (auto& c : ext) c = (char)tolower(c);
-					if (ext == ".png" || ext == ".jpg" || ext == ".jpeg")
-					{
-						if (ImGui::MenuItem("Create Spritesheet..."))
-						{
-							m_ItemToSlice = path;
-							m_OpenSliceModal = true;
-						}
-					}
 					if (ImGui::MenuItem("Rename"))
 					{
 						m_ItemToRename = path;
@@ -256,8 +248,6 @@ namespace Waffle {
 						try {
 							YAML::Node data = YAML::LoadFile(path.string());
 							std::string texName = data["Spritesheet"].as<std::string>("");
-							m_SpritesheetCols = data["Columns"].as<int>(1);
-							m_SpritesheetRows = data["Rows"].as<int>(1);
 
 							std::filesystem::path fullTexPath = path.parent_path() / texName;
 							if (!std::filesystem::exists(fullTexPath)) fullTexPath = g_AssetPath / texName;
@@ -265,17 +255,54 @@ namespace Waffle {
 							{
 								m_SpritesheetTexture = Texture2D::Create(fullTexPath.string(), TextureFilter::Nearest);
 								m_SpritesheetSubTextures.clear();
-								float cellW = (float)m_SpritesheetTexture->GetWidth() / (float)m_SpritesheetCols;
-								float cellH = (float)m_SpritesheetTexture->GetHeight() / (float)m_SpritesheetRows;
-								int total = m_SpritesheetCols * m_SpritesheetRows;
-								for (int i = 0; i < total; i++)
+								m_SpritesheetRegions.clear();
+
+								// New named-region format (from Spritesheet Editor)
+								if (data["Regions"] && data["Regions"].IsSequence())
 								{
-									int col = i % m_SpritesheetCols;
-									int row = m_SpritesheetRows - 1 - (i / m_SpritesheetCols);
-									auto sub = SubTexture2D::CreateFromCoords(m_SpritesheetTexture, { (float)col, (float)row }, { cellW, cellH });
-									if (sub) m_SpritesheetSubTextures.push_back(sub);
+									const float texW = (float)m_SpritesheetTexture->GetWidth();
+									const float texH = (float)m_SpritesheetTexture->GetHeight();
+									for (auto regNode : data["Regions"])
+									{
+										SpritesheetRegionInfo info;
+										info.Name = regNode["Name"].as<std::string>("Sprite");
+										if (regNode["Min"].IsSequence() && regNode["Max"].IsSequence())
+										{
+											info.Min = { regNode["Min"][0].as<float>(0.0f), regNode["Min"][1].as<float>(0.0f) };
+											info.Max = { regNode["Max"][0].as<float>(0.0f), regNode["Max"][1].as<float>(0.0f) };
+										}
+										m_SpritesheetRegions.push_back(info);
+
+										// Build sub-texture from pixel rect (flip Y for OpenGL)
+										glm::vec2 uvMin = { info.Min.x / texW, 1.0f - info.Max.y / texH };
+										glm::vec2 uvMax = { info.Max.x / texW, 1.0f - info.Min.y / texH };
+										auto sub = CreateRef<SubTexture2D>(m_SpritesheetTexture, uvMin, uvMax);
+										if (sub) m_SpritesheetSubTextures.push_back(sub);
+									}
+								}
+								else
+								{
+									// Legacy grid format
+									m_SpritesheetCols = data["Columns"].as<int>(1);
+									m_SpritesheetRows = data["Rows"].as<int>(1);
+									float cellW = (float)m_SpritesheetTexture->GetWidth() / (float)m_SpritesheetCols;
+									float cellH = (float)m_SpritesheetTexture->GetHeight() / (float)m_SpritesheetRows;
+									int total = m_SpritesheetCols * m_SpritesheetRows;
+									for (int i = 0; i < total; i++)
+									{
+										int col = i % m_SpritesheetCols;
+										int row = m_SpritesheetRows - 1 - (i / m_SpritesheetCols);
+										SpritesheetRegionInfo info;
+										info.Name = "Sprite_" + std::to_string(i);
+										info.Min = { (float)col * cellW, (float)(m_SpritesheetRows - 1 - row) * cellH };
+										info.Max = { info.Min.x + cellW, info.Min.y + cellH };
+										m_SpritesheetRegions.push_back(info);
+										auto sub = SubTexture2D::CreateFromCoords(m_SpritesheetTexture, { (float)col, (float)row }, { cellW, cellH });
+										if (sub) m_SpritesheetSubTextures.push_back(sub);
+									}
 								}
 							}
+							m_ShowSpritesheetViewer = true;
 						} catch (...) {}
 					}
 					else if (path.extension() == ".lua" || path.extension() == ".h" || path.extension() == ".cpp" || path.extension() == ".txt")
@@ -487,8 +514,129 @@ namespace Waffle {
 			ImGui::EndPopup();
 		}
 
-		// Invisible dummy covering empty space to receive drag drop
-		ImGui::InvisibleButton("##ContentBrowserWindowDropArea", ImGui::GetContentRegionAvail());
+		// =========================================================================
+		//  SPRITESHEET SPRITE VIEWER  (bottom filmstrip)
+		// =========================================================================
+		if (m_ShowSpritesheetViewer && !m_SpritesheetSubTextures.empty() && m_SpritesheetTexture)
+		{
+			ImGui::Separator();
+
+			// Header bar
+			ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0.12f, 0.12f, 0.12f, 1.0f));
+			ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(4, 4));
+
+			ImGui::Text("Sprites  —  %s  (%zu sprites)",
+				m_SelectedSpritesheetPath.filename().string().c_str(),
+				m_SpritesheetSubTextures.size());
+			ImGui::SameLine(ImGui::GetContentRegionAvail().x - 20.0f);
+			if (ImGui::Button("x##CloseViewer"))
+			{
+				m_ShowSpritesheetViewer = false;
+				m_SpritesheetSubTextures.clear();
+				m_SpritesheetRegions.clear();
+				m_SpritesheetTexture = nullptr;
+			}
+
+			ImGui::PopStyleVar();
+
+			// Filmstrip scrollable child
+			ImGui::BeginChild("##SpriteViewer", ImVec2(0, 130.0f), true,
+				ImGuiWindowFlags_HorizontalScrollbar);
+
+			const float sprThumb = 64.0f;
+			// Derive actual texture path from the spritesheet YAML
+			std::string texPathForPayload;
+			try {
+				YAML::Node shData = YAML::LoadFile(m_SelectedSpritesheetPath.string());
+				std::string tName = shData["Spritesheet"].as<std::string>("");
+				std::filesystem::path tp = m_SelectedSpritesheetPath.parent_path() / tName;
+				if (std::filesystem::exists(tp))
+					texPathForPayload = std::filesystem::absolute(tp).string();
+			} catch (...) {}
+
+			for (int i = 0; i < (int)m_SpritesheetSubTextures.size(); i++)
+			{
+				if (i > 0) ImGui::SameLine();
+				ImGui::PushID(i);
+
+				ImGui::BeginGroup();
+
+				const auto& sub = m_SpritesheetSubTextures[i];
+				const auto& region = (i < (int)m_SpritesheetRegions.size()) ? m_SpritesheetRegions[i] : SpritesheetRegionInfo{};
+
+				GLuint texID = (GLuint)m_SpritesheetTexture->GetRendererID();
+				const glm::vec2* uvs = sub->GetTexCoords();
+
+				// Show actual sprite aspect inside a fixed square slot
+				ImVec2 dispSize = { sprThumb, sprThumb };
+				float pw = region.Max.x - region.Min.x;
+				float ph = region.Max.y - region.Min.y;
+				if (pw > 0.0f && ph > 0.0f)
+				{
+					float asp = pw / ph;
+					if (asp >= 1.0f)
+						dispSize = { sprThumb, sprThumb / asp };
+					else
+						dispSize = { sprThumb * asp, sprThumb };
+				}
+
+				// Sampler reset so Nearest filter takes effect
+				ImDrawList* dl = ImGui::GetWindowDrawList();
+				dl->AddCallback([](const ImDrawList*, const ImDrawCmd*) {
+					glBindSampler(0, 0);
+				}, nullptr);
+
+				ImGui::ImageButton("##SprBtn",
+					(ImTextureID)(uintptr_t)texID,
+					dispSize,
+					ImVec2(uvs[3].x, uvs[3].y),
+					ImVec2(uvs[1].x, uvs[1].y));
+
+				dl->AddCallback(ImDrawCallback_ResetRenderState, nullptr);
+
+				// Drag source: payload = "texturePath|minX,minY,maxX,maxY"
+				if (ImGui::BeginDragDropSource(ImGuiDragDropFlags_SourceAllowNullID))
+				{
+					char payloadBuf[1024];
+					snprintf(payloadBuf, sizeof(payloadBuf), "%s|%.0f,%.0f,%.0f,%.0f",
+						texPathForPayload.c_str(),
+						region.Min.x, region.Min.y, region.Max.x, region.Max.y);
+					ImGui::SetDragDropPayload("SPRITESHEET_FRAME_ITEM",
+						payloadBuf, strlen(payloadBuf) + 1);
+
+					// Drag preview thumbnail
+					dl->AddCallback([](const ImDrawList*, const ImDrawCmd*) {
+						glBindSampler(0, 0);
+					}, nullptr);
+					ImGui::Image((ImTextureID)(uintptr_t)texID,
+						ImVec2(sprThumb, sprThumb),
+						ImVec2(uvs[3].x, uvs[3].y),
+						ImVec2(uvs[1].x, uvs[1].y));
+					dl->AddCallback(ImDrawCallback_ResetRenderState, nullptr);
+
+					ImGui::Text("%s", region.Name.c_str());
+					ImGui::EndDragDropSource();
+				}
+
+				if (ImGui::IsItemHovered())
+					ImGui::SetTooltip("%s\n%.0f x %.0f px", region.Name.c_str(), pw, ph);
+
+				ImGui::TextDisabled("%s", region.Name.c_str());
+
+				ImGui::EndGroup();
+				ImGui::PopID();
+			}
+
+			ImGui::EndChild();
+			ImGui::PopStyleColor();
+		}
+
+		// Invisible dummy covering remaining empty space to receive drag drop
+		// (only take up whatever space is left after the viewer)
+		ImVec2 dropAreaSize = ImGui::GetContentRegionAvail();
+		if (dropAreaSize.x <= 0.0f) dropAreaSize.x = 1.0f;
+		if (dropAreaSize.y <= 0.0f) dropAreaSize.y = 1.0f;
+		ImGui::InvisibleButton("##ContentBrowserWindowDropArea", dropAreaSize);
 		if (ImGui::BeginDragDropTarget())
 		{
 			if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("SCENE_HIERARCHY_ENTITY"))

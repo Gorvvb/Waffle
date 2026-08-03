@@ -4,6 +4,7 @@
 
 #include "Waffle/Renderer/Texture.h"
 #include "Waffle/Renderer/SubTexture2D.h"
+#include <glm/glm.hpp>
 
 namespace Waffle {
 
@@ -45,6 +46,17 @@ namespace Waffle {
 		int m_SpritesheetCols = 1;
 		int m_SpritesheetRows = 1;
 		std::vector<Ref<SubTexture2D>> m_SpritesheetSubTextures;
+
+		// Named-region info (from Spritesheet Editor "Regions" format)
+		struct SpritesheetRegionInfo
+		{
+			std::string Name;
+			glm::vec2   Min = { 0.0f, 0.0f };
+			glm::vec2   Max = { 0.0f, 0.0f };
+		};
+		std::vector<SpritesheetRegionInfo> m_SpritesheetRegions; // filled when Regions key present
+		bool m_ShowSpritesheetViewer = false;
+
 
 		std::function<void(const std::filesystem::path&)> m_OpenSceneCallback;
 		std::function<void(const std::filesystem::path&, const std::filesystem::path&)> m_SceneRenamedCallback;
