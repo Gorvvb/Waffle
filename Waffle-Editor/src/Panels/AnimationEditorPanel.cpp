@@ -167,16 +167,21 @@ namespace Waffle {
 			if (hasImage)
 			{
 				auto tex = clip.SubTextures[i]->GetTexture();
-				float aspect = (float)tex->GetWidth() / (float)tex->GetHeight();
-				if (aspect > 0.0f)
+				const glm::vec2* uvs = clip.SubTextures[i]->GetTexCoords();
+
+				// Compute aspect from the UV region size, not the full texture
+				float framePixelW = (uvs[1].x - uvs[0].x) * (float)tex->GetWidth();
+				float framePixelH = (uvs[0].y - uvs[2].y) * (float)tex->GetHeight();
+				if (framePixelW > 0.0f && framePixelH > 0.0f)
 				{
+					float aspect = framePixelW / framePixelH;
 					if (aspect >= 1.0f)
 						frameSize = ImVec2(thumbnailSize, thumbnailSize / aspect);
 					else
 						frameSize = ImVec2(thumbnailSize * aspect, thumbnailSize);
 				}
 
-				const glm::vec2* uvs = clip.SubTextures[i]->GetTexCoords();
+				tex->SetFilter(TextureFilter::Nearest);
 				ImGui::ImageButton("##FrameKey", (ImTextureID)(uintptr_t)tex->GetRendererID(),
 					frameSize, ImVec2(uvs[3].x, uvs[3].y), ImVec2(uvs[1].x, uvs[1].y));
 			}
