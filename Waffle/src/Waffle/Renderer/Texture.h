@@ -12,6 +12,8 @@ namespace Waffle {
 
 	std::filesystem::path ResolveTexturePath(const std::string& texturePath);
 	std::string GetNormalizedAssetPath(const std::string& fullPath);
+	void SetActiveAssetDirectory(const std::filesystem::path& path);
+	const std::filesystem::path& GetActiveAssetDirectory();
 
 	class Texture : public RefCounted
 	{

@@ -355,52 +355,48 @@ static bool EmbedIconInExecutable(const std::filesystem::path& exePath, const st
 	{
 		std::vector<std::filesystem::path> candidates;
 
-#if defined(WF_DIST)
-		candidates = {
-			"../bin/Dist-windows-x86_64/Waffle-Runtime/Waffle-Runtime.exe",
-			"bin/Dist-windows-x86_64/Waffle-Runtime/Waffle-Runtime.exe",
-			"../bin/Release-windows-x86_64/Waffle-Runtime/Waffle-Runtime.exe",
-			"bin/Release-windows-x86_64/Waffle-Runtime/Waffle-Runtime.exe",
-			"../bin/Debug-windows-x86_64/Waffle-Runtime/Waffle-Runtime.exe",
-			"bin/Debug-windows-x86_64/Waffle-Runtime/Waffle-Runtime.exe",
-			"Waffle-Runtime.exe"
-		};
-#elif defined(WF_RELEASE)
-		candidates = {
-			"../bin/Release-windows-x86_64/Waffle-Runtime/Waffle-Runtime.exe",
-			"bin/Release-windows-x86_64/Waffle-Runtime/Waffle-Runtime.exe",
-			"../bin/Dist-windows-x86_64/Waffle-Runtime/Waffle-Runtime.exe",
-			"bin/Dist-windows-x86_64/Waffle-Runtime/Waffle-Runtime.exe",
-			"../bin/Debug-windows-x86_64/Waffle-Runtime/Waffle-Runtime.exe",
-			"bin/Debug-windows-x86_64/Waffle-Runtime/Waffle-Runtime.exe",
-			"Waffle-Runtime.exe"
-		};
-#else // Debug
-		candidates = {
-			"../bin/Debug-windows-x86_64/Waffle-Runtime/Waffle-Runtime.exe",
-			"bin/Debug-windows-x86_64/Waffle-Runtime/Waffle-Runtime.exe",
-			"../bin/Release-windows-x86_64/Waffle-Runtime/Waffle-Runtime.exe",
-			"bin/Release-windows-x86_64/Waffle-Runtime/Waffle-Runtime.exe",
-			"../bin/Dist-windows-x86_64/Waffle-Runtime/Waffle-Runtime.exe",
-			"bin/Dist-windows-x86_64/Waffle-Runtime/Waffle-Runtime.exe",
-			"Waffle-Runtime.exe"
-		};
+#if defined(_WIN32)
+		char buffer[MAX_PATH];
+		GetModuleFileNameA(NULL, buffer, MAX_PATH);
+		std::filesystem::path exeDir = std::filesystem::path(buffer).parent_path();
+#else
+		std::filesystem::path exeDir = std::filesystem::current_path();
 #endif
+
+		candidates = {
+			exeDir / "Waffle-Runtime.exe",
+			exeDir / "../Waffle-Runtime/Waffle-Runtime.exe",
+			exeDir / "../../bin/Debug-windows-x86_64/Waffle-Runtime/Waffle-Runtime.exe",
+			exeDir / "../../bin/Release-windows-x86_64/Waffle-Runtime/Waffle-Runtime.exe",
+			exeDir / "../../bin/Dist-windows-x86_64/Waffle-Runtime/Waffle-Runtime.exe",
+			"bin/Debug-windows-x86_64/Waffle-Runtime/Waffle-Runtime.exe",
+			"bin/Release-windows-x86_64/Waffle-Runtime/Waffle-Runtime.exe",
+			"bin/Dist-windows-x86_64/Waffle-Runtime/Waffle-Runtime.exe",
+			"../bin/Debug-windows-x86_64/Waffle-Runtime/Waffle-Runtime.exe",
+			"../bin/Release-windows-x86_64/Waffle-Runtime/Waffle-Runtime.exe",
+			"../bin/Dist-windows-x86_64/Waffle-Runtime/Waffle-Runtime.exe",
+			"Waffle-Runtime.exe"
+		};
 
 		for (const auto& path : candidates)
 		{
-			if (std::filesystem::exists(path))
-				return std::filesystem::canonical(path);
+			std::error_code ec;
+			if (std::filesystem::exists(path, ec))
+			{
+				auto canon = std::filesystem::canonical(path, ec);
+				return ec ? path : canon;
+			}
 		}
 
 		try
 		{
-			std::filesystem::path current = std::filesystem::current_path();
-			for (int depth = 0; depth < 3 && current.has_parent_path(); ++depth)
+			std::filesystem::path current = exeDir;
+			for (int depth = 0; depth < 4 && current.has_parent_path(); ++depth)
 			{
-				for (const auto& entry : std::filesystem::recursive_directory_iterator(current))
+				std::error_code ec;
+				for (const auto& entry : std::filesystem::recursive_directory_iterator(current, ec))
 				{
-					if (entry.is_regular_file() && entry.path().filename() == "Waffle-Runtime.exe")
+					if (entry.is_regular_file(ec) && entry.path().filename() == "Waffle-Runtime.exe")
 						return entry.path();
 				}
 				current = current.parent_path();
@@ -424,7 +420,11 @@ static bool EmbedIconInExecutable(const std::filesystem::path& exePath, const st
 		std::filesystem::path activeProjectPath = options.ProjectPath;
 		if (activeProjectPath.empty())
 		{
-			activeProjectPath = std::filesystem::path("Projects") / options.ProjectName;
+			activeProjectPath = std::filesystem::current_path();
+		}
+		else
+		{
+			activeProjectPath = std::filesystem::absolute(activeProjectPath);
 		}
 
 		std::filesystem::path exportsDir = activeProjectPath / "Exports";
@@ -472,16 +472,29 @@ static bool EmbedIconInExecutable(const std::filesystem::path& exePath, const st
 			}
 		}
 
+#if defined(_WIN32)
+		char modBuffer[MAX_PATH];
+		GetModuleFileNameA(NULL, modBuffer, MAX_PATH);
+		std::filesystem::path exeDir = std::filesystem::path(modBuffer).parent_path();
+#else
+		std::filesystem::path exeDir = std::filesystem::current_path();
+#endif
+
+		std::vector<std::filesystem::path> engineAssetCandidates = {
+			exeDir / "Assets",
+			exeDir / "../../Waffle-Editor/Assets",
+			exeDir / "../../../Waffle-Editor/Assets",
+			"C:/Dev/Waffle/Waffle-Editor/Assets"
+		};
+
 		// 4. Ensure engine base shaders exist in export Assets/shaders
 		std::filesystem::path targetShaders = targetAssets / "shaders";
 		std::filesystem::create_directories(targetShaders, ec);
 
-		for (const auto& shaderDir : std::vector<std::filesystem::path>{
-			"Assets/shaders",
-			"Waffle-Editor/Assets/shaders",
-			"../Waffle-Editor/Assets/shaders" })
+		for (const auto& baseDir : engineAssetCandidates)
 		{
-			if (std::filesystem::exists(shaderDir))
+			std::filesystem::path shaderDir = baseDir / "shaders";
+			if (std::filesystem::exists(shaderDir, ec))
 			{
 				std::filesystem::copy(shaderDir, targetShaders,
 					std::filesystem::copy_options::overwrite_existing |
@@ -494,12 +507,10 @@ static bool EmbedIconInExecutable(const std::filesystem::path& exePath, const st
 		std::filesystem::path targetFonts = targetAssets / "fonts";
 		std::filesystem::create_directories(targetFonts, ec);
 
-		for (const auto& fontDir : std::vector<std::filesystem::path>{
-			"Assets/fonts",
-			"Waffle-Editor/Assets/fonts",
-			"../Waffle-Editor/Assets/fonts" })
+		for (const auto& baseDir : engineAssetCandidates)
 		{
-			if (std::filesystem::exists(fontDir))
+			std::filesystem::path fontDir = baseDir / "fonts";
+			if (std::filesystem::exists(fontDir, ec))
 			{
 				std::filesystem::copy(fontDir, targetFonts,
 					std::filesystem::copy_options::overwrite_existing |
@@ -512,12 +523,10 @@ static bool EmbedIconInExecutable(const std::filesystem::path& exePath, const st
 		std::filesystem::path targetCache = targetAssets / "cache";
 		std::filesystem::create_directories(targetCache, ec);
 
-		for (const auto& cacheDir : std::vector<std::filesystem::path>{
-			"Assets/cache",
-			"Waffle-Editor/Assets/cache",
-			"../Waffle-Editor/Assets/cache" })
+		for (const auto& baseDir : engineAssetCandidates)
 		{
-			if (std::filesystem::exists(cacheDir))
+			std::filesystem::path cacheDir = baseDir / "cache";
+			if (std::filesystem::exists(cacheDir, ec))
 			{
 				std::filesystem::copy(cacheDir, targetCache,
 					std::filesystem::copy_options::overwrite_existing |

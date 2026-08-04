@@ -1,0 +1,5 @@
+Project:
+  Name: Blank2D
+  Gravity: -9.81
+  Scenes:
+    - Assets/Scenes/SampleScene.waffle

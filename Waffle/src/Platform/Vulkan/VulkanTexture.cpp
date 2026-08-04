@@ -42,7 +42,7 @@ namespace Waffle {
 
 		if (!data)
 		{
-			WF_CORE_ERROR("Failed to load texture image from path: '{0}' (Resolved: '{1}')", path, resolvedPath.string());
+			WF_CORE_WARN("Texture file not found: '{0}' (Resolved: '{1}'). Using fallback white texture.", path, resolvedPath.string());
 
 			m_Width = 1;
 			m_Height = 1;

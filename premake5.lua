@@ -3,7 +3,7 @@ include "Dependencies.lua"
 
 workspace "Waffle"
 	architecture "x64"
-	startproject "Waffle-Editor"
+	startproject "WaffleHub"
 
 	configurations
 	{
@@ -38,5 +38,6 @@ group "Dependencies"
 group ""
 
 include "Waffle"
+include "WaffleHub"
 include "Waffle-Editor"
 include "Waffle-Runtime"

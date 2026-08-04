@@ -7,6 +7,18 @@
 
 namespace Waffle {
 
+	static std::filesystem::path s_ActiveAssetDirectory = "";
+
+	void SetActiveAssetDirectory(const std::filesystem::path& path)
+	{
+		s_ActiveAssetDirectory = path;
+	}
+
+	const std::filesystem::path& GetActiveAssetDirectory()
+	{
+		return s_ActiveAssetDirectory;
+	}
+
 	std::filesystem::path ResolveTexturePath(const std::string& texturePath)
 	{
 		if (texturePath.empty())
@@ -15,6 +27,18 @@ namespace Waffle {
 		std::filesystem::path p(texturePath);
 
 		std::error_code ec;
+
+		if (!s_ActiveAssetDirectory.empty())
+		{
+			std::filesystem::path activeRelative = s_ActiveAssetDirectory / p;
+			if (std::filesystem::exists(activeRelative, ec))
+				return activeRelative;
+
+			std::filesystem::path activeParentRelative = s_ActiveAssetDirectory.parent_path() / p;
+			if (std::filesystem::exists(activeParentRelative, ec))
+				return activeParentRelative;
+		}
+
 		if (std::filesystem::exists(p, ec))
 			return p;
 

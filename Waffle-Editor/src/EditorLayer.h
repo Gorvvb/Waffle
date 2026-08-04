@@ -98,6 +98,7 @@ namespace Waffle {
 		float       m_ProjectGravity = -9.8f;
 		bool        m_ShowProjectTab = false;
 		std::string m_ProjectName;
+		std::filesystem::path m_ProjectPath;
 		char        m_ProjectNameBuffer[128] = "NewProject";
 		char        m_ExportAppNameBuffer[128] = "";
 		char        m_ExportIconPathBuffer[256] = "";

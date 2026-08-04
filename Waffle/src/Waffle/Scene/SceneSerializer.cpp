@@ -589,16 +589,30 @@ namespace Waffle {
 					auto& cc = deserializedEntity.AddComponent<CameraComponent>();
 
 					const auto& cameraProps = cameraComponent["Camera"];
-					cc.Camera.SetProjectionType(static_cast<SceneCamera::ProjectionType>(cameraProps["ProjectionType"].as<int>()));
+					if (cameraProps)
+					{
+						if (cameraProps["ProjectionType"])
+							cc.Camera.SetProjectionType(static_cast<SceneCamera::ProjectionType>(cameraProps["ProjectionType"].as<int>(1)));
 
-					cc.Camera.SetPerspectiveVerticalFOV(cameraProps["PerspectiveFov"].as<float>());
-					cc.Camera.SetPerspectiveNearClip(cameraProps["PerspectiveNear"].as<float>());
-					cc.Camera.SetPerspectiveFarClip(cameraProps["PerspectiveFar"].as<float>());
+						if (cameraProps["PerspectiveFov"])
+							cc.Camera.SetPerspectiveVerticalFOV(cameraProps["PerspectiveFov"].as<float>(45.0f));
+						if (cameraProps["PerspectiveNear"])
+							cc.Camera.SetPerspectiveNearClip(cameraProps["PerspectiveNear"].as<float>(0.01f));
+						if (cameraProps["PerspectiveFar"])
+							cc.Camera.SetPerspectiveFarClip(cameraProps["PerspectiveFar"].as<float>(1000.0f));
 
-					cc.Camera.SetOrthographicSize(cameraProps["OrthographicSize"].as<float>());
-					cc.Camera.SetOrthographicNearClip(cameraProps["OrthographicNear"].as<float>());
-					cc.Primary = cameraComponent["Primary"].as<bool>();
-					cc.FixedAspectRatio = cameraComponent["FixedAspectRatio"].as<bool>();
+						if (cameraProps["OrthographicSize"])
+							cc.Camera.SetOrthographicSize(cameraProps["OrthographicSize"].as<float>(10.0f));
+						if (cameraProps["OrthographicNear"])
+							cc.Camera.SetOrthographicNearClip(cameraProps["OrthographicNear"].as<float>(-1.0f));
+						if (cameraProps["OrthographicFar"])
+							cc.Camera.SetOrthographicFarClip(cameraProps["OrthographicFar"].as<float>(1.0f));
+					}
+
+					if (cameraComponent["Primary"])
+						cc.Primary = cameraComponent["Primary"].as<bool>(true);
+					if (cameraComponent["FixedAspectRatio"])
+						cc.FixedAspectRatio = cameraComponent["FixedAspectRatio"].as<bool>(false);
 
 					if (cameraComponent["BackgroundColor"])
 						cc.BackgroundColor = cameraComponent["BackgroundColor"].as<glm::vec4>();
