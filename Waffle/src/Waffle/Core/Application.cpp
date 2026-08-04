@@ -45,6 +45,9 @@ namespace Waffle {
 	{
 		WF_PROFILE_FUNCTION();
 
+		// Detach and destroy layers in REVERSE order (top-to-bottom: overlays first down to base layers)
+		m_LayerStack.Clear();
+
 		SubsystemManager::Shutdown();
 		EventQueue::Shutdown();
 		JobSystem::Shutdown();
@@ -55,17 +58,13 @@ namespace Waffle {
 	void Application::PushLayer(Layer* layer)
 	{
 		WF_PROFILE_FUNCTION();
-
 		m_LayerStack.PushLayer(layer);
-		layer->OnAttach();
 	}
 
 	void Application::PushOverlay(Layer* layer)
 	{
 		WF_PROFILE_FUNCTION();
-
 		m_LayerStack.PushOverlay(layer);
-		layer->OnAttach();
 	}
 
 	void Application::OnEvent(Event& e)
@@ -76,11 +75,11 @@ namespace Waffle {
 		dispatcher.Dispatch<WindowCloseEvent>(WF_BIND_EVENT_FN(Application::OnWindowClose));
 		dispatcher.Dispatch<WindowResizeEvent>(WF_BIND_EVENT_FN(Application::OnWindowResize));
 
-		for (auto it = m_LayerStack.end(); it != m_LayerStack.begin();)
+		for (auto it = m_LayerStack.rbegin(); it != m_LayerStack.rend(); ++it)
 		{
 			if (e.handled)
 				break;
-			(*--it)->OnEvent(e);
+			(*it)->OnEvent(e);
 		}
 	}
 
@@ -109,7 +108,7 @@ namespace Waffle {
 					WF_PROFILE_SCOPE("LayerStack OnFixedUpdate");
 					SubsystemManager::OnFixedUpdate(m_FixedTimestep);
 
-					for (Layer* layer : m_LayerStack)
+					for (const auto& layer : m_LayerStack)
 						layer->OnFixedUpdate(m_FixedTimestep);
 
 					m_Accumulator -= m_FixedTimestep;
@@ -120,14 +119,14 @@ namespace Waffle {
 					WF_PROFILE_SCOPE("LayerStack OnUpdate");
 					SubsystemManager::OnUpdate(timestep);
 
-					for (Layer* layer : m_LayerStack)
+					for (const auto& layer : m_LayerStack)
 						layer->OnUpdate(timestep);
 				}
 
 				m_ImGuiLayer->Begin();
 				{
 					WF_PROFILE_SCOPE("LayerStack OnImGuiRender");
-					for (Layer* layer : m_LayerStack)
+					for (const auto& layer : m_LayerStack)
 						layer->OnImGuiRender();
 				}
 				m_ImGuiLayer->End();

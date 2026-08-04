@@ -6,12 +6,14 @@
 #include <filesystem>
 #include <string>
 
+#include "Waffle/Core/Ref.h"
+
 namespace Waffle {
 
 	std::filesystem::path ResolveTexturePath(const std::string& texturePath);
 	std::string GetNormalizedAssetPath(const std::string& fullPath);
 
-	class Texture
+	class Texture : public RefCounted
 	{
 	public:
 		virtual ~Texture() = default;

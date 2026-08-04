@@ -15,9 +15,9 @@ namespace Waffle {
 			WF_CORE_ASSERT(false, "RendererAPI::None is currently not supported");
 			return nullptr;
 		case RendererAPI::API::OpenGL:
-			return std::make_shared<OpenGLShader>(filepath);
+			return CreateRef<OpenGLShader>(filepath);
 		case RendererAPI::API::Vulkan:
-			return std::make_shared<VulkanShader>(filepath);
+			return CreateRef<VulkanShader>(filepath);
 		}
 
 		WF_CORE_ASSERT(false, "Unknown RendererAPI");
@@ -32,9 +32,9 @@ namespace Waffle {
 			WF_CORE_ASSERT(false, "RendererAPI::None is currently not supported");
 			return nullptr;
 		case RendererAPI::API::OpenGL:
-			return std::make_shared<OpenGLShader>(name, vertexSource, fragmentSource);
+			return CreateRef<OpenGLShader>(name, vertexSource, fragmentSource);
 		case RendererAPI::API::Vulkan:
-			return std::make_shared<VulkanShader>(name, vertexSource, fragmentSource);
+			return CreateRef<VulkanShader>(name, vertexSource, fragmentSource);
 		}
 
 		WF_CORE_ASSERT(false, "Unknown RendererAPI");

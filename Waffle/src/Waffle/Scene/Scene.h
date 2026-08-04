@@ -11,11 +11,13 @@
 class b2World;
 class b2Body;
 
+#include "Waffle/Core/Ref.h"
+
 namespace Waffle {
 
 	class Entity;
 
-	class Scene
+	class Scene : public RefCounted
 	{
 	private:
 		std::string m_Name = "Untitled";
