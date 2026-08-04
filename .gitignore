@@ -11,6 +11,8 @@ bin-int/
 # Editor state and configuration
 editor_config.yaml
 **/editor_config.yaml
+projects_manifest.yaml
+**/projects_manifest.yaml
 
 # Projects and Exports
 **/Exports/
@@ -19,8 +21,6 @@ Waffle-Editor/Projects/*
 WaffleHub/Projects/*
 !Projects/DefaultProject/
 !Projects/DefaultProject/**
-!Projects/projects_manifest.yaml
-!WaffleHub/Projects/projects_manifest.yaml
 !Waffle-Editor/Projects/DefaultProject/
 !Waffle-Editor/Projects/DefaultProject/**
 !WaffleHub/Projects/DefaultProject/
