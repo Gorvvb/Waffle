@@ -82,7 +82,14 @@ namespace Waffle {
 		auto commandLineArgs = Application::Get().GetSpecification().CommandLineArgs;
 		if (commandLineArgs.Count > 1)
 		{
-			OpenScene(commandLineArgs[1]);
+			std::filesystem::path argPath(commandLineArgs[1]);
+			if (std::filesystem::exists(argPath))
+			{
+				if (std::filesystem::is_directory(argPath))
+					OpenProjectAtPath(argPath);
+				else
+					OpenScene(argPath.string());
+			}
 		}
 		else
 		{
@@ -322,9 +329,9 @@ namespace Waffle {
 						? m_ExportAppNameBuffer : projName;
 
 					options.ProjectName = projName;
-					options.ProjectPath = m_ProjectName.empty()
-						? std::filesystem::path()
-						: std::filesystem::path("Projects") / m_ProjectName;
+					options.ProjectPath = m_ProjectPath.empty()
+						? std::filesystem::current_path()
+						: m_ProjectPath;
 					options.AppName = appNameStr;
 					options.CustomIconPath = m_ExportIconPathBuffer;
 					options.Gravity = m_ProjectGravity;
@@ -971,9 +978,9 @@ namespace Waffle {
 
 			ProjectExporter::ExportOptions options;
 			options.ProjectName = projName;
-			options.ProjectPath = m_ProjectName.empty()
-				? std::filesystem::path()
-				: std::filesystem::path("Projects") / m_ProjectName;
+			options.ProjectPath = m_ProjectPath.empty()
+				? std::filesystem::current_path()
+				: m_ProjectPath;
 			options.AppName = appNameStr;
 			options.CustomIconPath = m_ExportIconPathBuffer;
 			options.Gravity = m_ProjectGravity;
@@ -1085,9 +1092,9 @@ namespace Waffle {
 
 			ProjectExporter::ExportOptions options;
 			options.ProjectName = projName;
-			options.ProjectPath = m_ProjectName.empty()
-				? std::filesystem::path()
-				: std::filesystem::path("Projects") / m_ProjectName;
+			options.ProjectPath = m_ProjectPath.empty()
+				? std::filesystem::current_path()
+				: m_ProjectPath;
 			options.AppName = appNameStr;
 			options.CustomIconPath = m_ExportIconPathBuffer;
 			options.Gravity = m_ProjectGravity;
@@ -1304,7 +1311,10 @@ namespace Waffle {
 
 	void EditorLayer::CreateProject(const std::string& projectName)
 	{
-		std::filesystem::path projectPath = std::filesystem::path("Projects") / projectName;
+		std::filesystem::path baseProjectsDir = "Projects";
+		if (!m_ProjectPath.empty())
+			baseProjectsDir = m_ProjectPath.parent_path();
+		std::filesystem::path projectPath = baseProjectsDir / projectName;
 		std::filesystem::path defaultProjPath = FindDefaultProjectPath();
 		std::error_code ec;
 
@@ -1346,8 +1356,13 @@ namespace Waffle {
 			assetsPath = projectPath;
 
 		m_ProjectName = projectPath.filename().string();
+		m_ProjectPath = std::filesystem::absolute(projectPath);
 		m_ContentBrowserPanel.SetAssetDirectory(assetsPath);
 		LuaScriptEngine::SetAssetPath(assetsPath);
+		SetActiveAssetDirectory(assetsPath);
+
+		std::error_code ec;
+		std::filesystem::current_path(projectPath, ec);
 
 		// Load saved project settings (gravity, name, icon, scene order)
 		std::filesystem::path wfpPath = assetsPath / "project.wfp";
@@ -1542,9 +1557,11 @@ namespace Waffle {
 
 	void EditorLayer::RebuildSceneList()
 	{
-		std::filesystem::path assetsPath = m_ProjectName.empty()
-			? std::filesystem::path("Assets")
-			: std::filesystem::path("Projects") / m_ProjectName / "Assets";
+		std::filesystem::path assetsPath = g_AssetPath;
+		if (assetsPath.empty() || !std::filesystem::exists(assetsPath))
+			assetsPath = GetActiveAssetDirectory();
+		if (assetsPath.empty() || !std::filesystem::exists(assetsPath))
+			assetsPath = "Assets";
 
 		// Scan for all .waffle files
 		std::vector<std::filesystem::path> found;
@@ -1590,13 +1607,29 @@ namespace Waffle {
 	// Project settings persistence
 	// -------------------------------------------------------------------------
 
+	static std::filesystem::path GetEditorConfigPath()
+	{
+#if defined(_WIN32)
+		char buffer[MAX_PATH];
+		GetModuleFileNameA(NULL, buffer, MAX_PATH);
+		std::filesystem::path exeDir = std::filesystem::path(buffer).parent_path();
+		return exeDir / "editor_config.yaml";
+#else
+		return "editor_config.yaml";
+#endif
+	}
+
 	void EditorLayer::SaveProjectSettings()
 	{
 		if (m_ProjectName.empty())
 			return;
 
-		std::filesystem::path wfpPath =
-			std::filesystem::path("Projects") / m_ProjectName / "Assets" / "project.wfp";
+		std::filesystem::path assetsDir = g_AssetPath;
+		if (assetsDir.empty()) assetsDir = GetActiveAssetDirectory();
+		if (assetsDir.empty() && !m_ProjectPath.empty()) assetsDir = m_ProjectPath / "Assets";
+		if (assetsDir.empty()) assetsDir = "Assets";
+
+		std::filesystem::path wfpPath = assetsDir / "project.wfp";
 
 		std::string appName = m_ExportAppNameBuffer[0] != '\0'
 			? std::string(m_ExportAppNameBuffer) : m_ProjectName;
@@ -1623,16 +1656,14 @@ namespace Waffle {
 
 	void EditorLayer::SaveEditorConfig()
 	{
-		std::filesystem::path configPath = std::filesystem::path("Projects") / "editor_config.yaml";
-		std::filesystem::create_directories("Projects");
+		std::filesystem::path configPath = GetEditorConfigPath();
 
 		YAML::Emitter out;
 		out << YAML::BeginMap;
 		out << YAML::Key << "EditorConfig" << YAML::Value << YAML::BeginMap;
-		if (!m_ProjectName.empty())
+		if (!m_ProjectPath.empty())
 		{
-			std::filesystem::path projPath = std::filesystem::path("Projects") / m_ProjectName;
-			out << YAML::Key << "LastOpenedProject" << YAML::Value << projPath.string();
+			out << YAML::Key << "LastOpenedProject" << YAML::Value << m_ProjectPath.string();
 		}
 		if (!m_EditorScenePath.empty())
 		{
@@ -1647,7 +1678,7 @@ namespace Waffle {
 
 	void EditorLayer::LoadEditorConfig()
 	{
-		std::filesystem::path configPath = std::filesystem::path("Projects") / "editor_config.yaml";
+		std::filesystem::path configPath = GetEditorConfigPath();
 		bool opened = false;
 		if (std::filesystem::exists(configPath))
 		{
@@ -1685,9 +1716,9 @@ namespace Waffle {
 
 	void EditorLayer::SetCurrentProjectAsDefaultTemplate()
 	{
-		if (m_ProjectName.empty()) return;
-		std::filesystem::path currentPath = std::filesystem::path("Projects") / m_ProjectName;
-		std::filesystem::path defaultPath = std::filesystem::path("Projects") / "DefaultProject";
+		if (m_ProjectPath.empty()) return;
+		std::filesystem::path currentPath = m_ProjectPath;
+		std::filesystem::path defaultPath = currentPath.parent_path() / "DefaultProject";
 		if (!std::filesystem::exists(currentPath)) return;
 
 		SaveScene();

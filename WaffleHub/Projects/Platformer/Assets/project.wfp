@@ -1,0 +1,6 @@
+Project:
+  Name: DefaultProject
+  Gravity: -20
+  IconPath: ""
+  Scenes:
+    - Projects\Platformer\Assets\Scenes\Scene.waffle
