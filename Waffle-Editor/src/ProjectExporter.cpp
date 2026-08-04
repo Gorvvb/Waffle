@@ -2,7 +2,7 @@
 #include "AssetPacker.h"
 #include "Waffle/Core/Log.h"
 
-#if defined(_WIN32)
+#if defined(WF_PLATFORM_WINDOWS)
 	#include <windows.h>
 	#include <shlobj.h>
 #endif
@@ -21,7 +21,7 @@
 
 namespace Waffle {
 
-#if defined(_WIN32)
+#if defined(WF_PLATFORM_WINDOWS)
 
 #pragma pack(push, 1)
 struct ICONDIRHEADER {
@@ -350,13 +350,13 @@ static bool EmbedIconInExecutable(const std::filesystem::path& exePath, const st
 	return success;
 }
 
-#endif // _WIN32
+#endif
 
 	static std::filesystem::path FindRuntimeExecutable()
 	{
 		std::vector<std::filesystem::path> candidates;
 
-#if defined(_WIN32)
+#if defined(WF_PLATFORM_WINDOWS)
 		char buffer[MAX_PATH];
 		GetModuleFileNameA(NULL, buffer, MAX_PATH);
 		std::filesystem::path exeDir = std::filesystem::path(buffer).parent_path();
@@ -473,7 +473,7 @@ static bool EmbedIconInExecutable(const std::filesystem::path& exePath, const st
 			}
 		}
 
-#if defined(_WIN32)
+#if defined(WF_PLATFORM_WINDOWS)
 		char modBuffer[MAX_PATH];
 		GetModuleFileNameA(NULL, modBuffer, MAX_PATH);
 		std::filesystem::path exeDir = std::filesystem::path(modBuffer).parent_path();
@@ -567,12 +567,31 @@ static bool EmbedIconInExecutable(const std::filesystem::path& exePath, const st
 
 		if (!options.CustomIconPath.empty() && std::filesystem::exists(options.CustomIconPath, ec))
 		{
-			// User explicitly picked an icon - use it
 			chosenIconPath = options.CustomIconPath;
+		}
+		else if (std::filesystem::exists(activeProjectPath / "Assets/icon.ico", ec))
+		{
+			chosenIconPath = activeProjectPath / "Assets/icon.ico";
+		}
+		else if (std::filesystem::exists(activeProjectPath / "Assets/Icon.ico", ec))
+		{
+			chosenIconPath = activeProjectPath / "Assets/Icon.ico";
+		}
+		else if (std::filesystem::exists(activeProjectPath / "Assets/icon.png", ec))
+		{
+			chosenIconPath = activeProjectPath / "Assets/icon.png";
+		}
+		else if (std::filesystem::exists(activeProjectPath / "Assets/Icon.png", ec))
+		{
+			chosenIconPath = activeProjectPath / "Assets/Icon.png";
 		}
 		else if (std::filesystem::exists(activeProjectPath / "Assets/images/logo.png", ec))
 		{
 			chosenIconPath = activeProjectPath / "Assets/images/logo.png";
+		}
+		else if (std::filesystem::exists(activeProjectPath / "Assets/Images/logo.png", ec))
+		{
+			chosenIconPath = activeProjectPath / "Assets/Images/logo.png";
 		}
 		// If neither condition matched, chosenIconPath stays empty and the
 		// Waffle logo that was compiled into Waffle-Runtime.exe is kept as-is.
@@ -587,7 +606,7 @@ static bool EmbedIconInExecutable(const std::filesystem::path& exePath, const st
 			if (!ec)
 				relativeIconPath = "Assets/app_icon" + chosenIconPath.extension().string();
 
-#if defined(_WIN32)
+#if defined(WF_PLATFORM_WINDOWS)
 			// Replace the PE icon resource so Explorer / taskbar show the right icon.
 			// Purge and write happen inside one BeginUpdateResource session.
 			if (!EmbedIconInExecutable(targetExePath, chosenIconPath))

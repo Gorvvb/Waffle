@@ -1609,7 +1609,7 @@ namespace Waffle {
 
 	static std::filesystem::path GetEditorConfigPath()
 	{
-#if defined(_WIN32)
+#if defined(WF_PLATFORM_WINDOWS)
 		char buffer[MAX_PATH];
 		GetModuleFileNameA(NULL, buffer, MAX_PATH);
 		std::filesystem::path exeDir = std::filesystem::path(buffer).parent_path();

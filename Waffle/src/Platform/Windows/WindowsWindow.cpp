@@ -11,6 +11,9 @@
 #include "Platform/OpenGL/OpenGLContext.h"
 #include "Platform/Vulkan/VulkanContext.h"
 
+#include "Waffle/Core/VFS.h"
+#include "Waffle/Core/Buffer.h"
+
 #include "stb_image.h"
 
 // Only include glad for OpenGL builds
@@ -229,25 +232,39 @@ namespace Waffle {
 
 	void WindowsWindow::SetIcon(const std::string& path)
 	{
-		std::string iconPath = path;
-		if (!std::filesystem::exists(iconPath))
+		stbi_uc* pixels = nullptr;
+		int width = 0, height = 0, channels = 0;
+
+		Buffer iconBuffer;
+		if (VFS::Exists(path))
+			iconBuffer = VFS::ReadFile(path);
+
+		if (iconBuffer && iconBuffer.Size > 0)
 		{
-			std::filesystem::path resolved = ResolveTexturePath(path);
-			std::error_code ec;
-			if (std::filesystem::exists(resolved, ec))
-				iconPath = resolved.string();
-			else if (std::filesystem::exists("Resources/Icons/logo.png", ec))
-				iconPath = "Resources/Icons/logo.png";
-			else if (std::filesystem::exists("Waffle-Editor/Assets/images/logo.png", ec))
-				iconPath = "Waffle-Editor/Resources/Icons/logo.png";
-			else if (std::filesystem::exists("../Waffle-Editor/Resources/Icons/logo.png", ec))
-				iconPath = "../Waffle-Editor/Resources/Icons/logo.png";
-			else if (std::filesystem::exists("Resources/Icons/Icon.ico", ec))
-				iconPath = "Resources/Icons/Icon.ico";
+			pixels = stbi_load_from_memory((const stbi_uc*)iconBuffer.Data, (int)iconBuffer.Size, &width, &height, &channels, 4);
+		}
+		else
+		{
+			std::string iconPath = path;
+			if (!std::filesystem::exists(iconPath))
+			{
+				std::filesystem::path resolved = ResolveTexturePath(path);
+				std::error_code ec;
+				if (std::filesystem::exists(resolved, ec))
+					iconPath = resolved.string();
+				else if (std::filesystem::exists("Resources/Icons/logo.png", ec))
+					iconPath = "Resources/Icons/logo.png";
+				else if (std::filesystem::exists("Waffle-Editor/Assets/images/logo.png", ec))
+					iconPath = "Waffle-Editor/Resources/Icons/logo.png";
+				else if (std::filesystem::exists("../Waffle-Editor/Resources/Icons/logo.png", ec))
+					iconPath = "../Waffle-Editor/Resources/Icons/logo.png";
+				else if (std::filesystem::exists("Resources/Icons/Icon.ico", ec))
+					iconPath = "Resources/Icons/Icon.ico";
+			}
+
+			pixels = stbi_load(iconPath.c_str(), &width, &height, &channels, 4);
 		}
 
-		int width, height, channels;
-		stbi_uc* pixels = stbi_load(iconPath.c_str(), &width, &height, &channels, 4);
 		if (pixels)
 		{
 			GLFWimage image;
@@ -256,7 +273,7 @@ namespace Waffle {
 			image.pixels = pixels;
 			glfwSetWindowIcon(m_Window, 1, &image);
 			stbi_image_free(pixels);
-			WF_CORE_INFO("Set window icon: {0}", iconPath);
+			WF_CORE_INFO("Set window icon successfully");
 		}
 		else
 		{

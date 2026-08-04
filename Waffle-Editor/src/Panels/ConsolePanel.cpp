@@ -23,7 +23,7 @@ namespace Waffle {
 		auto in_time_t = std::chrono::system_clock::to_time_t(now);
 		std::stringstream ss;
 		tm time_info;
-#if defined(_WIN32)
+#if defined(WF_PLATFORM_WINDOWS)
 		localtime_s(&time_info, &in_time_t);
 		ss << std::put_time(&time_info, "%H:%M:%S");
 #else
