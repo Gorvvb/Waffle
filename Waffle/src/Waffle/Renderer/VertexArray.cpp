@@ -15,9 +15,9 @@ namespace Waffle {
 			WF_CORE_ASSERT(false, "RendererAPI::None is currently not supported");
 			return nullptr;
 		case RendererAPI::API::OpenGL:
-			return std::make_shared<OpenGLVertexArray>();
+			return CreateRef<OpenGLVertexArray>();
 		case RendererAPI::API::Vulkan:
-			return std::make_shared<VulkanVertexArray>();
+			return CreateRef<VulkanVertexArray>();
 		}
 
 		WF_CORE_ASSERT(false, "Unknown RendererAPI");

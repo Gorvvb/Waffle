@@ -3,9 +3,11 @@
 #include <memory>
 #include "Buffer.h"
 
+#include "Waffle/Core/Ref.h"
+
 namespace Waffle {
 
-	class VertexArray
+	class VertexArray : public RefCounted
 	{
 	public:
 		virtual ~VertexArray() {}

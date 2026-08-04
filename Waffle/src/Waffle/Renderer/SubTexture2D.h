@@ -4,9 +4,11 @@
 #include <glm/glm.hpp>
 #include <memory>
 
+#include "Waffle/Core/Ref.h"
+
 namespace Waffle {
 
-	class SubTexture2D
+	class SubTexture2D : public RefCounted
 	{
 	public:
 		SubTexture2D(const Ref<Texture2D>& texture, const glm::vec2& min, const glm::vec2& max);

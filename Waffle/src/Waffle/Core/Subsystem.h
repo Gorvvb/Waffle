@@ -9,9 +9,11 @@
 #include <unordered_map>
 #include <typeindex>
 
+#include "Waffle/Core/Ref.h"
+
 namespace Waffle {
 
-	class Subsystem
+	class Subsystem : public RefCounted
 	{
 	public:
 		virtual ~Subsystem() = default;
@@ -40,7 +42,7 @@ namespace Waffle {
 			std::type_index typeIdx(typeid(T));
 			if (s_SubsystemsMap.find(typeIdx) != s_SubsystemsMap.end())
 			{
-				return std::static_pointer_cast<T>(s_SubsystemsMap[typeIdx]);
+				return s_SubsystemsMap[typeIdx].As<T>();
 			}
 
 			Ref<T> subsystem = CreateRef<T>(std::forward<Args>(args)...);
@@ -62,7 +64,7 @@ namespace Waffle {
 			auto it = s_SubsystemsMap.find(typeIdx);
 			if (it != s_SubsystemsMap.end())
 			{
-				return std::static_pointer_cast<T>(it->second);
+				return it->second.As<T>();
 			}
 			return nullptr;
 		}

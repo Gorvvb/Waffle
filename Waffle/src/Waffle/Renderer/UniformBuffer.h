@@ -2,9 +2,11 @@
 
 #include "Waffle/Core/Base.h"
 
+#include "Waffle/Core/Ref.h"
+
 namespace Waffle {
 
-	class UniformBuffer
+	class UniformBuffer : public RefCounted
 	{
 	public:
 		virtual ~UniformBuffer() {}

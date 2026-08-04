@@ -3,9 +3,11 @@
 #include <string>
 #include <glm/glm.hpp>
 
+#include "Waffle/Core/Ref.h"
+
 namespace Waffle {
 
-	class Shader
+	class Shader : public RefCounted
 	{
 	private:
 		uint32_t m_RendererID;

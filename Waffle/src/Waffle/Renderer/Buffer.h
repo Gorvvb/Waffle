@@ -101,7 +101,9 @@ namespace Waffle {
 		}
 	};
 
-	class VertexBuffer
+#include "Waffle/Core/Ref.h"
+
+	class VertexBuffer : public RefCounted
 	{
 	public:
 		virtual ~VertexBuffer() {}
@@ -119,7 +121,7 @@ namespace Waffle {
 	};
 
 	// Currently only supports 32-bit index buffers
-	class IndexBuffer
+	class IndexBuffer : public RefCounted
 	{
 	public:
 		virtual ~IndexBuffer() {}

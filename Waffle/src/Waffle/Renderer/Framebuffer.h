@@ -47,7 +47,9 @@ namespace Waffle {
 		bool SwapChainTarget = false;
 	};
 
-	class Framebuffer
+#include "Waffle/Core/Ref.h"
+
+	class Framebuffer : public RefCounted
 	{
 	public:
 		virtual ~Framebuffer() = default;
