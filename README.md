@@ -7,12 +7,20 @@ Waffle is a 2D game engine under active development, targeting Windows.
 
 The project is in early development. Features are incomplete and the API is subject to change.
 
+## Requirements
+
+- Windows OS
+- Git
+- Visual Studio 2026
+
 ## Features
 
-- 2D game development
+- 2D game development & batch rendering
+- Animation and spritesheet systems
 - OpenGL and Vulkan rendering backends
-- Lua scripting
-- Extensible architecture
+- Multithreaded job system & event queue
+- Entity Component System (ECS) & Lua scripting
+- Integrated editor with scene hierarchy, content browser, and asset tools
 
 ## Building
 
@@ -24,14 +32,12 @@ git clone https://github.com/Gorvvb/Waffle.git --recursive
 
 Then run the following scripts in order:
 
-```
+```cmd
 Scripts/Setup.bat
 Scripts/Win-GenProjects.bat
 ```
 
-## Contributing
-
-External contributions are not accepted at this time.
+Open the generated project in Visual Studio and build.
 
 ## License
 
