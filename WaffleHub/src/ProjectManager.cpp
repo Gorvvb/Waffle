@@ -246,15 +246,19 @@ namespace Waffle {
 
 	std::filesystem::path ProjectManager::GetDefaultProjectsDirectory()
 	{
+		if (std::filesystem::exists("../Projects"))
+			return std::filesystem::absolute("../Projects");
 		return std::filesystem::absolute("Projects");
 	}
 
 	std::filesystem::path ProjectManager::GetEditorExecutablePath()
 	{
 		std::vector<std::filesystem::path> candidates = {
-			"bin/Debug-windows-x86_64/Waffle-Editor/Waffle-Editor.exe",
+			"../Waffle-Editor/Waffle-Editor.exe",
+			"Waffle-Editor/Waffle-Editor.exe",
 			"bin/Release-windows-x86_64/Waffle-Editor/Waffle-Editor.exe",
 			"bin/Dist-windows-x86_64/Waffle-Editor/Waffle-Editor.exe",
+			"bin/Debug-windows-x86_64/Waffle-Editor/Waffle-Editor.exe",
 			"../bin/Debug-windows-x86_64/Waffle-Editor/Waffle-Editor.exe",
 			"Waffle-Editor.exe"
 		};

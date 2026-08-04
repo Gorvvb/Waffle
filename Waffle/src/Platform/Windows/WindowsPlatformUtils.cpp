@@ -6,8 +6,10 @@
 #include <shlobj.h>
 #include <shobjidl.h>
 #include <shellapi.h>
+#ifdef WF_PLATFORM_WINDOWS
+	#define GLFW_EXPOSE_NATIVE_WIN32
+#endif
 #include <GLFW/glfw3.h>
-#define GLFW_EXPOSE_NATIVE_WIN32
 #include <GLFW/glfw3native.h>
 
 namespace Waffle {

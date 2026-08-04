@@ -10,7 +10,8 @@ project "WaffleHub"
 	files
 	{
 		"src/**.h",
-		"src/**.cpp"
+		"src/**.cpp",
+		"../Waffle-Editor/Resources/Icon.rc"
 	}
 
 	defines
