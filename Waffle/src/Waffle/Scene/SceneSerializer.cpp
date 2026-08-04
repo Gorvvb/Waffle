@@ -1,6 +1,7 @@
 #include "wfpch.h"
 #include "SceneSerializer.h"
 #include "Waffle/Scripting/LuaScriptEngine.h"
+#include "Waffle/Core/VFS.h"
 
 #include "Entity.h"
 #include "Components.h"
@@ -459,7 +460,15 @@ namespace Waffle {
 		YAML::Node data;
 		try
 		{
-			data = YAML::LoadFile(filepath);
+			std::string yamlContent = VFS::ReadFileAsString(filepath);
+			if (!yamlContent.empty())
+			{
+				data = YAML::Load(yamlContent);
+			}
+			else
+			{
+				data = YAML::LoadFile(filepath);
+			}
 		}
 		catch (YAML::ParserException e)
 		{
@@ -811,10 +820,17 @@ namespace Waffle {
 	{
 		if (!scene) return {};
 
+		std::string content = VFS::ReadFileAsString(filepath);
+		if (content.empty())
+		{
+			WF_CORE_ERROR("Failed to load prefab file '{0}'", filepath);
+			return {};
+		}
+
 		YAML::Node data;
 		try
 		{
-			data = YAML::LoadFile(filepath);
+			data = YAML::Load(content);
 		}
 		catch (...)
 		{

@@ -3,6 +3,7 @@
 #include "VulkanContext.h"
 #include "VulkanUtils.h"
 
+#include "Waffle/Core/VFS.h"
 #include "stb_image.h"
 
 // ImGui Vulkan backend (for AddTexture)
@@ -34,10 +35,15 @@ namespace Waffle {
 
 		stbi_set_flip_vertically_on_load(1);
 		int width = 0, height = 0, channels = 0;
-		stbi_uc* data = stbi_load(resolvedPath.string().c_str(), &width, &height, &channels, STBI_rgb_alpha);
-		if (!data && resolvedPath != path)
+		stbi_uc* data = nullptr;
+
+		Buffer fileBuffer = VFS::ReadFile(resolvedPath);
+		if (!fileBuffer && resolvedPath != path)
+			fileBuffer = VFS::ReadFile(path);
+
+		if (fileBuffer)
 		{
-			data = stbi_load(path.c_str(), &width, &height, &channels, STBI_rgb_alpha);
+			data = stbi_load_from_memory(fileBuffer.Data, static_cast<int>(fileBuffer.Size), &width, &height, &channels, STBI_rgb_alpha);
 		}
 
 		if (!data)

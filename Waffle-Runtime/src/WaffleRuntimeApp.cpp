@@ -1,5 +1,6 @@
 #include <Waffle.h>
 #include <Waffle/Core/EntryPoint.h>
+#include <Waffle/Core/VFS.h>
 #include "RuntimeLayer.h"
 
 #include <yaml-cpp/yaml.h>
@@ -27,11 +28,36 @@ namespace Waffle {
 		spec.Name = "Waffle Game";
 		spec.CommandLineArgs = args;
 
-		if (std::filesystem::exists("Assets/project.wfp"))
+		// 1. Check for and mount VFS archive (.wpack)
+		if (std::filesystem::exists("game.wpack"))
+		{
+			VFS::MountArchive("game.wpack");
+		}
+		else if (std::filesystem::exists("Assets/game.wpack"))
+		{
+			VFS::MountArchive("Assets/game.wpack");
+		}
+		else
+		{
+			// Check for any .wpack file in executable root directory
+			std::error_code ec;
+			for (const auto& entry : std::filesystem::directory_iterator(".", ec))
+			{
+				if (entry.is_regular_file(ec) && entry.path().extension() == ".wpack")
+				{
+					VFS::MountArchive(entry.path());
+					break;
+				}
+			}
+		}
+
+		// 2. Read project config via VFS / file
+		std::string wfpContent = VFS::ReadFileAsString("Assets/project.wfp");
+		if (!wfpContent.empty())
 		{
 			try
 			{
-				YAML::Node data = YAML::LoadFile("Assets/project.wfp");
+				YAML::Node data = YAML::Load(wfpContent);
 				auto project = data["Project"];
 				if (project)
 				{

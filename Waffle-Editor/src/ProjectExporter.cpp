@@ -1,4 +1,5 @@
 #include "ProjectExporter.h"
+#include "AssetPacker.h"
 #include "Waffle/Core/Log.h"
 
 #if defined(_WIN32)
@@ -651,6 +652,24 @@ static bool EmbedIconInExecutable(const std::filesystem::path& exePath, const st
 
 		std::ofstream fout(targetAssets / "project.wfp");
 		fout << out.c_str();
+		fout.close();
+
+		// 11. Pack all exported assets into game.wpack
+		AssetPackerOptions packOptions;
+		packOptions.SourceDirectory = targetAssets;
+		packOptions.OutputWpackPath = exportsDir / "game.wpack";
+
+		std::string packError;
+		if (AssetPacker::CreateArchive(packOptions, packError))
+		{
+			WF_CORE_INFO("ProjectExporter: Assets successfully packed into game.wpack.");
+			// Clean up raw loose Assets directory so release export contains only game.wpack
+			std::filesystem::remove_all(targetAssets, ec);
+		}
+		else
+		{
+			WF_CORE_WARN("ProjectExporter: Asset packing failed: {0}", packError);
+		}
 
 		WF_CORE_INFO("Successfully exported project '{0}' to {1}", appName, targetExePath.string());
 		return true;
