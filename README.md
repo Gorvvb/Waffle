@@ -15,11 +15,11 @@ The project is in early development. Features are incomplete and the API is subj
 
 ## Features
 
-- 2D game development & batch rendering
+- 2D game development and batch rendering
 - Animation and spritesheet systems
 - OpenGL and Vulkan rendering backends
-- Multithreaded job system & event queue
-- Entity Component System (ECS) & Lua scripting
+- Multithreaded job system and event queue
+- Entity Component System (ECS) and Lua scripting
 - Integrated editor with scene hierarchy, content browser, and asset tools
 
 ## Building
