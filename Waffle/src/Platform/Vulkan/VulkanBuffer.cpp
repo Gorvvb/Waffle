@@ -16,7 +16,7 @@ namespace Waffle {
 		auto* ctx = VulkanContext::Get();
 		VmaAllocator allocator = ctx->GetVmaAllocator();
 
-		// Host-visible (dynamic) buffer — mapped persistently via VMA
+		// Host-visible (dynamic) buffer - mapped persistently via VMA
 		VulkanUtils::CreateBuffer(allocator,
 			size,
 			VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,

@@ -1,12 +1,20 @@
 #pragma once
 
 #include "Waffle/Audio/AudioBackend.h"
+#include <unordered_map>
+#include <mutex>
+#include <memory>
 
 namespace Waffle {
 
-	class WindowsAudioBackend : public AudioBackend
+	struct MiniAudioData;
+
+	class MiniAudioBackend : public AudioBackend
 	{
 	public:
+		MiniAudioBackend();
+		virtual ~MiniAudioBackend();
+
 		virtual void Init() override;
 		virtual void Shutdown() override;
 
@@ -25,6 +33,9 @@ namespace Waffle {
 
 		virtual void SetListenerPosition(float x, float y, float z = 0.0f) override;
 		virtual void SetSoundPosition(const std::string& filepath, float x, float y, float z = 0.0f) override;
+
+	private:
+		std::unique_ptr<MiniAudioData> m_Data;
 	};
 
 }

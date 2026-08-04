@@ -218,7 +218,7 @@ namespace Waffle {
 	}
 
 	// -----------------------------------------------------------------------
-	// SwapBuffers — end frame, submit, present, advance frame index
+	// SwapBuffers - end frame, submit, present, advance frame index
 	// -----------------------------------------------------------------------
 	void VulkanContext::SwapBuffers()
 	{

@@ -1,12 +1,8 @@
 #include "wfpch.h"
 #include "WindowsAudioBackend.h"
-#include "Waffle/Core/Log.h"
-#include "Waffle/Scripting/LuaScriptEngine.h"
 
-#include <filesystem>
 #include <windows.h>
 #include <mmsystem.h>
-
 #pragma comment(lib, "winmm.lib")
 
 #if defined(PlaySound)
@@ -15,120 +11,53 @@
 
 namespace Waffle {
 
-	static std::filesystem::path ResolveAudioPath(const std::string& filepath)
+	void WindowsAudioBackend::Init() {}
+	void WindowsAudioBackend::Shutdown() {}
+
+	bool WindowsAudioBackend::PlaySound(const std::string& filepath, float volume, float pitch, bool loop, bool spatial, float x, float y, float minDistance, float maxDistance)
 	{
-		std::filesystem::path p(filepath);
-
-		// 1. Direct path check (as-is)
-		if (std::filesystem::exists(p))
-			return p;
-
-		// 2. Relative to active project AssetPath
-		std::filesystem::path assetPath = LuaScriptEngine::GetAssetPath() / p;
-		if (std::filesystem::exists(assetPath))
-			return assetPath;
-
-		return p;
-	}
-
-	WindowsAudioBackend::WindowsAudioBackend()
-	{
-		Init();
-	}
-
-	WindowsAudioBackend::~WindowsAudioBackend()
-	{
-		Shutdown();
-	}
-
-	void WindowsAudioBackend::Init()
-	{
-		WF_CORE_INFO("WindowsAudioBackend initialized (WinMM MCI Engine)");
-	}
-
-	void WindowsAudioBackend::Shutdown()
-	{
-		StopAllSounds();
-	}
-
-	bool WindowsAudioBackend::PlaySound(const std::string& filepath, float volume, bool loop)
-	{
-		std::lock_guard<std::mutex> lock(m_AudioMutex);
-
-		std::filesystem::path resolved = ResolveAudioPath(filepath);
-
-		if (!std::filesystem::exists(resolved))
-		{
-			WF_CORE_WARN("WindowsAudioBackend: Audio file not found '{0}' (Resolved: '{1}')", filepath, resolved.string());
-			return false;
-		}
-
-		std::string resolvedStr = resolved.string();
-		std::string alias = "audio_" + std::to_string(std::hash<std::string>{}(filepath));
-
-		std::string closeCmd = "close " + alias;
-		mciSendStringA(closeCmd.c_str(), NULL, 0, NULL);
-
-		std::string openCmd = "open \"" + resolvedStr + "\" type mpegvideo alias " + alias;
-		MCIERROR err = mciSendStringA(openCmd.c_str(), NULL, 0, NULL);
-		if (err != 0)
-		{
-			openCmd = "open \"" + resolvedStr + "\" alias " + alias;
-			err = mciSendStringA(openCmd.c_str(), NULL, 0, NULL);
-		}
-
-		if (err != 0)
-		{
-			WF_CORE_ERROR("WindowsAudioBackend: Failed to open audio '{0}' (Resolved: '{1}'), MCI error code: {2}", filepath, resolvedStr, err);
-			return false;
-		}
-
-		std::string playCmd = "play " + alias + " from 0";
-		if (loop) playCmd += " repeat";
-		mciSendStringA(playCmd.c_str(), NULL, 0, NULL);
-
-		m_SoundVolumes[filepath] = volume;
-		SetSoundVolume(filepath, volume);
-
-		return true;
+		DWORD flags = SND_FILENAME | SND_ASYNC;
+		if (loop) flags |= SND_LOOP;
+		return PlaySoundA(filepath.c_str(), NULL, flags) != FALSE;
 	}
 
 	void WindowsAudioBackend::StopSound(const std::string& filepath)
 	{
-		std::lock_guard<std::mutex> lock(m_AudioMutex);
-		std::string alias = "audio_" + std::to_string(std::hash<std::string>{}(filepath));
-		std::string stopCmd = "stop " + alias;
-		mciSendStringA(stopCmd.c_str(), NULL, 0, NULL);
-		std::string closeCmd = "close " + alias;
-		mciSendStringA(closeCmd.c_str(), NULL, 0, NULL);
+		PlaySoundA(NULL, NULL, 0);
+	}
+
+	void WindowsAudioBackend::PauseSound(const std::string& filepath)
+	{
+		StopSound(filepath);
+	}
+
+	void WindowsAudioBackend::ResumeSound(const std::string& filepath)
+	{
+		PlaySound(filepath);
+	}
+
+	bool WindowsAudioBackend::IsSoundPlaying(const std::string& filepath)
+	{
+		return false;
 	}
 
 	void WindowsAudioBackend::StopAllSounds()
 	{
-		std::lock_guard<std::mutex> lock(m_AudioMutex);
-		mciSendStringA("close all", NULL, 0, NULL);
+		PlaySoundA(NULL, NULL, 0);
 	}
 
-	void WindowsAudioBackend::SetSoundVolume(const std::string& filepath, float volume)
+	void WindowsAudioBackend::PauseAllSounds()
 	{
-		m_SoundVolumes[filepath] = volume;
-		float effectiveVolume = volume * m_MasterVolume;
-		int mciVol = (int)(effectiveVolume * 1000.0f);
-		if (mciVol < 0) mciVol = 0;
-		if (mciVol > 1000) mciVol = 1000;
-
-		std::string alias = "audio_" + std::to_string(std::hash<std::string>{}(filepath));
-		std::string setVolCmd = "setaudio " + alias + " volume to " + std::to_string(mciVol);
-		mciSendStringA(setVolCmd.c_str(), NULL, 0, NULL);
+		StopAllSounds();
 	}
 
-	void WindowsAudioBackend::SetMasterVolume(float volume)
-	{
-		m_MasterVolume = volume;
-		for (auto& [path, vol] : m_SoundVolumes)
-		{
-			SetSoundVolume(path, vol);
-		}
-	}
+	void WindowsAudioBackend::ResumeAllSounds() {}
+
+	void WindowsAudioBackend::SetSoundVolume(const std::string& filepath, float volume) {}
+	void WindowsAudioBackend::SetSoundPitch(const std::string& filepath, float pitch) {}
+	void WindowsAudioBackend::SetMasterVolume(float volume) {}
+
+	void WindowsAudioBackend::SetListenerPosition(float x, float y, float z) {}
+	void WindowsAudioBackend::SetSoundPosition(const std::string& filepath, float x, float y, float z) {}
 
 }

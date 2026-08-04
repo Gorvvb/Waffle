@@ -47,7 +47,7 @@ namespace Waffle {
 
 		auto& animator = m_SelectedEntity.GetComponent<AnimatorComponent>();
 
-		// Top Toolbar — Clip Selector & Playback Controls
+		// Top Toolbar - Clip Selector & Playback Controls
 		ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(6, 6));
 
 		if (ImGui::Button(animator.IsPlaying ? " Pause " : " Play "))
@@ -214,7 +214,7 @@ namespace Waffle {
 					const char* dataStr = (const char*)payload->Data;
 					if (dataStr && payload->DataSize > 1)
 					{
-						// Payload is "texturePath|minX,minY,maxX,maxY" — store as keyframe path.
+						// Payload is "texturePath|minX,minY,maxX,maxY" - store as keyframe path.
 						// RefreshSubTextures handles the pipe format directly.
 						clip.KeyframeImagePaths[i] = std::string(dataStr);
 						clip.RefreshSubTextures();

@@ -16,7 +16,7 @@ namespace Waffle {
 	class VulkanVertexBuffer : public VertexBuffer
 	{
 	public:
-		// Dynamic (no initial data — writable each frame)
+		// Dynamic (no initial data - writable each frame)
 		explicit VulkanVertexBuffer(uint32_t size);
 		// Static (initial data uploaded once)
 		VulkanVertexBuffer(float* vertices, uint32_t size);

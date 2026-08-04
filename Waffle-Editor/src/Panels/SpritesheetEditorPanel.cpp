@@ -270,7 +270,7 @@ namespace Waffle {
                 m_TexturePath.filename().string().c_str(),
                 m_Texture->GetWidth(), m_Texture->GetHeight());
         else
-            ImGui::TextDisabled("No texture loaded — drag a PNG here or use Browse");
+            ImGui::TextDisabled("No texture loaded - drag a PNG here or use Browse");
 
         ImGui::SameLine(ImGui::GetContentRegionAvail().x - 90.0f);
         if (ImGui::Button("Save Asset") && m_Texture)
@@ -378,7 +378,7 @@ namespace Waffle {
                 childTL.y + (availH - displayH) * 0.5f + m_CanvasOffset.y
             };
 
-            // Coordinate helpers as lambdas — ImVec2 is available here
+            // Coordinate helpers as lambdas - ImVec2 is available here
             auto PixelToScreen = [&](const glm::vec2& px) -> ImVec2
                 {
                     return {
@@ -483,7 +483,7 @@ namespace Waffle {
                 m_CanvasZoom = std::max(0.1f, std::min(m_CanvasZoom * factor, 8.0f));
             }
 
-            // Middle-mouse pan — store in glm::vec2, convert only when needed
+            // Middle-mouse pan - store in glm::vec2, convert only when needed
             if (hovered && ImGui::IsMouseClicked(ImGuiMouseButton_Middle))
             {
                 m_IsPanning = true;
@@ -585,7 +585,7 @@ namespace Waffle {
             }
 
             // Allow dropping a replacement texture / spritesheet onto the canvas.
-            // The interaction InvisibleButton above is also the drop target — a second
+            // The interaction InvisibleButton above is also the drop target - a second
             // overlapping button would steal hover and break canvas interaction.
             HandleContentBrowserDrop();
         }

@@ -255,7 +255,7 @@ namespace Waffle {
 		VulkanShader*      m_BoundShader      = nullptr;
 		VulkanVertexArray* m_BoundVertexArray = nullptr;
 
-		// Descriptor set slots [0..3] — updated by UBOs and textures
+		// Descriptor set slots [0..3] - updated by UBOs and textures
 		std::vector<VkDescriptorSet> m_BoundDescriptorSets;
 		std::unordered_map<uint32_t, UniformBufferBindInfo> m_BoundUniformBuffers;
 		std::unordered_map<uint32_t, TextureBindInfo>       m_BoundTextures;

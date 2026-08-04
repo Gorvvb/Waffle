@@ -14,6 +14,7 @@ Includedir["entt"] = "%{wks.location}/Waffle/vendor/entt/include"
 Includedir["yaml_cpp"] = "%{wks.location}/Waffle/vendor/yaml-cpp/include"
 Includedir["ImGuizmo"] = "%{wks.location}/Waffle/vendor/ImGuizmo/src"
 Includedir["Lua"] = "%{wks.location}/Waffle/vendor/lua"
+Includedir["miniaudio"] = "%{wks.location}/Waffle/vendor/miniaudio"
 
 Includedir["VulkanSDK"] = "%{VULKAN_SDK}/Include"
 Includedir["shaderc"] = "%{VULKAN_SDK}/Include/shaderc/"

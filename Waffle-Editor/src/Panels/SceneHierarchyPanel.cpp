@@ -49,7 +49,7 @@ namespace Waffle {
 				}
 			}
 
-			// Don't delete while a rename/text edit is in progress — Delete is a text-editing key there
+			// Don't delete while a rename/text edit is in progress - Delete is a text-editing key there
 			if (m_SelectionContext && !m_RenamingEntity && !ImGui::IsAnyItemActive() && ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows) && ImGui::IsKeyPressed(ImGuiKey_Delete))
 			{
 				m_Context->DestroyEntity(m_SelectionContext);
@@ -678,7 +678,7 @@ namespace Waffle {
 							std::filesystem::path path(pathStr); // relative to the asset root
 							if (path.extension() == ".lua")
 							{
-								// Keep the full asset-relative path — filename alone breaks scripts in subfolders
+								// Keep the full asset-relative path - filename alone breaks scripts in subfolders
 								std::string relStr = path.string();
 								if (relStr != currentScript)
 									component.Fields.erase(currentScript);

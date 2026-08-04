@@ -6,6 +6,7 @@
 #include "Waffle/Math/Math.h"
 
 #include "Waffle/Scripting/LuaScriptEngine.h"
+#include "Waffle/Audio/AudioEngine.h"
 #include <Box2D/include/box2d/box2d.h>
 
 #include <glm/gtc/matrix_transform.hpp>
@@ -720,8 +721,11 @@ namespace Waffle {
 				ImVec2(iconSize, iconSize), ImVec2(0, 0), ImVec2(1, 1),
 				ImVec4(0, 0, 0, 0), tintColor) && m_ActiveScene)
 			{
+				WF_CORE_INFO("[AudioPauseLog] Editor Toolbar Pause Clicked! SceneState is {0}, Current isPaused: {1}", (int)m_SceneState, isPaused);
 				if (m_SceneState == SceneState::Play)
 					m_ActiveScene->SetPaused(!isPaused);
+				else
+					AudioEngine::PauseAllSounds();
 			}
 		}
 
@@ -1013,7 +1017,7 @@ namespace Waffle {
 		ImGui::InputText("Application Name",
 			m_ExportAppNameBuffer, sizeof(m_ExportAppNameBuffer));
 
-		// Start scene — choosing a scene here rotates it to index 0 in m_SceneList,
+		// Start scene - choosing a scene here rotates it to index 0 in m_SceneList,
 		// so "Scenes[0]" and "StartScene" in project.wfp always agree.
 		if (!m_SceneList.empty())
 		{
@@ -1088,7 +1092,7 @@ namespace Waffle {
 			options.CustomIconPath = m_ExportIconPathBuffer;
 			options.Gravity = m_ProjectGravity;
 
-			// Index 0 is always the start scene — no separate SelectedScenePath ambiguity
+			// Index 0 is always the start scene - no separate SelectedScenePath ambiguity
 			if (!m_SceneList.empty())
 				options.SelectedScenePath = m_SceneList[0].string();
 
