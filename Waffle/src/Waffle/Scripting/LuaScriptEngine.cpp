@@ -1433,6 +1433,232 @@ namespace Waffle {
 		return 0;
 	}
 
+	static int Lua_IsSensor(lua_State* L)
+	{
+		uint32_t entityID = (uint32_t)lua_tonumber(L, 1);
+		Scene* scene = LuaScriptEngine::GetSceneContext();
+		if (scene)
+		{
+			Entity entity{ (entt::entity)entityID, scene };
+			if (entity)
+			{
+				if (entity.HasComponent<BoxCollider2DComponent>())
+				{ lua_pushboolean(L, entity.GetComponent<BoxCollider2DComponent>().IsTrigger ? 1 : 0); return 1; }
+				if (entity.HasComponent<CircleCollider2DComponent>())
+				{ lua_pushboolean(L, entity.GetComponent<CircleCollider2DComponent>().IsTrigger ? 1 : 0); return 1; }
+			}
+		}
+		lua_pushboolean(L, 0);
+		return 1;
+	}
+
+	static int Lua_SetSensor(lua_State* L)
+	{
+		uint32_t entityID = (uint32_t)lua_tonumber(L, 1);
+		bool isSensor = lua_toboolean(L, 2) != 0;
+		Scene* scene = LuaScriptEngine::GetSceneContext();
+		if (!scene) return 0;
+
+		Entity entity{ (entt::entity)entityID, scene };
+		if (!entity) return 0;
+
+		if (entity.HasComponent<BoxCollider2DComponent>())
+		{
+			auto& bc = entity.GetComponent<BoxCollider2DComponent>();
+			bc.IsTrigger = isSensor;
+			if (bc.RuntimeFixture)
+				((b2Fixture*)bc.RuntimeFixture)->SetSensor(isSensor);
+		}
+		if (entity.HasComponent<CircleCollider2DComponent>())
+		{
+			auto& cc = entity.GetComponent<CircleCollider2DComponent>();
+			cc.IsTrigger = isSensor;
+			if (cc.RuntimeFixture)
+				((b2Fixture*)cc.RuntimeFixture)->SetSensor(isSensor);
+		}
+		return 0;
+	}
+
+	static int Lua_SetGravityScale(lua_State* L)
+	{
+		uint32_t entityID = (uint32_t)lua_tonumber(L, 1);
+		float scale = (float)lua_tonumber(L, 2);
+		Scene* scene = LuaScriptEngine::GetSceneContext();
+		if (!scene) return 0;
+
+		Entity entity{ (entt::entity)entityID, scene };
+		if (entity && entity.HasComponent<Rigidbody2DComponent>())
+		{
+			auto& rb = entity.GetComponent<Rigidbody2DComponent>();
+			if (rb.RuntimeBody)
+			{
+				b2Body* body = (b2Body*)rb.RuntimeBody;
+				body->SetGravityScale(scale);
+			}
+		}
+		return 0;
+	}
+
+	static int Lua_GetGravityScale(lua_State* L)
+	{
+		uint32_t entityID = (uint32_t)lua_tonumber(L, 1);
+		Scene* scene = LuaScriptEngine::GetSceneContext();
+		if (scene)
+		{
+			Entity entity{ (entt::entity)entityID, scene };
+			if (entity && entity.HasComponent<Rigidbody2DComponent>())
+			{
+				b2Body* body = (b2Body*)entity.GetComponent<Rigidbody2DComponent>().RuntimeBody;
+				if (body) { lua_pushnumber(L, body->GetGravityScale()); return 1; }
+			}
+		}
+		lua_pushnumber(L, 1.0f);
+		return 1;
+	}
+
+	static int Lua_SetFixedRotation(lua_State* L)
+	{
+		uint32_t entityID = (uint32_t)lua_tonumber(L, 1);
+		bool fixed = lua_toboolean(L, 2) != 0;
+		Scene* scene = LuaScriptEngine::GetSceneContext();
+		if (!scene) return 0;
+
+		Entity entity{ (entt::entity)entityID, scene };
+		if (entity && entity.HasComponent<Rigidbody2DComponent>())
+		{
+			auto& rb = entity.GetComponent<Rigidbody2DComponent>();
+			rb.FixedRotation = fixed;
+			if (rb.RuntimeBody)
+			{
+				b2Body* body = (b2Body*)rb.RuntimeBody;
+				body->SetFixedRotation(fixed);
+			}
+		}
+		return 0;
+	}
+
+	static int Lua_IsFixedRotation(lua_State* L)
+	{
+		uint32_t entityID = (uint32_t)lua_tonumber(L, 1);
+		Scene* scene = LuaScriptEngine::GetSceneContext();
+		if (scene)
+		{
+			Entity entity{ (entt::entity)entityID, scene };
+			if (entity && entity.HasComponent<Rigidbody2DComponent>())
+			{
+				b2Body* body = (b2Body*)entity.GetComponent<Rigidbody2DComponent>().RuntimeBody;
+				if (body) { lua_pushboolean(L, body->IsFixedRotation() ? 1 : 0); return 1; }
+			}
+		}
+		lua_pushboolean(L, 0);
+		return 1;
+	}
+
+	static int Lua_SetFriction(lua_State* L)
+	{
+		uint32_t entityID = (uint32_t)lua_tonumber(L, 1);
+		float friction = (float)lua_tonumber(L, 2);
+		Scene* scene = LuaScriptEngine::GetSceneContext();
+		if (!scene) return 0;
+
+		Entity entity{ (entt::entity)entityID, scene };
+		if (!entity) return 0;
+
+		if (entity.HasComponent<BoxCollider2DComponent>())
+		{
+			auto& bc = entity.GetComponent<BoxCollider2DComponent>();
+			bc.Friction = friction;
+			if (bc.RuntimeFixture)
+				((b2Fixture*)bc.RuntimeFixture)->SetFriction(friction);
+		}
+		if (entity.HasComponent<CircleCollider2DComponent>())
+		{
+			auto& cc = entity.GetComponent<CircleCollider2DComponent>();
+			cc.Friction = friction;
+			if (cc.RuntimeFixture)
+				((b2Fixture*)cc.RuntimeFixture)->SetFriction(friction);
+		}
+		return 0;
+	}
+
+	static int Lua_SetRestitution(lua_State* L)
+	{
+		uint32_t entityID = (uint32_t)lua_tonumber(L, 1);
+		float restitution = (float)lua_tonumber(L, 2);
+		Scene* scene = LuaScriptEngine::GetSceneContext();
+		if (!scene) return 0;
+
+		Entity entity{ (entt::entity)entityID, scene };
+		if (!entity) return 0;
+
+		if (entity.HasComponent<BoxCollider2DComponent>())
+		{
+			auto& bc = entity.GetComponent<BoxCollider2DComponent>();
+			bc.Restitution = restitution;
+			if (bc.RuntimeFixture)
+				((b2Fixture*)bc.RuntimeFixture)->SetRestitution(restitution);
+		}
+		if (entity.HasComponent<CircleCollider2DComponent>())
+		{
+			auto& cc = entity.GetComponent<CircleCollider2DComponent>();
+			cc.Restitution = restitution;
+			if (cc.RuntimeFixture)
+				((b2Fixture*)cc.RuntimeFixture)->SetRestitution(restitution);
+		}
+		return 0;
+	}
+
+	static int Lua_SetRigidBodyType(lua_State* L)
+	{
+		uint32_t entityID = (uint32_t)lua_tonumber(L, 1);
+		const char* typeStr = lua_tostring(L, 2);
+		if (!typeStr) return 0;
+
+		Scene* scene = LuaScriptEngine::GetSceneContext();
+		if (!scene) return 0;
+
+		Entity entity{ (entt::entity)entityID, scene };
+		if (entity && entity.HasComponent<Rigidbody2DComponent>())
+		{
+			auto& rb = entity.GetComponent<Rigidbody2DComponent>();
+			b2BodyType type = b2_dynamicBody;
+			if (strcmp(typeStr, "Static") == 0) type = b2_staticBody;
+			else if (strcmp(typeStr, "Kinematic") == 0) type = b2_kinematicBody;
+
+			rb.Type = (Rigidbody2DComponent::BodyType)type;
+			if (rb.RuntimeBody)
+			{
+				b2Body* body = (b2Body*)rb.RuntimeBody;
+				body->SetType(type);
+			}
+		}
+		return 0;
+	}
+
+	static int Lua_GetRigidBodyType(lua_State* L)
+	{
+		uint32_t entityID = (uint32_t)lua_tonumber(L, 1);
+		Scene* scene = LuaScriptEngine::GetSceneContext();
+		if (scene)
+		{
+			Entity entity{ (entt::entity)entityID, scene };
+			if (entity && entity.HasComponent<Rigidbody2DComponent>())
+			{
+				b2Body* body = (b2Body*)entity.GetComponent<Rigidbody2DComponent>().RuntimeBody;
+				if (body)
+				{
+					b2BodyType t = body->GetType();
+					if (t == b2_staticBody) lua_pushstring(L, "Static");
+					else if (t == b2_kinematicBody) lua_pushstring(L, "Kinematic");
+					else lua_pushstring(L, "Dynamic");
+					return 1;
+				}
+			}
+		}
+		lua_pushstring(L, "Static");
+		return 1;
+	}
+
 	// =========================================================================
 	// NEW BINDINGS - Shape overlap queries
 	// =========================================================================
@@ -1871,11 +2097,47 @@ namespace Waffle {
 		lua_pushcfunction(L, Lua_SetTimer);             lua_setglobal(L, "SetTimer");
 		lua_pushcfunction(L, Lua_CancelTimer);          lua_setglobal(L, "CancelTimer");
 
-		// ---- New: Angular physics ----
+		// ---- New: Angular & Extended physics ----
 		lua_pushcfunction(L, Lua_GetAngularVelocity);   lua_setglobal(L, "GetAngularVelocity");
 		lua_pushcfunction(L, Lua_SetAngularVelocity);   lua_setglobal(L, "SetAngularVelocity");
 		lua_pushcfunction(L, Lua_ApplyTorque);          lua_setglobal(L, "ApplyTorque");
 		lua_pushcfunction(L, Lua_ApplyAngularImpulse);  lua_setglobal(L, "ApplyAngularImpulse");
+
+		lua_pushcfunction(L, Lua_IsSensor);             lua_setglobal(L, "IsSensor");
+		lua_pushcfunction(L, Lua_SetSensor);            lua_setglobal(L, "SetSensor");
+		lua_pushcfunction(L, Lua_SetGravityScale);      lua_setglobal(L, "SetGravityScale");
+		lua_pushcfunction(L, Lua_GetGravityScale);      lua_setglobal(L, "GetGravityScale");
+		lua_pushcfunction(L, Lua_SetFixedRotation);     lua_setglobal(L, "SetFixedRotation");
+		lua_pushcfunction(L, Lua_IsFixedRotation);      lua_setglobal(L, "IsFixedRotation");
+		lua_pushcfunction(L, Lua_SetFriction);           lua_setglobal(L, "SetFriction");
+		lua_pushcfunction(L, Lua_SetRestitution);        lua_setglobal(L, "SetRestitution");
+		lua_pushcfunction(L, Lua_SetRigidBodyType);     lua_setglobal(L, "SetRigidBodyType");
+		lua_pushcfunction(L, Lua_GetRigidBodyType);     lua_setglobal(L, "GetRigidBodyType");
+
+		// Table alias Physics.SetLinearVelocity, Physics.IsSensor, etc.
+		lua_newtable(L);
+		lua_pushcfunction(L, Lua_SetLinearVelocity);    lua_setfield(L, -2, "SetLinearVelocity");
+		lua_pushcfunction(L, Lua_GetLinearVelocity);    lua_setfield(L, -2, "GetLinearVelocity");
+		lua_pushcfunction(L, Lua_ApplyLinearImpulse);   lua_setfield(L, -2, "ApplyLinearImpulse");
+		lua_pushcfunction(L, Lua_ApplyForce);           lua_setfield(L, -2, "ApplyForce");
+		lua_pushcfunction(L, Lua_GetAngularVelocity);   lua_setfield(L, -2, "GetAngularVelocity");
+		lua_pushcfunction(L, Lua_SetAngularVelocity);   lua_setfield(L, -2, "SetAngularVelocity");
+		lua_pushcfunction(L, Lua_ApplyTorque);          lua_setfield(L, -2, "ApplyTorque");
+		lua_pushcfunction(L, Lua_ApplyAngularImpulse);  lua_setfield(L, -2, "ApplyAngularImpulse");
+		lua_pushcfunction(L, Lua_IsSensor);             lua_setfield(L, -2, "IsSensor");
+		lua_pushcfunction(L, Lua_SetSensor);            lua_setfield(L, -2, "SetSensor");
+		lua_pushcfunction(L, Lua_SetGravityScale);      lua_setfield(L, -2, "SetGravityScale");
+		lua_pushcfunction(L, Lua_GetGravityScale);      lua_setfield(L, -2, "GetGravityScale");
+		lua_pushcfunction(L, Lua_SetFixedRotation);     lua_setfield(L, -2, "SetFixedRotation");
+		lua_pushcfunction(L, Lua_IsFixedRotation);      lua_setfield(L, -2, "IsFixedRotation");
+		lua_pushcfunction(L, Lua_SetFriction);           lua_setfield(L, -2, "SetFriction");
+		lua_pushcfunction(L, Lua_SetRestitution);        lua_setfield(L, -2, "SetRestitution");
+		lua_pushcfunction(L, Lua_SetRigidBodyType);     lua_setfield(L, -2, "SetRigidBodyType");
+		lua_pushcfunction(L, Lua_GetRigidBodyType);     lua_setfield(L, -2, "GetRigidBodyType");
+		lua_pushcfunction(L, Lua_OverlapCircle);        lua_setfield(L, -2, "OverlapCircle");
+		lua_pushcfunction(L, Lua_OverlapBox);           lua_setfield(L, -2, "OverlapBox");
+		lua_pushcfunction(L, Lua_Raycast);              lua_setfield(L, -2, "Raycast");
+		lua_setglobal(L, "Physics");
 
 		// ---- New: Shape queries ----
 		lua_pushcfunction(L, Lua_OverlapCircle);        lua_setglobal(L, "OverlapCircle");
