@@ -149,7 +149,7 @@ namespace Waffle {
 	}
 
 	// -------------------------------------------------------------------------
-	// SetXxx — write into the push-constant staging buffer
+	// SetXxx - write into the push-constant staging buffer
 	// -------------------------------------------------------------------------
 	void VulkanShader::WritePushConstant(const std::string& name, const void* data, uint32_t size)
 	{
@@ -290,7 +290,7 @@ namespace Waffle {
 	}
 
 	// -------------------------------------------------------------------------
-	// GetOrCreatePipeline — lazy pipeline cache
+	// GetOrCreatePipeline - lazy pipeline cache
 	// -------------------------------------------------------------------------
 	VkPipeline VulkanShader::GetOrCreatePipeline(
 		const VulkanVertexArray* vertexArray,

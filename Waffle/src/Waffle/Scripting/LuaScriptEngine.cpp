@@ -119,7 +119,7 @@ namespace Waffle {
 	}
 
 	// -------------------------------------------------------------------------
-	// Lua C bindings — Input
+	// Lua C bindings - Input
 	// -------------------------------------------------------------------------
 
 	static int Lua_IsKeyPressed(lua_State* L)
@@ -222,7 +222,7 @@ namespace Waffle {
 	}
 
 	// -------------------------------------------------------------------------
-	// Lua C bindings — Transform / Physics
+	// Lua C bindings - Transform / Physics
 	// -------------------------------------------------------------------------
 
 	static int Lua_Translate(lua_State* L)
@@ -261,7 +261,7 @@ namespace Waffle {
 					break;
 
 				case Rigidbody2DComponent::BodyType::Dynamic:
-					// Dynamic: never stomp position — the solver owns it.
+					// Dynamic: never stomp position - the solver owns it.
 					// Translate on a dynamic body is a misuse; log and skip.
 					WF_CORE_WARN("Lua_Translate: called on Dynamic body (entity {0}). "
 						"Use SetLinearVelocity or ApplyForce instead.", entityID);
@@ -569,7 +569,7 @@ namespace Waffle {
 	}
 
 	// -------------------------------------------------------------------------
-	// Lua C bindings — Raycasting
+	// Lua C bindings - Raycasting
 	// -------------------------------------------------------------------------
 
 	// Raycast(entityID, offsetX, offsetY, dirX, dirY, distance)
@@ -671,7 +671,7 @@ namespace Waffle {
 	}
 
 	// -------------------------------------------------------------------------
-	// Lua C bindings — Logging
+	// Lua C bindings - Logging
 	// -------------------------------------------------------------------------
 
 	static int Lua_LogInfo(lua_State* L)
@@ -821,20 +821,20 @@ namespace Waffle {
 		lua_setfield(L, -2, "__index");
 		lua_setmetatable(L, -2);
 
-		// Call the wrapper with the env — this executes the script top-level,
+		// Call the wrapper with the env - this executes the script top-level,
 		// which defines Public = { ... } inside the env table
 		if (lua_pcall(L, 1, 0, 0) != LUA_OK)
 		{
 			lua_close(L); return;
 		}
 
-		// env is now on the registry — but we left it on the stack before pcall
+		// env is now on the registry - but we left it on the stack before pcall
 		// Actually re-push: the env was consumed. Rebuild by running again.
 		// Simpler: just look for Public as a global since we used _G as __index
 		// Instead, rerun with a named env:
 		lua_close(L);
 
-		// Cleaner second attempt — store the env before calling
+		// Cleaner second attempt - store the env before calling
 		L = luaL_newstate();
 		luaL_openlibs(L);
 
@@ -890,7 +890,7 @@ namespace Waffle {
 
 					if (it != fields.end())
 					{
-						// Field exists — only update value if user hasn't modified it
+						// Field exists - only update value if user hasn't modified it
 						if (!it->UserModified)
 						{
 							if (lua_isinteger(L, -1))
@@ -906,7 +906,7 @@ namespace Waffle {
 						continue;
 					}
 
-					// New field — read default from script
+					// New field - read default from script
 					LuaField field;
 					field.Name = name;
 					field.UserModified = false;
@@ -949,7 +949,7 @@ namespace Waffle {
 	}
 
 	// =========================================================================
-	// NEW BINDINGS — Input (just-pressed / just-released)
+	// NEW BINDINGS - Input (just-pressed / just-released)
 	// =========================================================================
 
 	static int Lua_IsKeyJustPressed(lua_State* L)
@@ -1020,7 +1020,7 @@ namespace Waffle {
 	}
 
 	// =========================================================================
-	// NEW BINDINGS — Color / Visual
+	// NEW BINDINGS - Color / Visual
 	// =========================================================================
 
 	static int Lua_SetColor(lua_State* L)
@@ -1105,7 +1105,7 @@ namespace Waffle {
 	}
 
 	// =========================================================================
-	// NEW BINDINGS — Animator / Animation
+	// NEW BINDINGS - Animator / Animation
 	// =========================================================================
 
 	static int Lua_PlayAnimation(lua_State* L)
@@ -1174,7 +1174,7 @@ namespace Waffle {
 	}
 
 	// =========================================================================
-	// NEW BINDINGS — Entity management
+	// NEW BINDINGS - Entity management
 	// =========================================================================
 
 	static int Lua_CreateEntity(lua_State* L)
@@ -1200,7 +1200,7 @@ namespace Waffle {
 	static int Lua_DestroyEntity(lua_State* L)
 	{
 		uint32_t entityID = (uint32_t)lua_tonumber(L, 1);
-		// Deferred — we process after the script update loop to avoid iterator invalidation
+		// Deferred - we process after the script update loop to avoid iterator invalidation
 		LuaScriptEngine::s_PendingDestroys.push_back(entityID);
 		return 0;
 	}
@@ -1327,7 +1327,7 @@ namespace Waffle {
 	}
 
 	// =========================================================================
-	// NEW BINDINGS — Timer system
+	// NEW BINDINGS - Timer system
 	// =========================================================================
 
 	static int Lua_SetTimer(lua_State* L)
@@ -1367,7 +1367,7 @@ namespace Waffle {
 	}
 
 	// =========================================================================
-	// NEW BINDINGS — Angular physics
+	// NEW BINDINGS - Angular physics
 	// =========================================================================
 
 	static int Lua_GetAngularVelocity(lua_State* L)
@@ -1433,7 +1433,7 @@ namespace Waffle {
 	}
 
 	// =========================================================================
-	// NEW BINDINGS — Shape overlap queries
+	// NEW BINDINGS - Shape overlap queries
 	// =========================================================================
 
 	static int Lua_OverlapCircle(lua_State* L)
@@ -1537,7 +1537,7 @@ namespace Waffle {
 	}
 
 	// =========================================================================
-	// NEW BINDINGS — Entity hierarchy
+	// NEW BINDINGS - Entity hierarchy
 	// =========================================================================
 
 	static int Lua_GetParent(lua_State* L)
@@ -1612,7 +1612,7 @@ namespace Waffle {
 	}
 
 	// =========================================================================
-	// NEW BINDINGS — Active state
+	// NEW BINDINGS - Active state
 	// =========================================================================
 
 	static int Lua_SetActive(lua_State* L)
@@ -1649,7 +1649,7 @@ namespace Waffle {
 	}
 
 	// =========================================================================
-	// NEW BINDINGS — Viewport & camera
+	// NEW BINDINGS - Viewport & camera
 	// =========================================================================
 
 	static int Lua_GetViewportSize(lua_State* L)
@@ -1691,7 +1691,7 @@ namespace Waffle {
 	}
 
 	// =========================================================================
-	// NEW BINDINGS — GetDeltaTime
+	// NEW BINDINGS - GetDeltaTime
 	// =========================================================================
 
 	static int Lua_GetDeltaTime(lua_State* L)
@@ -1701,7 +1701,7 @@ namespace Waffle {
 	}
 
 	// =========================================================================
-	// NEW BINDINGS — Audio Engine
+	// NEW BINDINGS - Audio Engine
 	// =========================================================================
 
 	static int Lua_PlaySound(lua_State* L)
@@ -2267,7 +2267,7 @@ if Global == nil then Global = {} end
 	}
 
 	// -------------------------------------------------------------------------
-	// InitScriptsForEntity — load + OnCreate for a single entity.
+	// InitScriptsForEntity - load + OnCreate for a single entity.
 	// Called for prefabs that are instantiated at runtime via Lua so their
 	// ScriptTableKeys are populated and OnUpdate/OnCreate actually fire.
 	// -------------------------------------------------------------------------

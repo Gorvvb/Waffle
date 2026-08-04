@@ -49,7 +49,7 @@ namespace Waffle {
 	}
 
 	// =========================================================================
-	// Invalidate — create/recreate all attachments
+	// Invalidate - create/recreate all attachments
 	// =========================================================================
 	void VulkanFramebuffer::Invalidate()
 	{
@@ -127,7 +127,7 @@ namespace Waffle {
 	}
 
 	// =========================================================================
-	// Bind — begin dynamic rendering for this framebuffer
+	// Bind - begin dynamic rendering for this framebuffer
 	// =========================================================================
 	void VulkanFramebuffer::Bind()
 	{
@@ -214,7 +214,7 @@ namespace Waffle {
 		ctx->SetRenderingActive(true);
 
 		// Update viewport / scissor for this FBO's size.
-		// NOTE: Do NOT use the negative-height Y-flip here — the FBO texture is
+		// NOTE: Do NOT use the negative-height Y-flip here - the FBO texture is
 		// displayed by ImGui which handles UV flipping itself. The Y-flip only
 		// belongs on the swapchain path (runtime/export).
 		VkViewport vp
@@ -237,7 +237,7 @@ namespace Waffle {
 	}
 
 	// =========================================================================
-	// Unbind — end dynamic rendering, transition attachments back to shader read
+	// Unbind - end dynamic rendering, transition attachments back to shader read
 	// =========================================================================
 	void VulkanFramebuffer::Unbind()
 	{
@@ -263,7 +263,7 @@ namespace Waffle {
 		}
 
 		// Restore swap-chain viewport (negative height for Y-flip applies to
-		// the swapchain/runtime path only — ImGui sets its own viewport so this
+		// the swapchain/runtime path only - ImGui sets its own viewport so this
 		// flip does not affect editor UI rendering).
 		auto swapExtent = ctx->GetSwapChainExtent();
 		VkViewport vp

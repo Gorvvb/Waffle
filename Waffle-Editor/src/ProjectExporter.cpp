@@ -551,13 +551,13 @@ static bool EmbedIconInExecutable(const std::filesystem::path& exePath, const st
 		// 8. Resolve icon: custom > project logo > editor logo > nothing
 		//    The Waffle-Runtime.exe already has the Waffle logo compiled in as a
 		//    PE resource.  We only call EmbedIconInExecutable when there is
-		//    actually a custom icon to use — otherwise the compiled-in logo stays.
+		//    actually a custom icon to use - otherwise the compiled-in logo stays.
 		std::string           relativeIconPath;
 		std::filesystem::path chosenIconPath;
 
 		if (!options.CustomIconPath.empty() && std::filesystem::exists(options.CustomIconPath, ec))
 		{
-			// User explicitly picked an icon — use it
+			// User explicitly picked an icon - use it
 			chosenIconPath = options.CustomIconPath;
 		}
 		else if (std::filesystem::exists(activeProjectPath / "Assets/images/logo.png", ec))
@@ -582,7 +582,7 @@ static bool EmbedIconInExecutable(const std::filesystem::path& exePath, const st
 			// Purge and write happen inside one BeginUpdateResource session.
 			if (!EmbedIconInExecutable(targetExePath, chosenIconPath))
 			{
-				WF_CORE_WARN("Icon embedding failed for '{0}' — exported exe will keep the Waffle logo.",
+				WF_CORE_WARN("Icon embedding failed for '{0}' - exported exe will keep the Waffle logo.",
 					targetExePath.string());
 			}
 #endif

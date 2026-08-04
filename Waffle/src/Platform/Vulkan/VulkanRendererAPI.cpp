@@ -50,7 +50,7 @@ namespace Waffle {
 	void VulkanRendererAPI::Clear()
 	{
 		auto* ctx = VulkanContext::Get();
-		if (ctx->IsRenderingActive()) return; // already rendering — skip
+		if (ctx->IsRenderingActive()) return; // already rendering - skip
 
 		// Begin swap-chain dynamic rendering with the stored clear color
 		VkClearDepthStencilValue depth{ 1.0f, 0 };

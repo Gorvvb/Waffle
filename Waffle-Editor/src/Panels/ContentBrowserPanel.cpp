@@ -96,7 +96,7 @@ namespace Waffle {
 						}
 						else
 						{
-							// Always load thumbnails as Nearest — clear any stale Linear entry first
+							// Always load thumbnails as Nearest - clear any stale Linear entry first
 							m_TextureCache.erase(pathStr);
 							Ref<Texture2D> loadedTex = Texture2D::Create(pathStr, TextureFilter::Nearest);
 							if (loadedTex)
@@ -526,7 +526,7 @@ namespace Waffle {
 			ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0.12f, 0.12f, 0.12f, 1.0f));
 			ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(4, 4));
 
-			ImGui::Text("Sprites  —  %s  (%zu sprites)",
+			ImGui::Text("Sprites  -  %s  (%zu sprites)",
 				m_SelectedSpritesheetPath.filename().string().c_str(),
 				m_SpritesheetSubTextures.size());
 			ImGui::SameLine(ImGui::GetContentRegionAvail().x - 20.0f);
@@ -546,7 +546,7 @@ namespace Waffle {
 				ImGuiWindowFlags_HorizontalScrollbar);
 
 			const float sprThumb = 64.0f;
-			// Texture path for drag payloads — cached when the spritesheet was
+			// Texture path for drag payloads - cached when the spritesheet was
 			// opened, so we don't re-parse the YAML from disk every frame.
 			const std::string& texPathForPayload = m_SpritesheetTexAbsPath;
 

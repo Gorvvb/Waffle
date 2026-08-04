@@ -91,7 +91,7 @@ namespace Waffle {
 		};
 		SceneState m_SceneState = SceneState::Edit;
 
-		// Scene list (ordered — index 0 is always the start scene)
+		// Scene list (ordered - index 0 is always the start scene)
 		std::vector<std::filesystem::path> m_SceneList;
 
 		// Project settings

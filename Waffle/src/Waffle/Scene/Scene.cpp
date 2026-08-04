@@ -412,8 +412,19 @@ namespace Waffle {
 
 	int Scene::OnUpdateRuntime(Timestep ts)
 	{
-		if (!m_IsPaused || m_StepFrames-- > 0)
+		bool isStepFrame = m_IsPaused && (m_StepFrames > 0);
+
+		if (!m_IsPaused || m_StepFrames > 0)
 		{
+			if (isStepFrame)
+			{
+				WF_CORE_INFO("[AudioPauseLog] Step frame starting. Resuming audio for 1 frame.");
+				AudioEngine::ResumeAllSounds();
+			}
+
+			if (m_StepFrames > 0)
+				m_StepFrames--;
+
 			// Update scripts
 			{
 				LuaScriptEngine::OnRuntimeUpdate(this, ts);
@@ -430,7 +441,7 @@ namespace Waffle {
 					});
 			}
 
-			// Lifetime — tick down and destroy expired entities.
+			// Lifetime - tick down and destroy expired entities.
 			// Collect first, then destroy, to avoid invalidating the view mid-iteration.
 			{
 				std::vector<Entity> expired;
@@ -472,7 +483,7 @@ namespace Waffle {
 					if (!body)
 					{
 						// Entity was spawned mid-runtime (e.g. prefab instantiated
-						// from a script) — create its body now instead of crashing.
+						// from a script) - create its body now instead of crashing.
 						CreateRuntimePhysicsBody(entity);
 						body = (b2Body*)rb2d.RuntimeBody;
 						if (!body)
@@ -509,7 +520,7 @@ namespace Waffle {
 			}
 		}
 
-		// Render 2D — always runs regardless of pause state
+		// Render 2D - always runs regardless of pause state
 		Camera* mainCamera = nullptr;
 		glm::mat4 cameraTransform;
 		CameraComponent* mainCameraComp = nullptr;
@@ -542,7 +553,7 @@ namespace Waffle {
 				Renderer2D::DrawQuad(bgTransform, mainCameraComp->BackgroundImage, mainCameraComp->BackgroundTilingFactor);
 			}
 
-		// Draw sprites — skip disabled or off-screen entities
+		// Draw sprites - skip disabled or off-screen entities
 		auto group = m_Registry.group<TransformComponent>(entt::get<SpriteRendererComponent>, entt::exclude<DisabledComponent>);
 		for (auto entity : group)
 		{
@@ -569,7 +580,7 @@ namespace Waffle {
 			Renderer2D::DrawSprite(worldTransform, sprite, (int)entity);
 		}
 
-		// Draw circles — skip disabled or off-screen entities
+		// Draw circles - skip disabled or off-screen entities
 		auto view = m_Registry.view<TransformComponent, CircleRendererComponent>(entt::exclude<DisabledComponent>);
 		for (auto entity : view)
 		{
@@ -587,11 +598,40 @@ namespace Waffle {
 			Renderer2D::EndScene();
 		}
 
-		// Scene change — checked after render so the current frame still draws
+		if (isStepFrame && m_StepFrames == 0 && m_IsPaused)
+		{
+			WF_CORE_INFO("[AudioPauseLog] Step frame completed. Pausing audio back.");
+			AudioEngine::PauseAllSounds();
+		}
+
+		// Scene change - checked after render so the current frame still draws
 		int pending = LuaScriptEngine::GetPendingSceneChange();
 		if (pending != -1)
 			LuaScriptEngine::ClearPendingSceneChange();
 		return pending;
+	}
+
+	void Scene::SetPaused(bool paused)
+	{
+		if (m_IsPaused != paused)
+		{
+			m_IsPaused = paused;
+			WF_CORE_INFO("[AudioPauseLog] Scene::SetPaused({0}) - Calling AudioEngine::{1}AllSounds()", m_IsPaused ? "true" : "false", m_IsPaused ? "Pause" : "Resume");
+			if (m_IsPaused)
+			{
+				AudioEngine::PauseAllSounds();
+			}
+			else
+			{
+				AudioEngine::ResumeAllSounds();
+			}
+		}
+	}
+
+	void Scene::Step(int frames)
+	{
+		m_StepFrames += frames;
+		WF_CORE_INFO("[AudioPauseLog] Scene::Step({0}) - m_StepFrames is now {1}", frames, m_StepFrames);
 	}
 
 	void Scene::OnUpdateEditor(Timestep ts, EditorCamera& camera)
@@ -613,7 +653,7 @@ namespace Waffle {
 			}
 		}
 
-		// Draw sprites — skip off-screen entities
+		// Draw sprites - skip off-screen entities
 		auto group = m_Registry.group<TransformComponent>(entt::get<SpriteRendererComponent>);
 		for (auto entity : group)
 		{
@@ -640,7 +680,7 @@ namespace Waffle {
 			Renderer2D::DrawSprite(worldTransform, sprite, (int)entity);
 		}
 
-		// Draw circles — skip off-screen entities
+		// Draw circles - skip off-screen entities
 		auto view = m_Registry.view<TransformComponent, CircleRendererComponent>();
 		for (auto entity : view)
 		{
@@ -656,11 +696,6 @@ namespace Waffle {
 		}
 
 		Renderer2D::EndScene();
-	}
-
-	void Scene::Step(int frames)
-	{
-		m_StepFrames = frames;
 	}
 
 	void Scene::OnViewportResize(uint32_t width, uint32_t height)
@@ -689,7 +724,7 @@ namespace Waffle {
 		std::string name = entity.GetName();
 		Entity newEntity = CreateEntity(name);
 
-		// Copy everything except RelationshipComponent — copying it verbatim would
+		// Copy everything except RelationshipComponent - copying it verbatim would
 		// corrupt the hierarchy (children pointing at the original parent, the
 		// duplicate claiming the original's children, etc.).
 		CopyComponentIfExists<ScriptComponent>(newEntity, entity);
@@ -705,7 +740,7 @@ namespace Waffle {
 		CopyComponentIfExists<PolygonCollider2DComponent>(newEntity, entity);
 		CopyComponentIfExists<AnimatorComponent>(newEntity, entity);
 
-		// The copies must not share the original's Box2D body/fixture pointers —
+		// The copies must not share the original's Box2D body/fixture pointers -
 		// that would corrupt the simulation and double-destroy bodies later.
 		if (newEntity.HasComponent<Rigidbody2DComponent>())
 		{
@@ -737,7 +772,7 @@ namespace Waffle {
 		// Duplicate children recursively
 		if (entity.HasComponent<RelationshipComponent>())
 		{
-			auto children = entity.GetComponent<RelationshipComponent>().Children; // copy — list mutates below
+			auto children = entity.GetComponent<RelationshipComponent>().Children; // copy - list mutates below
 			for (auto childUUID : children)
 			{
 				Entity child = GetEntityByUUID(childUUID);

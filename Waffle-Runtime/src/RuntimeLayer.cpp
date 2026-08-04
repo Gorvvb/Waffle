@@ -24,7 +24,7 @@ namespace Waffle {
 					if (project["Gravity"])
 						m_Gravity = project["Gravity"].as<float>();
 
-					// Read ordered scene list — index 0 is always the start scene
+					// Read ordered scene list - index 0 is always the start scene
 					if (project["Scenes"])
 					{
 						for (auto node : project["Scenes"])

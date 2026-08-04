@@ -46,6 +46,7 @@ project "Waffle"
 		"%{Includedir.yaml_cpp}",
 		"%{Includedir.ImGuizmo}",
 		"%{Includedir.Lua}",
+		"%{Includedir.miniaudio}",
 		"%{Includedir.VulkanSDK}"
 	}
 

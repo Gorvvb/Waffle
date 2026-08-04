@@ -24,3 +24,6 @@
 [submodule "Waffle/vendor/lua"]
 	path = Waffle/vendor/lua
 	url = https://github.com/Gorvvb/lua.git
+[submodule "Waffle/vendor/miniaudio"]
+	path = Waffle/vendor/miniaudio
+	url = https://github.com/mackron/miniaudio.git

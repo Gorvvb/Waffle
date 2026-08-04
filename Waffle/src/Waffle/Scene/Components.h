@@ -323,7 +323,7 @@ namespace Waffle {
 					}
 					else
 					{
-						// Only load if the path looks like an image file — guard against
+						// Only load if the path looks like an image file - guard against
 						// stale keyframe paths that point to .spritesheet / .yaml files.
 						std::string lext = std::filesystem::path(path).extension().string();
 						for (auto& c : lext) c = (char)::tolower(c);
