@@ -27,6 +27,12 @@
 
 #define WF_BIND_EVENT_FN(fn) [this](auto&&... args) -> decltype(auto) { return this->fn(std::forward<decltype(args)>(args)...); }
 
+#ifdef WF_PLATFORM_WINDOWS
+	#define WF_FORCE_INLINE __forceinline
+#else
+	#define WF_FORCE_INLINE inline __attribute__((always_inline))
+#endif
+
 #include "Waffle/Core/Ref.h"
 
 namespace Waffle {
@@ -34,13 +40,13 @@ namespace Waffle {
 	template<typename T>
 	using Scope = std::unique_ptr<T>;
 	template<typename T, typename ... Args>
-	constexpr Scope<T> CreateScope(Args&& ... args)
+	[[nodiscard]] WF_FORCE_INLINE constexpr Scope<T> CreateScope(Args&& ... args)
 	{
 		return std::make_unique<T>(std::forward<Args>(args)...);
 	}
 
 	template<typename T, typename ... Args>
-	constexpr Ref<T> CreateRef(Args&& ... args)
+	[[nodiscard]] WF_FORCE_INLINE constexpr Ref<T> CreateRef(Args&& ... args)
 	{
 		return Ref<T>::Create(std::forward<Args>(args)...);
 	}

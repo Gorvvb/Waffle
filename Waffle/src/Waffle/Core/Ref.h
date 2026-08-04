@@ -162,6 +162,12 @@ namespace Waffle {
 		template<typename T2>
 		Ref<T2> As() const
 		{
+			return Ref<T2>(static_cast<T2*>(m_Instance));
+		}
+
+		template<typename T2>
+		Ref<T2> DynamicAs() const
+		{
 			return Ref<T2>(dynamic_cast<T2*>(m_Instance));
 		}
 
