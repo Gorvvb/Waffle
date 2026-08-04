@@ -2,6 +2,7 @@
 #include "LuaScriptEngine.h"
 
 #include "Waffle/Core/Log.h"
+#include "Waffle/Core/VFS.h"
 #include "Waffle/Core/Input.h"
 #include "Waffle/Core/KeyCodes.h"
 #include "Waffle/Core/MouseCodes.h"
@@ -49,19 +50,19 @@ namespace Waffle {
 		std::filesystem::path assetRoot = LuaScriptEngine::GetAssetPath();
 
 		// 1. Try as-is
-		if (std::filesystem::exists(normalized))
+		if (VFS::Exists(normalized))
 			return normalized;
 
 		// 2. Try relative to asset root
 		std::filesystem::path fromAssets = assetRoot / normalized;
-		if (std::filesystem::exists(fromAssets))
+		if (VFS::Exists(fromAssets))
 			return fromAssets;
 
 		// 3. Append .lua if missing
 		if (!fromAssets.has_extension())
 		{
 			fromAssets += ".lua";
-			if (std::filesystem::exists(fromAssets))
+			if (VFS::Exists(fromAssets))
 				return fromAssets;
 		}
 
@@ -1240,10 +1241,10 @@ namespace Waffle {
 		if (!scene) { lua_pushnumber(L, -1); return 1; }
 
 		std::filesystem::path fullPath = LuaScriptEngine::GetAssetPath() / pathStr;
-		if (!std::filesystem::exists(fullPath))
+		if (!VFS::Exists(fullPath))
 			fullPath = pathStr;
 
-		if (!std::filesystem::exists(fullPath))
+		if (!VFS::Exists(fullPath))
 		{
 			WF_CORE_ERROR("InstantiatePrefab: Prefab file '{0}' not found", pathStr);
 			lua_pushnumber(L, -1);
@@ -1966,15 +1967,13 @@ if Global == nil then Global = {} end
 
 	static bool LoadScriptIntoEnv(lua_State* L, const std::filesystem::path& fullPath, const std::string& tableKey)
 	{
-		std::ifstream file(fullPath, std::ios::binary);
-		if (!file.is_open())
+		if (!VFS::Exists(fullPath))
 		{
-			WF_CORE_ERROR("LuaScriptEngine: Cannot open '{0}'", fullPath.string());
+			WF_CORE_ERROR("LuaScriptEngine: Cannot open or read '{0}'", fullPath.string());
 			return false;
 		}
-		std::string source((std::istreambuf_iterator<char>(file)),
-			std::istreambuf_iterator<char>());
-		file.close();
+
+		std::string source = VFS::ReadFileAsString(fullPath);
 
 		std::string wrapper = "return function(_ENV)\n" + source + "\nend";
 		std::string chunkName = "@" + fullPath.filename().string();
@@ -2183,7 +2182,7 @@ if Global == nil then Global = {} end
 					continue;
 
 				std::filesystem::path fullPath = ResolveScriptPath(scriptPath);
-				if (!std::filesystem::exists(fullPath))
+				if (!VFS::Exists(fullPath))
 				{
 					WF_CORE_WARN("LuaScriptEngine: Script not found: '{0}'", scriptPath);
 					continue;
@@ -2291,7 +2290,7 @@ if Global == nil then Global = {} end
 			if (scriptPath.empty()) continue;
 
 			std::filesystem::path fullPath = ResolveScriptPath(scriptPath);
-			if (!std::filesystem::exists(fullPath))
+			if (!VFS::Exists(fullPath))
 			{
 				WF_CORE_WARN("LuaScriptEngine::InitScriptsForEntity: Script not found: '{0}'", scriptPath);
 				continue;

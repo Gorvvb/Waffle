@@ -1,5 +1,6 @@
 #include "RuntimeLayer.h"
 #include "Waffle/Scene/SceneSerializer.h"
+#include "Waffle/Core/VFS.h"
 
 #include <yaml-cpp/yaml.h>
 
@@ -13,11 +14,12 @@ namespace Waffle {
 	{
 		WF_PROFILE_FUNCTION();
 
-		if (std::filesystem::exists("Assets/project.wfp"))
+		std::string wfpContent = VFS::ReadFileAsString("Assets/project.wfp");
+		if (!wfpContent.empty())
 		{
 			try
 			{
-				YAML::Node data = YAML::LoadFile("Assets/project.wfp");
+				YAML::Node data = YAML::Load(wfpContent);
 				auto project = data["Project"];
 				if (project)
 				{
@@ -32,7 +34,7 @@ namespace Waffle {
 							std::string path = node.as<std::string>();
 							// Normalize backslashes
 							std::replace(path.begin(), path.end(), '\\', '/');
-							if (std::filesystem::exists(path))
+							if (VFS::Exists(path))
 								m_SceneList.push_back(path);
 							else
 								WF_WARN("RuntimeLayer: Scene not found: {0}", path);
@@ -44,7 +46,7 @@ namespace Waffle {
 					{
 						std::string startScene = project["StartScene"].as<std::string>();
 						std::replace(startScene.begin(), startScene.end(), '\\', '/');
-						if (std::filesystem::exists(startScene))
+						if (VFS::Exists(startScene))
 							m_SceneList.push_back(startScene);
 					}
 				}
@@ -55,20 +57,25 @@ namespace Waffle {
 			}
 		}
 
-		// Last resort: scan disk (alphabetical, no guaranteed order)
+		// Last resort: scan VFS & physical disk for .waffle files
 		if (m_SceneList.empty())
 		{
-			if (std::filesystem::exists("Assets/Scenes"))
+			if (VFS::IsMounted())
 			{
-				for (auto& entry : std::filesystem::directory_iterator("Assets/Scenes"))
-					if (entry.is_regular_file() && entry.path().extension() == ".waffle")
-						m_SceneList.push_back(entry.path().string());
+				for (const auto& path : VFS::GetMountedFilePaths())
+				{
+					if (path.length() >= 7 && path.substr(path.length() - 7) == ".waffle")
+					{
+						m_SceneList.push_back(path);
+					}
+				}
 			}
 
 			if (m_SceneList.empty() && std::filesystem::exists("Assets"))
 			{
-				for (auto& entry : std::filesystem::recursive_directory_iterator("Assets"))
-					if (entry.is_regular_file() && entry.path().extension() == ".waffle")
+				std::error_code ec;
+				for (auto& entry : std::filesystem::recursive_directory_iterator("Assets", ec))
+					if (entry.is_regular_file(ec) && entry.path().extension() == ".waffle")
 						m_SceneList.push_back(entry.path().string());
 			}
 		}

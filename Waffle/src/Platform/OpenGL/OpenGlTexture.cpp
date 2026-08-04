@@ -1,5 +1,6 @@
 #include "wfpch.h"
 #include "OpenGlTexture.h"
+#include "Waffle/Core/VFS.h"
 
 #include "stb_image.h"
 
@@ -54,14 +55,15 @@ namespace Waffle {
 		int width = 0, height = 0, channels = 0;
 		stbi_set_flip_vertically_on_load(1);
 		stbi_uc* data = nullptr;
-		{
-			WF_PROFILE_SCOPE("stbi_load - OpenGlTexture2D::OpenGlTexture2D(const std::string& path)");
-			data = stbi_load(resolvedPath.string().c_str(), &width, &height, &channels, 0);
-		}
 
-		if (!data && resolvedPath != path)
+		Buffer fileBuffer = VFS::ReadFile(resolvedPath);
+		if (!fileBuffer && resolvedPath != path)
+			fileBuffer = VFS::ReadFile(path);
+
+		if (fileBuffer)
 		{
-			data = stbi_load(path.c_str(), &width, &height, &channels, 0);
+			WF_PROFILE_SCOPE("stbi_load_from_memory - OpenGlTexture2D::OpenGlTexture2D");
+			data = stbi_load_from_memory(fileBuffer.Data, static_cast<int>(fileBuffer.Size), &width, &height, &channels, 0);
 		}
 
 		if (!data)

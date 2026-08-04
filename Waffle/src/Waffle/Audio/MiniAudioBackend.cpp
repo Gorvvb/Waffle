@@ -1,6 +1,7 @@
 #include "wfpch.h"
 #include "MiniAudioBackend.h"
 #include "Waffle/Core/Log.h"
+#include "Waffle/Core/VFS.h"
 #include "Waffle/Scripting/LuaScriptEngine.h"
 
 #define MINIAUDIO_IMPLEMENTATION
@@ -15,6 +16,9 @@ namespace Waffle {
 	struct SoundInstance
 	{
 		ma_sound Sound;
+		ma_decoder Decoder;
+		Buffer MemoryBuffer;
+		bool HasDecoder = false;
 		bool Initialized = false;
 		bool PausedByEngine = false;
 	};
@@ -33,13 +37,13 @@ namespace Waffle {
 	{
 		std::filesystem::path p(filepath);
 
-		// 1. Direct path check (as-is)
-		if (std::filesystem::exists(p))
+		// 1. Direct path check (as-is via VFS)
+		if (VFS::Exists(p))
 			return p;
 
 		// 2. Relative to active project AssetPath
 		std::filesystem::path assetPath = LuaScriptEngine::GetAssetPath() / p;
-		if (std::filesystem::exists(assetPath))
+		if (VFS::Exists(assetPath))
 			return assetPath;
 
 		return p;
@@ -100,7 +104,7 @@ namespace Waffle {
 		std::lock_guard<std::mutex> lock(m_Data->AudioMutex);
 
 		std::filesystem::path resolved = ResolveAudioPath(filepath);
-		if (!std::filesystem::exists(resolved))
+		if (!VFS::Exists(resolved))
 		{
 			WF_CORE_WARN("MiniAudioBackend: Audio file not found '{0}' (Resolved: '{1}')", filepath, resolved.string());
 			return false;
@@ -112,6 +116,12 @@ namespace Waffle {
 		if (it != m_Data->Sounds.end() && it->second.Initialized)
 		{
 			ma_sound_uninit(&it->second.Sound);
+			if (it->second.HasDecoder)
+			{
+				ma_decoder_uninit(&it->second.Decoder);
+				it->second.HasDecoder = false;
+			}
+			it->second.MemoryBuffer.Release();
 			it->second.Initialized = false;
 		}
 
@@ -122,6 +132,25 @@ namespace Waffle {
 			flags |= 0;
 
 		ma_result result = ma_sound_init_from_file(&m_Data->Engine, resolvedStr.c_str(), flags, NULL, NULL, &instance.Sound);
+		if (result != MA_SUCCESS && VFS::Exists(resolvedStr))
+		{
+			Buffer buf = VFS::ReadFile(resolvedStr);
+			if (!buf && resolvedStr != filepath)
+				buf = VFS::ReadFile(filepath);
+
+			if (buf)
+			{
+				instance.MemoryBuffer = std::move(buf);
+				ma_decoder_config decCfg = ma_decoder_config_init_default();
+				result = ma_decoder_init_memory(instance.MemoryBuffer.Data, instance.MemoryBuffer.Size, &decCfg, &instance.Decoder);
+				if (result == MA_SUCCESS)
+				{
+					instance.HasDecoder = true;
+					result = ma_sound_init_from_data_source(&m_Data->Engine, &instance.Decoder, flags, NULL, &instance.Sound);
+				}
+			}
+		}
+
 		if (result != MA_SUCCESS)
 		{
 			WF_CORE_ERROR("MiniAudioBackend: Failed to load sound '{0}'! Error code: {1}", filepath, (int)result);

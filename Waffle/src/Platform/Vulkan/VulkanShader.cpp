@@ -13,6 +13,7 @@
 #include <glm/gtc/type_ptr.hpp>
 
 #include "Waffle/Core/Timer.h"
+#include "Waffle/Core/VFS.h"
 
 namespace Waffle {
 
@@ -57,6 +58,9 @@ namespace Waffle {
 
 	void VulkanShader::EnsureCacheDirectoryExists()
 	{
+		if (VFS::IsMounted())
+			return;
+
 		if (!std::filesystem::exists(GetVulkanCacheDirectory()))
 			std::filesystem::create_directories(GetVulkanCacheDirectory());
 	}
@@ -481,16 +485,8 @@ namespace Waffle {
 
 	std::string VulkanShader::ReadFile(const std::string& filepath)
 	{
-		std::string result;
-		std::ifstream in(filepath, std::ios::in | std::ios::binary);
-		if (in)
-		{
-			in.seekg(0, std::ios::end);
-			result.resize(in.tellg());
-			in.seekg(0, std::ios::beg);
-			in.read(&result[0], result.size());
-		}
-		else
+		std::string result = VFS::ReadFileAsString(filepath);
+		if (result.empty())
 		{
 			WF_CORE_ERROR("Could not open shader file '{0}'", filepath);
 			WF_CORE_ASSERT(false, "Failed to read shader file.");
@@ -535,21 +531,27 @@ namespace Waffle {
 			std::filesystem::path cachePath = cacheDir / (filePath.filename().string() + StageToVulkanCacheExtension(stage));
 
 			bool cacheValid = false;
-			if (std::filesystem::exists(cachePath) && std::filesystem::exists(filePath))
-				if (std::filesystem::last_write_time(cachePath) >= std::filesystem::last_write_time(filePath))
+			if (VFS::Exists(cachePath))
+			{
+				if (std::filesystem::exists(cachePath) && std::filesystem::exists(filePath))
+				{
+					if (std::filesystem::last_write_time(cachePath) >= std::filesystem::last_write_time(filePath))
+						cacheValid = true;
+				}
+				else
+				{
 					cacheValid = true;
+				}
+			}
 
 			if (cacheValid)
 			{
-				std::ifstream in(cachePath, std::ios::binary);
-				if (in.is_open())
+				Buffer cacheBuffer = VFS::ReadFile(cachePath);
+				if (cacheBuffer && cacheBuffer.Size > 0)
 				{
-					in.seekg(0, std::ios::end);
-					auto size = in.tellg();
-					in.seekg(0, std::ios::beg);
 					auto& data = m_SPIRV[stage];
-					data.resize(size / sizeof(uint32_t));
-					in.read((char*)data.data(), size);
+					data.resize(cacheBuffer.Size / sizeof(uint32_t));
+					memcpy(data.data(), cacheBuffer.Data, cacheBuffer.Size);
 					continue;
 				}
 			}
@@ -565,11 +567,15 @@ namespace Waffle {
 			m_SPIRV[stage] = std::vector<uint32_t>(module.cbegin(), module.cend());
 
 			// Write cache
-			std::ofstream out(cachePath, std::ios::binary);
-			if (out.is_open())
+			if (!VFS::IsMounted())
 			{
-				auto& data = m_SPIRV[stage];
-				out.write((char*)data.data(), data.size() * sizeof(uint32_t));
+				EnsureCacheDirectoryExists();
+				std::ofstream out(cachePath, std::ios::binary);
+				if (out.is_open())
+				{
+					auto& data = m_SPIRV[stage];
+					out.write((char*)data.data(), data.size() * sizeof(uint32_t));
+				}
 			}
 		}
 	}
@@ -823,4 +829,4 @@ namespace Waffle {
 		return seed;
 	}
 
-} // namespace Waffle
+}
