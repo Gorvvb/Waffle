@@ -13,6 +13,9 @@ if not "%1"=="" (
         "bin\Debug-windows-x86_64\Waffle-Runtime"
         "bin\Release-windows-x86_64\Waffle-Runtime"
         "bin\Dist-windows-x86_64\Waffle-Runtime"
+        "bin\Debug-windows-x86_64\WaffleHub"
+        "bin\Release-windows-x86_64\WaffleHub"
+        "bin\Dist-windows-x86_64\WaffleHub"
     ) do (
         if exist %%D (
             call :CopyAssets %%D
