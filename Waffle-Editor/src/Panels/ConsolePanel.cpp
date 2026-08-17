@@ -1,3 +1,4 @@
+#include "wfpch.h"
 #include "ConsolePanel.h"
 
 #include <imgui/imgui.h>
@@ -27,6 +28,7 @@ namespace Waffle {
 		localtime_s(&time_info, &in_time_t);
 		ss << std::put_time(&time_info, "%H:%M:%S");
 #else
+		(void)time_info;
 		ss << std::put_time(localtime(&in_time_t), "%H:%M:%S");
 #endif
 
@@ -39,87 +41,46 @@ namespace Waffle {
 	{
 		ImGui::Begin("Console");
 
-		// Top controls toolbar
 		if (ImGui::Button("Clear"))
 		{
 			std::lock_guard<std::mutex> lock(s_MessageMutex);
 			s_Messages.clear();
 		}
-		ImGui::SameLine();
-		ImGui::Checkbox("Auto-Scroll", &m_AutoScroll);
 
 		ImGui::SameLine();
-		ImGui::Spacing();
-		ImGui::SameLine();
-		ImGui::Checkbox("Info", &m_ShowInfo);
-		ImGui::SameLine();
-		ImGui::Checkbox("Warn", &m_ShowWarn);
-		ImGui::SameLine();
-		ImGui::Checkbox("Error", &m_ShowError);
-
-		ImGui::SameLine();
-		ImGui::SetNextItemWidth(200.0f);
-		ImGui::InputText("Search", m_FilterBuffer, sizeof(m_FilterBuffer));
+		static bool showTrace = true, showInfo = true, showWarn = true, showError = true;
+		ImGui::Checkbox("Trace", &showTrace); ImGui::SameLine();
+		ImGui::Checkbox("Info", &showInfo); ImGui::SameLine();
+		ImGui::Checkbox("Warn", &showWarn); ImGui::SameLine();
+		ImGui::Checkbox("Error", &showError);
 
 		ImGui::Separator();
 
-		// Message list child window
-		ImGui::BeginChild("ConsoleScrollRegion", ImVec2(0, 0), false, ImGuiWindowFlags_HorizontalScrollbar);
+		ImGui::BeginChild("ScrollingRegion", ImVec2(0, 0), false, ImGuiWindowFlags_HorizontalScrollbar);
 
 		std::lock_guard<std::mutex> lock(s_MessageMutex);
-
-		std::string filterStr = m_FilterBuffer;
-		for (auto& c : filterStr) c = (char)tolower(c);
-
 		for (const auto& msg : s_Messages)
 		{
-			if (msg.LogLevel == ConsoleMessage::Level::Info && !m_ShowInfo) continue;
-			if (msg.LogLevel == ConsoleMessage::Level::Trace && !m_ShowInfo) continue;
-			if (msg.LogLevel == ConsoleMessage::Level::Warn && !m_ShowWarn) continue;
-			if (msg.LogLevel == ConsoleMessage::Level::Error && !m_ShowError) continue;
-			if (msg.LogLevel == ConsoleMessage::Level::Critical && !m_ShowError) continue;
+			if (msg.LogLevel == ConsoleMessage::Level::Trace && !showTrace) continue;
+			if (msg.LogLevel == ConsoleMessage::Level::Info && !showInfo) continue;
+			if (msg.LogLevel == ConsoleMessage::Level::Warn && !showWarn) continue;
+			if (msg.LogLevel == ConsoleMessage::Level::Error && !showError) continue;
 
-			if (!filterStr.empty())
-			{
-				std::string msgLower = msg.Message;
-				for (auto& c : msgLower) c = (char)tolower(c);
-				if (msgLower.find(filterStr) == std::string::npos)
-					continue;
-			}
-
-			ImVec4 color = ImVec4(0.8f, 0.8f, 0.8f, 1.0f); // Default Info/Trace
-			const char* prefix = "[INFO]";
-
+			ImVec4 color = ImVec4(1.0f, 1.0f, 1.0f, 1.0f);
 			switch (msg.LogLevel)
 			{
-			case ConsoleMessage::Level::Trace:
-				color = ImVec4(0.6f, 0.6f, 0.6f, 1.0f);
-				prefix = "[TRACE]";
-				break;
-			case ConsoleMessage::Level::Info:
-				color = ImVec4(0.2f, 0.8f, 0.2f, 1.0f);
-				prefix = "[INFO]";
-				break;
-			case ConsoleMessage::Level::Warn:
-				color = ImVec4(0.9f, 0.7f, 0.2f, 1.0f);
-				prefix = "[WARN]";
-				break;
-			case ConsoleMessage::Level::Error:
-				color = ImVec4(0.9f, 0.2f, 0.2f, 1.0f);
-				prefix = "[ERROR]";
-				break;
-			case ConsoleMessage::Level::Critical:
-				color = ImVec4(1.0f, 0.1f, 0.1f, 1.0f);
-				prefix = "[FATAL]";
-				break;
+				case ConsoleMessage::Level::Trace: color = ImVec4(0.7f, 0.7f, 0.7f, 1.0f); break;
+				case ConsoleMessage::Level::Info:  color = ImVec4(0.2f, 0.8f, 0.2f, 1.0f); break;
+				case ConsoleMessage::Level::Warn:  color = ImVec4(0.9f, 0.9f, 0.2f, 1.0f); break;
+				case ConsoleMessage::Level::Error: color = ImVec4(0.9f, 0.2f, 0.2f, 1.0f); break;
 			}
 
-			ImGui::TextDisabled("[%s]", msg.Timestamp.c_str());
-			ImGui::SameLine();
-			ImGui::TextColored(color, "%s %s", prefix, msg.Message.c_str());
+			ImGui::PushStyleColor(ImGuiCol_Text, color);
+			ImGui::Text("[%s] %s", msg.Timestamp.c_str(), msg.Message.c_str());
+			ImGui::PopStyleColor();
 		}
 
-		if (m_AutoScroll && ImGui::GetScrollY() >= ImGui::GetScrollMaxY())
+		if (ImGui::GetScrollY() >= ImGui::GetScrollMaxY())
 			ImGui::SetScrollHereY(1.0f);
 
 		ImGui::EndChild();

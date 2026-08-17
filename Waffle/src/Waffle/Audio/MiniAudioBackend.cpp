@@ -87,6 +87,12 @@ namespace Waffle {
 			if (instance.Initialized)
 			{
 				ma_sound_uninit(&instance.Sound);
+				if (instance.HasDecoder)
+				{
+					ma_decoder_uninit(&instance.Decoder);
+					instance.HasDecoder = false;
+				}
+				instance.MemoryBuffer.Release();
 				instance.Initialized = false;
 			}
 		}

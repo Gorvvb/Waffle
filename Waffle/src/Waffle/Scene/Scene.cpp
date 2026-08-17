@@ -563,7 +563,10 @@ namespace Waffle {
 			glm::vec2 pos = glm::vec2(worldTransform[3]);
 			glm::vec2 scale = glm::vec2(glm::length(worldTransform[0]), glm::length(worldTransform[1]));
 			if (!Renderer2D::IsVisibleInFrustum(pos, scale))
+			{
+				Renderer2D::GetStats().CulledQuadCount++;
 				continue;
+			}
 
 			auto* animator = m_Registry.try_get<AnimatorComponent>(entity);
 			if (animator)
@@ -590,7 +593,10 @@ namespace Waffle {
 			glm::vec2 pos = glm::vec2(worldTransform[3]);
 			glm::vec2 scale = glm::vec2(glm::length(worldTransform[0]), glm::length(worldTransform[1]));
 			if (!Renderer2D::IsVisibleInFrustum(pos, scale))
+			{
+				Renderer2D::GetStats().CulledQuadCount++;
 				continue;
+			}
 
 			Renderer2D::DrawCircle(worldTransform, circle.Color, circle.Thickness, circle.Fade, (int)entity);
 		}
@@ -663,7 +669,10 @@ namespace Waffle {
 			glm::vec2 pos = glm::vec2(worldTransform[3]);
 			glm::vec2 scale = glm::vec2(glm::length(worldTransform[0]), glm::length(worldTransform[1]));
 			if (!Renderer2D::IsVisibleInFrustum(pos, scale))
+			{
+				Renderer2D::GetStats().CulledQuadCount++;
 				continue;
+			}
 
 			auto* animator = m_Registry.try_get<AnimatorComponent>(entity);
 			if (animator)
@@ -690,7 +699,10 @@ namespace Waffle {
 			glm::vec2 pos = glm::vec2(worldTransform[3]);
 			glm::vec2 scale = glm::vec2(glm::length(worldTransform[0]), glm::length(worldTransform[1]));
 			if (!Renderer2D::IsVisibleInFrustum(pos, scale))
+			{
+				Renderer2D::GetStats().CulledQuadCount++;
 				continue;
+			}
 
 			Renderer2D::DrawCircle(worldTransform, circle.Color, circle.Thickness, circle.Fade, (int)entity);
 		}

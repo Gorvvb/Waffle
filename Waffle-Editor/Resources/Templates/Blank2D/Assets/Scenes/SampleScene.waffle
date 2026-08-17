@@ -1,6 +1,6 @@
-Scene: SampleScene
+Scene: DefaultScene
 Entities:
-  - Entity: 1234567890123456789
+  - Entity: 14282219596200421912
     TagComponent:
       Tag: Main Camera
     TransformComponent:
@@ -10,9 +10,15 @@ Entities:
     CameraComponent:
       Camera:
         ProjectionType: 1
+        PerspectiveFov: 0.7853982
+        PerspectiveNear: 0.01
+        PerspectiveFar: 1000
         OrthographicSize: 10
         OrthographicNear: -1
         OrthographicFar: 1
       Primary: true
       FixedAspectRatio: false
       BackgroundColor: [0.18, 0.18, 0.19, 1]
+      BackgroundImagePath: ""
+      BackgroundTilingFactor: [1, 1]
+      BackgroundFilterMode: 1

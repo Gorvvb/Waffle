@@ -33,14 +33,14 @@ namespace Waffle {
 
 		static Frustum2D FromOrthographic(float orthoSize, float aspectRatio, const glm::mat4& transform);
 		static Frustum2D FromProjectionAndView(const glm::mat4& projection, const glm::mat4& view);
+		static Frustum2D FromViewProjection(const glm::mat4& viewProj);
 
 		bool IsVisible(const AABB2D& bounds) const;
 		bool IsVisible(const glm::vec2& position, const glm::vec2& size) const;
-
-		const AABB2D& GetBounds() const { return m_Bounds; }
+		bool IsVisible(const glm::vec3& min, const glm::vec3& max) const;
 
 	private:
-		AABB2D m_Bounds;
+		glm::vec4 m_Planes[6];
 	};
 
 }

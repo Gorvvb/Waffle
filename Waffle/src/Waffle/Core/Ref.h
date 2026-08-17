@@ -78,6 +78,13 @@ namespace Waffle {
 			other.m_Instance = nullptr;
 		}
 
+		static Ref<T> CopyWithoutIncrement(const Ref<T>& other)
+		{
+			Ref<T> result = nullptr;
+			result.m_Instance = other.m_Instance;
+			return result;
+		}
+
 		~Ref()
 		{
 			DecRef();
@@ -209,6 +216,49 @@ namespace Waffle {
 		template<typename T2>
 		friend class Ref;
 
+		T* m_Instance = nullptr;
+	};
+
+	template<typename T>
+	class WeakRef
+	{
+	public:
+		WeakRef() = default;
+
+		WeakRef(Ref<T> ref)
+		{
+			m_Instance = ref.Raw();
+		}
+
+		WeakRef(T* instance)
+		{
+			m_Instance = instance;
+		}
+
+		T* operator->() { return m_Instance; }
+		const T* operator->() const { return m_Instance; }
+
+		T& operator*() { return *m_Instance; }
+		const T& operator*() const { return *m_Instance; }
+
+		bool IsValid() const { return m_Instance ? RefUtils::IsLive(m_Instance) : false; }
+		explicit operator bool() const { return IsValid(); }
+
+		Ref<T> Lock() const
+		{
+			if (IsValid())
+				return Ref<T>(m_Instance);
+
+			return nullptr;
+		}
+
+		template<typename T2>
+		WeakRef<T2> As() const
+		{
+			return WeakRef<T2>(dynamic_cast<T2*>(m_Instance));
+		}
+
+	private:
 		T* m_Instance = nullptr;
 	};
 

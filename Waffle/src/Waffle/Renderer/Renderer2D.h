@@ -40,6 +40,7 @@ namespace Waffle {
 
 		static void DrawRect(const glm::vec3& position, const glm::vec2& size, const glm::vec4& color, int entityID = -1);
 		static void DrawRect(const glm::mat4& transform, const glm::vec4& color, int entityID = -1);
+		static void DrawRoundedRect(const glm::mat4& transform, const glm::vec4& color, float cornerRadius = 0.06f, int cornerSegments = 4, int entityID = -1);
 
 		static void DrawQuad(const glm::vec2& position, const glm::vec2& size, const glm::vec4& color);
 		static void DrawQuad(const glm::vec3& position, const glm::vec2& size, const glm::vec4& color);
@@ -47,6 +48,7 @@ namespace Waffle {
 		static void DrawQuad(const glm::vec3& position, const glm::vec2& size, const Ref<Texture2D>& texture, const glm::vec2& tilingFactor = glm::vec2(1.0f), const glm::vec4& tintColor = glm::vec4(1.0f));
 
 		static void DrawQuad(const glm::mat4& transform, const glm::vec4& color, int entityID = -1);
+		static void DrawRoundedQuad(const glm::mat4& transform, const glm::vec4& color, float cornerRadius = 0.04f, int cornerSegments = 4, int entityID = -1);
 		static void DrawQuad(const glm::mat4& transform, const Ref<Texture2D>& texture, const glm::vec2& tilingFactor = glm::vec2(1.0f), const glm::vec4& tintColor = glm::vec4(1.0f), int entityID = -1);
 		static void DrawQuad(const glm::mat4& transform, const Ref<SubTexture2D>& subTexture, const glm::vec2& tilingFactor = glm::vec2(1.0f), const glm::vec4& tintColor = glm::vec4(1.0f), int entityID = -1);
 
@@ -67,7 +69,7 @@ namespace Waffle {
 		};
 
 		static void ResetStats();
-		static Statistics GetStats();
+		static Statistics& GetStats();
 
 	private:
 		static void StartBatch();

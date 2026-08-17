@@ -1,6 +1,7 @@
 #include "ProjectExporter.h"
 #include "AssetPacker.h"
 #include "Waffle/Core/Log.h"
+#include "Waffle/Renderer/PostProcessing.h"
 
 #if defined(WF_PLATFORM_WINDOWS)
 	#include <windows.h>
@@ -665,6 +666,26 @@ static bool EmbedIconInExecutable(const std::filesystem::path& exePath, const st
 			out << relativeStartScene;
 		}
 		out << YAML::EndSeq;
+
+		const auto& pp = PostProcessing::GetSettings();
+		out << YAML::Key << "PostProcessing" << YAML::Value << YAML::BeginMap;
+		out << YAML::Key << "EnablePostProcessing" << YAML::Value << pp.EnablePostProcessing;
+		out << YAML::Key << "EnableBloom" << YAML::Value << pp.EnableBloom;
+		out << YAML::Key << "BloomThreshold" << YAML::Value << pp.BloomThreshold;
+		out << YAML::Key << "BloomIntensity" << YAML::Value << pp.BloomIntensity;
+		out << YAML::Key << "BloomColor" << YAML::Value << YAML::Flow << YAML::BeginSeq << pp.BloomColor.r << pp.BloomColor.g << pp.BloomColor.b << YAML::EndSeq;
+
+		out << YAML::Key << "EnableVignette" << YAML::Value << pp.EnableVignette;
+		out << YAML::Key << "VignetteIntensity" << YAML::Value << pp.VignetteIntensity;
+		out << YAML::Key << "VignetteSmoothness" << YAML::Value << pp.VignetteSmoothness;
+		out << YAML::Key << "VignetteColor" << YAML::Value << YAML::Flow << YAML::BeginSeq << pp.VignetteColor.r << pp.VignetteColor.g << pp.VignetteColor.b << YAML::EndSeq;
+
+		out << YAML::Key << "EnableTonemapping" << YAML::Value << pp.EnableTonemapping;
+		out << YAML::Key << "Exposure" << YAML::Value << pp.Exposure;
+		out << YAML::Key << "Contrast" << YAML::Value << pp.Contrast;
+		out << YAML::Key << "Saturation" << YAML::Value << pp.Saturation;
+		out << YAML::Key << "ColorGradingTint" << YAML::Value << YAML::Flow << YAML::BeginSeq << pp.ColorGradingTint.r << pp.ColorGradingTint.g << pp.ColorGradingTint.b << YAML::EndSeq;
+		out << YAML::EndMap;
 
 		out << YAML::EndMap;
 		out << YAML::EndMap;

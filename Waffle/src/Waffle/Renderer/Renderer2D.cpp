@@ -330,6 +330,59 @@ namespace Waffle {
 		DrawLine(lineVertices[3], lineVertices[0], color);
 	}
 
+	void Renderer2D::DrawRoundedRect(const glm::mat4& transform, const glm::vec4& color, float cornerRadius, int cornerSegments, int entityID)
+	{
+		WF_PROFILE_FUNCTION();
+
+		cornerRadius = glm::clamp(cornerRadius, 0.0f, 0.45f);
+		if (cornerRadius <= 0.001f)
+		{
+			DrawRect(transform, color, entityID);
+			return;
+		}
+
+		float r = cornerRadius;
+		float xMin = -0.5f + r, xMax = 0.5f - r;
+		float yMin = -0.5f + r, yMax = 0.5f - r;
+
+		glm::vec2 centers[4] = {
+			{ xMax, yMin },
+			{ xMax, yMax },
+			{ xMin, yMax },
+			{ xMin, yMin }
+		};
+
+		float startAngles[4] = {
+			-glm::half_pi<float>(),
+			0.0f,
+			glm::half_pi<float>(),
+			glm::pi<float>()
+		};
+
+		std::vector<glm::vec3> points;
+		points.reserve(4 * ((size_t)cornerSegments + 1));
+
+		for (int i = 0; i < 4; i++)
+		{
+			float baseAngle = startAngles[i];
+			float step = glm::half_pi<float>() / (float)cornerSegments;
+			for (int j = 0; j <= cornerSegments; j++)
+			{
+				float angle = baseAngle + (float)j * step;
+				glm::vec2 pos = centers[i] + glm::vec2(cosf(angle), sinf(angle)) * r;
+				points.push_back(transform * glm::vec4(pos.x, pos.y, 0.0f, 1.0f));
+			}
+		}
+
+		size_t count = points.size();
+		for (size_t i = 0; i < count; i++)
+		{
+			glm::vec3 p0 = points[i];
+			glm::vec3 p1 = points[(i + 1) % count];
+			DrawLine(p0, p1, color, entityID);
+		}
+	}
+
 	void Renderer2D::DrawSprite(const glm::mat4& transform, SpriteRendererComponent& src, int entityID)
 	{
 		if (src.Texture)
@@ -343,6 +396,23 @@ namespace Waffle {
 	void Renderer2D::DrawCircle(const glm::mat4& transform, const glm::vec4& color, float thickness /*= 1.0f*/, float fade /*= 0.005f*/, int entityID /*= -1*/)
 	{
 		WF_PROFILE_FUNCTION();
+
+		glm::vec2 minPt( 1e9f);
+		glm::vec2 maxPt(-1e9f);
+		for (size_t i = 0; i < 4; i++)
+		{
+			glm::vec4 worldPos = transform * s_Data.QuadVertexPositions[i];
+			minPt.x = glm::min(minPt.x, worldPos.x);
+			minPt.y = glm::min(minPt.y, worldPos.y);
+			maxPt.x = glm::max(maxPt.x, worldPos.x);
+			maxPt.y = glm::max(maxPt.y, worldPos.y);
+		}
+
+		if (!IsVisibleInFrustum(AABB2D(minPt, maxPt)))
+		{
+			s_Data.Stats.CulledQuadCount++;
+			return;
+		}
 
 		for (size_t i = 0; i < 4; i++)
 		{
@@ -420,6 +490,23 @@ namespace Waffle {
 	{
 		WF_PROFILE_FUNCTION();
 
+		glm::vec2 minPt( 1e9f);
+		glm::vec2 maxPt(-1e9f);
+		for (size_t i = 0; i < 4; i++)
+		{
+			glm::vec4 worldPos = transform * s_Data.QuadVertexPositions[i];
+			minPt.x = glm::min(minPt.x, worldPos.x);
+			minPt.y = glm::min(minPt.y, worldPos.y);
+			maxPt.x = glm::max(maxPt.x, worldPos.x);
+			maxPt.y = glm::max(maxPt.y, worldPos.y);
+		}
+
+		if (!IsVisibleInFrustum(AABB2D(minPt, maxPt)))
+		{
+			s_Data.Stats.CulledQuadCount++;
+			return;
+		}
+
 		constexpr size_t quadVertexCount = 4;
 		constexpr glm::vec2 textureCoords[] = { { 0.0f, 0.0f }, { 1.0f, 0.0f }, { 1.0f, 1.0f }, { 0.0f, 1.0f } };
 
@@ -445,9 +532,126 @@ namespace Waffle {
 		s_Data.Stats.QuadCount++;
 	}
 
+	void Renderer2D::DrawRoundedQuad(const glm::mat4& transform, const glm::vec4& color, float cornerRadius, int cornerSegments, int entityID)
+	{
+		WF_PROFILE_FUNCTION();
+
+		cornerRadius = glm::clamp(cornerRadius, 0.0f, 0.45f);
+		if (cornerRadius <= 0.001f)
+		{
+			DrawQuad(transform, color, entityID);
+			return;
+		}
+
+		float r = cornerRadius;
+		float xMin = -0.5f + r, xMax = 0.5f - r;
+		float yMin = -0.5f + r, yMax = 0.5f - r;
+
+		glm::vec2 centers[4] = {
+			{ xMax, yMin },
+			{ xMax, yMax },
+			{ xMin, yMax },
+			{ xMin, yMin }
+		};
+
+		float startAngles[4] = {
+			-glm::half_pi<float>(),
+			0.0f,
+			glm::half_pi<float>(),
+			glm::pi<float>()
+		};
+
+		std::vector<glm::vec3> points;
+		points.reserve(4 * ((size_t)cornerSegments + 1));
+
+		for (int i = 0; i < 4; i++)
+		{
+			float baseAngle = startAngles[i];
+			float step = glm::half_pi<float>() / (float)cornerSegments;
+			for (int j = 0; j <= cornerSegments; j++)
+			{
+				float angle = baseAngle + (float)j * step;
+				glm::vec2 pos = centers[i] + glm::vec2(cosf(angle), sinf(angle)) * r;
+				points.push_back(transform * glm::vec4(pos.x, pos.y, 0.0f, 1.0f));
+			}
+		}
+
+		glm::vec3 center = transform * glm::vec4(0.0f, 0.0f, 0.0f, 1.0f);
+		const float textureIndex = 0.0f;
+		const glm::vec2 tilingFactor = glm::vec2(1.0f, 1.0f);
+
+		size_t count = points.size();
+		for (size_t i = 0; i < count; i++)
+		{
+			if (s_Data.QuadIndexCount >= s_Data.MaxIndices)
+				NextBatch();
+
+			glm::vec3 p0 = points[i];
+			glm::vec3 p1 = points[(i + 1) % count];
+
+			s_Data.QuadVertexBufferPtr->Position = center;
+			s_Data.QuadVertexBufferPtr->Color = color;
+			s_Data.QuadVertexBufferPtr->TexCoord = { 0.5f, 0.5f };
+			s_Data.QuadVertexBufferPtr->textureIndex = textureIndex;
+			s_Data.QuadVertexBufferPtr->TilingFactor = tilingFactor;
+			s_Data.QuadVertexBufferPtr->EntityID = entityID;
+			s_Data.QuadVertexBufferPtr++;
+
+			s_Data.QuadVertexBufferPtr->Position = center;
+			s_Data.QuadVertexBufferPtr->Color = color;
+			s_Data.QuadVertexBufferPtr->TexCoord = { 0.5f, 0.5f };
+			s_Data.QuadVertexBufferPtr->textureIndex = textureIndex;
+			s_Data.QuadVertexBufferPtr->TilingFactor = tilingFactor;
+			s_Data.QuadVertexBufferPtr->EntityID = entityID;
+			s_Data.QuadVertexBufferPtr++;
+
+			s_Data.QuadVertexBufferPtr->Position = p0;
+			s_Data.QuadVertexBufferPtr->Color = color;
+			s_Data.QuadVertexBufferPtr->TexCoord = { 0.0f, 0.0f };
+			s_Data.QuadVertexBufferPtr->textureIndex = textureIndex;
+			s_Data.QuadVertexBufferPtr->TilingFactor = tilingFactor;
+			s_Data.QuadVertexBufferPtr->EntityID = entityID;
+			s_Data.QuadVertexBufferPtr++;
+
+			s_Data.QuadVertexBufferPtr->Position = p1;
+			s_Data.QuadVertexBufferPtr->Color = color;
+			s_Data.QuadVertexBufferPtr->TexCoord = { 1.0f, 1.0f };
+			s_Data.QuadVertexBufferPtr->textureIndex = textureIndex;
+			s_Data.QuadVertexBufferPtr->TilingFactor = tilingFactor;
+			s_Data.QuadVertexBufferPtr->EntityID = entityID;
+			s_Data.QuadVertexBufferPtr++;
+
+			s_Data.QuadIndexCount += 6;
+		}
+		s_Data.Stats.QuadCount++;
+	}
+
 	void Renderer2D::DrawQuad(const glm::mat4& transform, const Ref<Texture2D>& texture, const glm::vec2& tilingFactor, const glm::vec4& tintColor, int entityID)
 	{
 		WF_PROFILE_FUNCTION();
+
+		if (!texture)
+		{
+			DrawQuad(transform, tintColor, entityID);
+			return;
+		}
+
+		glm::vec2 minPt( 1e9f);
+		glm::vec2 maxPt(-1e9f);
+		for (size_t i = 0; i < 4; i++)
+		{
+			glm::vec4 worldPos = transform * s_Data.QuadVertexPositions[i];
+			minPt.x = glm::min(minPt.x, worldPos.x);
+			minPt.y = glm::min(minPt.y, worldPos.y);
+			maxPt.x = glm::max(maxPt.x, worldPos.x);
+			maxPt.y = glm::max(maxPt.y, worldPos.y);
+		}
+
+		if (!IsVisibleInFrustum(AABB2D(minPt, maxPt)))
+		{
+			s_Data.Stats.CulledQuadCount++;
+			return;
+		}
 
 		constexpr size_t quadVertexCount = 4;
 		constexpr glm::vec2 textureCoords[] = { { 0.0f, 0.0f }, { 1.0f, 0.0f }, { 1.0f, 1.0f }, { 0.0f, 1.0f } };
@@ -638,7 +842,7 @@ namespace Waffle {
 		memset(&s_Data.Stats, 0, sizeof(Statistics));
 	}
 
-	Renderer2D::Statistics Renderer2D::GetStats()
+	Renderer2D::Statistics& Renderer2D::GetStats()
 	{
 		return s_Data.Stats;
 	}

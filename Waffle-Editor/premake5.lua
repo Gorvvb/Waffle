@@ -28,6 +28,7 @@ project "Waffle-Editor"
 		"%{Includedir.GLAD}",
 		"%{Includedir.glm}",
 		"%{Includedir.entt}",
+		"%{Includedir.ImGui}",
 		"%{Includedir.ImGuizmo}",
 		"%{Includedir.yaml_cpp}"
 	}

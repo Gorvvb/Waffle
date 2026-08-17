@@ -20,6 +20,7 @@ namespace Waffle {
 		void LoadScene(int index);
 
 		Ref<Scene> m_Scene;
+		Ref<Framebuffer> m_Framebuffer;
 		std::filesystem::path m_ScenePath;
 		std::vector<std::string> m_SceneList;
 		int m_CurrentSceneIndex = 0;

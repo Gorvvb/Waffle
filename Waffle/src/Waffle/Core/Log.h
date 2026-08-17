@@ -2,6 +2,7 @@
 
 #include "wfpch.h"
 #include "Waffle/Core/Base.h"
+#include "Waffle/Core/LogCustomFormatters.h"
 
 #define GLM_ENABLE_EXPERIMENTAL
 #include "glm/gtx/string_cast.hpp"

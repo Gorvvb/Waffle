@@ -6,6 +6,10 @@
 #include "Waffle/Events/KeyEvent.h"
 #include "Waffle/Events/MouseEvent.h"
 
+#include "Waffle/ImGui/Colors.h"
+#include "Waffle/ImGui/ImGuiUtilities.h"
+#include "Waffle/ImGui/ImGuiWidgets.h"
+
 struct ImDrawList;
 
 namespace Waffle {

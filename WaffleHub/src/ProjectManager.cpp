@@ -179,10 +179,62 @@ namespace Waffle {
 				std::filesystem::copy_options::recursive, ec);
 		}
 
+		// Copy imgui.ini into new project directory
+		std::vector<std::filesystem::path> iniCandidates = {
+			sourceTemplate / "imgui.ini",
+			"Resources/Templates/Blank2D/imgui.ini",
+			"WaffleHub/Resources/Templates/Blank2D/imgui.ini",
+			"../Resources/Templates/Blank2D/imgui.ini",
+			"Projects/Platformer/imgui.ini",
+			"../Waffle-Editor/imgui.ini",
+			"Waffle-Editor/imgui.ini"
+		};
+
+		std::filesystem::path sourceIni;
+		for (const auto& iniCand : iniCandidates)
+		{
+			if (std::filesystem::exists(iniCand) && std::filesystem::is_regular_file(iniCand))
+			{
+				sourceIni = iniCand;
+				break;
+			}
+		}
+
+		if (!sourceIni.empty())
+		{
+			std::filesystem::copy_file(sourceIni, targetDir / "imgui.ini",
+				std::filesystem::copy_options::overwrite_existing, ec);
+		}
+
 		// Ensure Assets directory structure exists
 		std::filesystem::create_directories(targetDir / "Assets" / "Scripts", ec);
 		std::filesystem::create_directories(targetDir / "Assets" / "Scenes", ec);
 		std::filesystem::create_directories(targetDir / "Assets" / "Audio", ec);
+
+		// Ensure a default sample scene with a Main Camera exists if missing
+		std::filesystem::path sampleScenePath = targetDir / "Assets" / "Scenes" / "SampleScene.waffle";
+		if (!std::filesystem::exists(sampleScenePath))
+		{
+			std::ofstream sceneFile(sampleScenePath);
+			sceneFile << "Scene: SampleScene\n"
+				<< "Entities:\n"
+				<< "  - Entity: 1234567890123456789\n"
+				<< "    TagComponent:\n"
+				<< "      Tag: Main Camera\n"
+				<< "    TransformComponent:\n"
+				<< "      Translation: [0, 0, 0]\n"
+				<< "      Rotation: [0, 0, 0]\n"
+				<< "      Scale: [1, 1, 1]\n"
+				<< "    CameraComponent:\n"
+				<< "      Camera:\n"
+				<< "        ProjectionType: 1\n"
+				<< "        OrthographicSize: 10\n"
+				<< "        OrthographicNear: -1\n"
+				<< "        OrthographicFar: 1\n"
+				<< "      Primary: true\n"
+				<< "      FixedAspectRatio: false\n"
+				<< "      BackgroundColor: [0.18, 0.18, 0.19, 1]\n";
+		}
 
 		// Write Project.yaml
 		std::filesystem::path projYaml = targetDir / "Project.yaml";
@@ -191,17 +243,15 @@ namespace Waffle {
 		out << YAML::Key << "Project" << YAML::Value << YAML::BeginMap;
 		out << YAML::Key << "Name" << YAML::Value << projectName;
 		out << YAML::Key << "Gravity" << YAML::Value << -9.81f;
+		out << YAML::Key << "StartScene" << YAML::Value << "Assets/Scenes/SampleScene.waffle";
 		out << YAML::Key << "Scenes" << YAML::Value << YAML::BeginSeq;
 
-		// Find any .waffle files inside targetDir
-		bool foundScene = false;
+		// Find all .waffle files inside targetDir
 		for (const auto& entry : std::filesystem::recursive_directory_iterator(targetDir))
 		{
 			if (entry.is_regular_file() && entry.path().extension() == ".waffle")
 			{
 				out << entry.path().string();
-				foundScene = true;
-				break;
 			}
 		}
 		out << YAML::EndSeq;
@@ -228,6 +278,15 @@ namespace Waffle {
 		std::string exeStr = std::filesystem::absolute(editorExe).string();
 		std::string argsStr = "\"" + std::filesystem::absolute(projectPath).string() + "\"";
 		std::string workingDirStr = std::filesystem::absolute(editorExe).parent_path().string();
+
+		// Copy project imgui.ini into working directory so the editor launches with the project's layout
+		std::filesystem::path projIni = projectPath / "imgui.ini";
+		if (std::filesystem::exists(projIni))
+		{
+			std::error_code ec;
+			std::filesystem::copy_file(projIni, std::filesystem::path(workingDirStr) / "imgui.ini",
+				std::filesystem::copy_options::overwrite_existing, ec);
+		}
 
 		HINSTANCE hInst = ShellExecuteA(
 			NULL,

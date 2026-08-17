@@ -1,94 +1,75 @@
 #include "wfpch.h"
 #include "Frustum2D.h"
+#include <glm/gtc/matrix_transform.hpp>
 
 namespace Waffle {
 
-	Frustum2D Frustum2D::FromOrthographic(float orthoSize, float aspectRatio, const glm::mat4& transform)
+	Frustum2D Frustum2D::FromViewProjection(const glm::mat4& viewProj)
 	{
 		Frustum2D frustum;
+
+		frustum.m_Planes[0] = glm::vec4(viewProj[0][3] + viewProj[0][0], viewProj[1][3] + viewProj[1][0], viewProj[2][3] + viewProj[2][0], viewProj[3][3] + viewProj[3][0]);
+		frustum.m_Planes[1] = glm::vec4(viewProj[0][3] - viewProj[0][0], viewProj[1][3] - viewProj[1][0], viewProj[2][3] - viewProj[2][0], viewProj[3][3] - viewProj[3][0]);
+		frustum.m_Planes[2] = glm::vec4(viewProj[0][3] + viewProj[0][1], viewProj[1][3] + viewProj[1][1], viewProj[2][3] + viewProj[2][1], viewProj[3][3] + viewProj[3][1]);
+		frustum.m_Planes[3] = glm::vec4(viewProj[0][3] - viewProj[0][1], viewProj[1][3] - viewProj[1][1], viewProj[2][3] - viewProj[2][1], viewProj[3][3] - viewProj[3][1]);
+		frustum.m_Planes[4] = glm::vec4(viewProj[0][3] + viewProj[0][2], viewProj[1][3] + viewProj[1][2], viewProj[2][3] + viewProj[2][2], viewProj[3][3] + viewProj[3][2]);
+		frustum.m_Planes[5] = glm::vec4(viewProj[0][3] - viewProj[0][2], viewProj[1][3] - viewProj[1][2], viewProj[2][3] - viewProj[2][2], viewProj[3][3] - viewProj[3][2]);
+
+		for (int i = 0; i < 6; i++)
+		{
+			float len = glm::length(glm::vec3(frustum.m_Planes[i]));
+			if (len > 0.00001f)
+				frustum.m_Planes[i] /= len;
+		}
+
+		return frustum;
+	}
+
+	Frustum2D Frustum2D::FromOrthographic(float orthoSize, float aspectRatio, const glm::mat4& transform)
+	{
 		float orthoLeft = -orthoSize * aspectRatio * 0.5f;
 		float orthoRight = orthoSize * aspectRatio * 0.5f;
 		float orthoBottom = -orthoSize * 0.5f;
 		float orthoTop = orthoSize * 0.5f;
 
-		glm::vec3 center = transform[3];
-
-		frustum.m_Bounds.Min = glm::vec2(center.x + orthoLeft, center.y + orthoBottom);
-		frustum.m_Bounds.Max = glm::vec2(center.x + orthoRight, center.y + orthoTop);
-
-		return frustum;
+		glm::mat4 proj = glm::ortho(orthoLeft, orthoRight, orthoBottom, orthoTop, -1000.0f, 1000.0f);
+		glm::mat4 view = glm::inverse(transform);
+		return FromViewProjection(proj * view);
 	}
 
 	Frustum2D Frustum2D::FromProjectionAndView(const glm::mat4& projection, const glm::mat4& view)
 	{
-		Frustum2D frustum;
-		glm::mat4 invVP = glm::inverse(projection * view);
+		return FromViewProjection(projection * view);
+	}
 
-		glm::vec4 ndcNear[4] = {
-			{ -1.0f, -1.0f, -1.0f, 1.0f },
-			{  1.0f, -1.0f, -1.0f, 1.0f },
-			{  1.0f,  1.0f, -1.0f, 1.0f },
-			{ -1.0f,  1.0f, -1.0f, 1.0f }
-		};
-
-		glm::vec4 ndcFar[4] = {
-			{ -1.0f, -1.0f, 1.0f, 1.0f },
-			{  1.0f, -1.0f, 1.0f, 1.0f },
-			{  1.0f,  1.0f, 1.0f, 1.0f },
-			{ -1.0f,  1.0f, 1.0f, 1.0f }
-		};
-
-		glm::vec2 minPt( 1e9f);
-		glm::vec2 maxPt(-1e9f);
-
+	bool Frustum2D::IsVisible(const glm::vec3& min, const glm::vec3& max) const
+	{
 		for (int i = 0; i < 4; i++)
 		{
-			glm::vec4 nearW = invVP * ndcNear[i];
-			glm::vec4 farW = invVP * ndcFar[i];
+			const glm::vec4& plane = m_Planes[i];
+			glm::vec3 normal(plane.x, plane.y, plane.z);
 
-			if (nearW.w != 0.0f) nearW /= nearW.w;
-			if (farW.w != 0.0f) farW /= farW.w;
+			glm::vec3 positiveVertex(
+				plane.x >= 0.0f ? max.x : min.x,
+				plane.y >= 0.0f ? max.y : min.y,
+				plane.z >= 0.0f ? max.z : min.z
+			);
 
-			glm::vec3 p0 = glm::vec3(nearW);
-			glm::vec3 dir = glm::vec3(farW) - p0;
-
-			// Intersect ray with z = 0 world plane for 2D sprites
-			if (std::abs(dir.z) > 0.00001f)
-			{
-				float t = -p0.z / dir.z;
-				if (t >= 0.0f && t <= 1.0f)
-				{
-					glm::vec3 planePt = p0 + t * dir;
-					minPt.x = glm::min(minPt.x, planePt.x);
-					minPt.y = glm::min(minPt.y, planePt.y);
-					maxPt.x = glm::max(maxPt.x, planePt.x);
-					maxPt.y = glm::max(maxPt.y, planePt.y);
-					continue;
-				}
-			}
-
-			// Fallback: near plane point
-			minPt.x = glm::min(minPt.x, nearW.x);
-			minPt.y = glm::min(minPt.y, nearW.y);
-			maxPt.x = glm::max(maxPt.x, nearW.x);
-			maxPt.y = glm::max(maxPt.y, nearW.y);
+			if (glm::dot(normal, positiveVertex) + plane.w < 0.0f)
+				return false;
 		}
-
-		frustum.m_Bounds.Min = minPt;
-		frustum.m_Bounds.Max = maxPt;
-		return frustum;
+		return true;
 	}
 
 	bool Frustum2D::IsVisible(const AABB2D& bounds) const
 	{
-		return m_Bounds.Intersects(bounds);
+		return IsVisible(glm::vec3(bounds.Min, -1.0f), glm::vec3(bounds.Max, 1.0f));
 	}
 
 	bool Frustum2D::IsVisible(const glm::vec2& position, const glm::vec2& size) const
 	{
 		glm::vec2 halfSize = size * 0.5f;
-		AABB2D bounds(position - halfSize, position + halfSize);
-		return m_Bounds.Intersects(bounds);
+		return IsVisible(glm::vec3(position - halfSize, -1.0f), glm::vec3(position + halfSize, 1.0f));
 	}
 
 }

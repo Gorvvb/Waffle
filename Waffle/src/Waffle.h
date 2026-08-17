@@ -22,6 +22,8 @@
 #include "Waffle/Scene/ScriptableEntity.h"
 #include "Waffle/Scene/Components.h"
 
+#include "Waffle/Project/Project.h"
+
 // ---Renderer-----------------------
 #include "Waffle/Renderer/Renderer.h"
 #include "Waffle/Renderer/Renderer2D.h"

@@ -1910,8 +1910,8 @@ namespace Waffle {
 		float vh = (float)scene->GetViewportHeight();
 		if (vw == 0 || vh == 0) { lua_pushnumber(L, sx); lua_pushnumber(L, sy); return 2; }
 
-		float wx = tc.Translation.x + (sx / vw - 0.5f) * 2.0f * orthoSize * aspectRatio;
-		float wy = tc.Translation.y + (0.5f - sy / vh) * 2.0f * orthoSize; // Y flipped
+		float wx = tc.Translation.x + (sx / vw - 0.5f) * orthoSize * aspectRatio;
+		float wy = tc.Translation.y + (0.5f - sy / vh) * orthoSize; // Y flipped
 		lua_pushnumber(L, wx);
 		lua_pushnumber(L, wy);
 		return 2;
@@ -1935,11 +1935,23 @@ namespace Waffle {
 	{
 		const char* path = lua_tostring(L, 1);
 		float vol = lua_isnumber(L, 2) ? (float)lua_tonumber(L, 2) : 1.0f;
-		bool loop = lua_isboolean(L, 3) ? (lua_toboolean(L, 3) != 0) : false;
+		float pitch = 1.0f;
+		bool loop = false;
 
-		if (!path) { lua_pushnumber(L, 0); return 1; }
-		uint32_t id = AudioEngine::PlaySound(path, vol, loop);
-		lua_pushnumber(L, id);
+		if (lua_isnumber(L, 3))
+		{
+			pitch = (float)lua_tonumber(L, 3);
+			if (lua_isboolean(L, 4))
+				loop = lua_toboolean(L, 4) != 0;
+		}
+		else if (lua_isboolean(L, 3))
+		{
+			loop = lua_toboolean(L, 3) != 0;
+		}
+
+		if (!path) { lua_pushboolean(L, 0); return 1; }
+		bool success = AudioEngine::PlaySound(path, vol, pitch, loop);
+		lua_pushboolean(L, success ? 1 : 0);
 		return 1;
 	}
 
