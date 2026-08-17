@@ -7,9 +7,87 @@
 #include <GLFW/glfw3.h>
 #include <imgui.h>
 
+#include <unordered_map>
+#include <map>
+
 namespace Waffle {
 
-	bool Input::IsKeyPressed(const KeyCode key)
+	struct ActionBinding
+	{
+		std::vector<KeyCode> Keys;
+		std::vector<MouseCode> MouseButtons;
+	};
+
+	struct AxisBinding
+	{
+		KeyCode PositiveKey = Key::None;
+		KeyCode NegativeKey = Key::None;
+	};
+
+	static std::unordered_map<std::string, ActionBinding> s_ActionBindings;
+	static std::unordered_map<std::string, AxisBinding> s_AxisBindings;
+
+	static std::map<int, Controller> s_Controllers;
+	static CursorMode s_CursorMode = CursorMode::Normal;
+
+	void Input::Update()
+	{
+		auto* window = static_cast<GLFWwindow*>(Application::Get().GetWindow().GetNativeWindow());
+		if (!window) return;
+
+		for (int id = GLFW_JOYSTICK_1; id <= GLFW_JOYSTICK_LAST; ++id)
+		{
+			if (glfwJoystickPresent(id))
+			{
+				auto& controller = s_Controllers[id];
+				controller.ID = id;
+				const char* name = glfwGetJoystickName(id);
+				controller.Name = name ? name : "Unknown";
+
+				int axesCount = 0;
+				const float* axes = glfwGetJoystickAxes(id, &axesCount);
+				for (int i = 0; i < axesCount; ++i)
+				{
+					float val = axes[i];
+					float dz = controller.DeadZones.count(i) ? controller.DeadZones[i] : 0.1f;
+					if (std::abs(val) < dz) val = 0.0f;
+					controller.AxisStates[i] = val;
+				}
+
+				int buttonsCount = 0;
+				const unsigned char* buttons = glfwGetJoystickButtons(id, &buttonsCount);
+				for (int i = 0; i < buttonsCount; ++i)
+				{
+					bool isDown = (buttons[i] == GLFW_PRESS);
+					auto& bData = controller.ButtonStates[i];
+					bData.Button = i;
+					bData.OldState = bData.State;
+					if (isDown)
+					{
+						bData.State = (bData.OldState == KeyState::Pressed || bData.OldState == KeyState::Held) ? KeyState::Held : KeyState::Pressed;
+					}
+					else
+					{
+						bData.State = (bData.OldState == KeyState::Pressed || bData.OldState == KeyState::Held) ? KeyState::Released : KeyState::None;
+					}
+					controller.ButtonDown[i] = isDown;
+				}
+
+				int hatsCount = 0;
+				const unsigned char* hats = glfwGetJoystickHats(id, &hatsCount);
+				for (int i = 0; i < hatsCount; ++i)
+				{
+					controller.HatStates[i] = hats[i];
+				}
+			}
+			else
+			{
+				s_Controllers.erase(id);
+			}
+		}
+	}
+
+	bool Input::IsKeyDown(const KeyCode key)
 	{
 		auto window = static_cast<GLFWwindow*>(Application::Get().GetWindow().GetNativeWindow());
 		if (window)
@@ -41,15 +119,22 @@ namespace Waffle {
 		return false;
 	}
 
-	glm::vec2 Input::GetMousePosition()
+	bool Input::IsKeyPressed(const KeyCode key)
 	{
-		auto* window = static_cast<GLFWwindow*>(Application::Get().GetWindow().GetNativeWindow());
-		double xPos, yPos;
-		glfwGetCursorPos(window, &xPos, &yPos);
-		return { (float)xPos, (float)yPos };
+		return IsKeyDown(key);
 	}
 
-	bool Input::IsMouseButtonPressed(const MouseCode button)
+	bool Input::IsKeyHeld(const KeyCode key)
+	{
+		return IsKeyDown(key);
+	}
+
+	bool Input::IsKeyReleased(const KeyCode key)
+	{
+		return !IsKeyDown(key);
+	}
+
+	bool Input::IsMouseButtonDown(const MouseCode button)
 	{
 		auto* window = static_cast<GLFWwindow*>(Application::Get().GetWindow().GetNativeWindow());
 		if (window)
@@ -68,20 +153,60 @@ namespace Waffle {
 		return false;
 	}
 
-	struct ActionBinding
+	bool Input::IsMouseButtonPressed(const MouseCode button)
 	{
-		std::vector<KeyCode> Keys;
-		std::vector<MouseCode> MouseButtons;
-	};
+		return IsMouseButtonDown(button);
+	}
 
-	struct AxisBinding
+	bool Input::IsMouseButtonHeld(const MouseCode button)
 	{
-		KeyCode PositiveKey = Key::None;
-		KeyCode NegativeKey = Key::None;
-	};
+		return IsMouseButtonDown(button);
+	}
 
-	static std::unordered_map<std::string, ActionBinding> s_ActionBindings;
-	static std::unordered_map<std::string, AxisBinding> s_AxisBindings;
+	bool Input::IsMouseButtonReleased(const MouseCode button)
+	{
+		return !IsMouseButtonDown(button);
+	}
+
+	glm::vec2 Input::GetMousePosition()
+	{
+		auto* window = static_cast<GLFWwindow*>(Application::Get().GetWindow().GetNativeWindow());
+		if (!window) return { 0.0f, 0.0f };
+		double xPos, yPos;
+		glfwGetCursorPos(window, &xPos, &yPos);
+		return { (float)xPos, (float)yPos };
+	}
+
+	float Input::GetMouseX()
+	{
+		return GetMousePosition().x;
+	}
+
+	float Input::GetMouseY()
+	{
+		return GetMousePosition().y;
+	}
+
+	void Input::SetCursorMode(CursorMode mode)
+	{
+		s_CursorMode = mode;
+		auto* window = static_cast<GLFWwindow*>(Application::Get().GetWindow().GetNativeWindow());
+		if (!window) return;
+
+		int glfwMode = GLFW_CURSOR_NORMAL;
+		switch (mode)
+		{
+		case CursorMode::Normal: glfwMode = GLFW_CURSOR_NORMAL; break;
+		case CursorMode::Hidden: glfwMode = GLFW_CURSOR_HIDDEN; break;
+		case CursorMode::Locked: glfwMode = GLFW_CURSOR_DISABLED; break;
+		}
+		glfwSetInputMode(window, GLFW_CURSOR, glfwMode);
+	}
+
+	CursorMode Input::GetCursorMode()
+	{
+		return s_CursorMode;
+	}
 
 	void Input::BindActionKey(const std::string& actionName, KeyCode key)
 	{
@@ -121,7 +246,6 @@ namespace Waffle {
 
 	bool Input::IsActionJustPressed(const std::string& actionName)
 	{
-		// Action check mapped to action bindings
 		return IsActionPressed(actionName);
 	}
 
@@ -130,7 +254,6 @@ namespace Waffle {
 		std::string name = axisName;
 		for (auto& c : name) c = (char)tolower(c);
 
-		// Check registered custom axis bindings first
 		auto it = s_AxisBindings.find(axisName);
 		if (it != s_AxisBindings.end())
 		{
@@ -161,13 +284,89 @@ namespace Waffle {
 		return value;
 	}
 
-	float Input::GetMouseX()
+	bool Input::IsControllerPresent(int id)
 	{
-		return GetMousePosition().x;
+		return s_Controllers.count(id) > 0;
 	}
 
-	float Input::GetMouseY()
+	std::vector<int> Input::GetConnectedControllerIDs()
 	{
-		return GetMousePosition().y;
+		std::vector<int> ids;
+		for (const auto& kv : s_Controllers)
+			ids.push_back(kv.first);
+		return ids;
+	}
+
+	const Controller* Input::GetController(int id)
+	{
+		auto it = s_Controllers.find(id);
+		return (it != s_Controllers.end()) ? &it->second : nullptr;
+	}
+
+	std::string_view Input::GetControllerName(int id)
+	{
+		const Controller* ctrl = GetController(id);
+		return ctrl ? ctrl->Name : "";
+	}
+
+	bool Input::IsControllerButtonPressed(int controllerID, int button)
+	{
+		const Controller* ctrl = GetController(controllerID);
+		if (!ctrl) return false;
+		auto it = ctrl->ButtonStates.find(button);
+		return (it != ctrl->ButtonStates.end()) ? (it->second.State == KeyState::Pressed) : false;
+	}
+
+	bool Input::IsControllerButtonHeld(int controllerID, int button)
+	{
+		const Controller* ctrl = GetController(controllerID);
+		if (!ctrl) return false;
+		auto it = ctrl->ButtonStates.find(button);
+		return (it != ctrl->ButtonStates.end()) ? (it->second.State == KeyState::Held) : false;
+	}
+
+	bool Input::IsControllerButtonDown(int controllerID, int button)
+	{
+		const Controller* ctrl = GetController(controllerID);
+		if (!ctrl) return false;
+		auto it = ctrl->ButtonDown.find(button);
+		return (it != ctrl->ButtonDown.end()) ? it->second : false;
+	}
+
+	bool Input::IsControllerButtonReleased(int controllerID, int button)
+	{
+		const Controller* ctrl = GetController(controllerID);
+		if (!ctrl) return false;
+		auto it = ctrl->ButtonStates.find(button);
+		return (it != ctrl->ButtonStates.end()) ? (it->second.State == KeyState::Released) : false;
+	}
+
+	float Input::GetControllerAxis(int controllerID, int axis)
+	{
+		const Controller* ctrl = GetController(controllerID);
+		if (!ctrl) return 0.0f;
+		auto it = ctrl->AxisStates.find(axis);
+		return (it != ctrl->AxisStates.end()) ? it->second : 0.0f;
+	}
+
+	uint8_t Input::GetControllerHat(int controllerID, int hat)
+	{
+		const Controller* ctrl = GetController(controllerID);
+		if (!ctrl) return 0;
+		auto it = ctrl->HatStates.find(hat);
+		return (it != ctrl->HatStates.end()) ? it->second : 0;
+	}
+
+	float Input::GetControllerDeadzone(int controllerID, int axis)
+	{
+		const Controller* ctrl = GetController(controllerID);
+		if (!ctrl) return 0.1f;
+		auto it = ctrl->DeadZones.find(axis);
+		return (it != ctrl->DeadZones.end()) ? it->second : 0.1f;
+	}
+
+	void Input::SetControllerDeadzone(int controllerID, int axis, float deadzone)
+	{
+		s_Controllers[controllerID].DeadZones[axis] = deadzone;
 	}
 }

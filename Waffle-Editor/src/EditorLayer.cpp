@@ -7,6 +7,7 @@
 
 #include "Waffle/Scripting/LuaScriptEngine.h"
 #include "Waffle/Audio/AudioEngine.h"
+#include "Waffle/Renderer/PostProcessing.h"
 #include <Box2D/include/box2d/box2d.h>
 
 #include <glm/gtc/matrix_transform.hpp>
@@ -26,9 +27,7 @@ namespace Waffle {
 		: Layer("EditorLayer"), m_CameraController(1280.0f / 720.0f)
 	{}
 
-	// -------------------------------------------------------------------------
 	// Lifecycle
-	// -------------------------------------------------------------------------
 
 	void EditorLayer::OnAttach()
 	{
@@ -144,9 +143,7 @@ namespace Waffle {
 		SaveEditorConfig();
 	}
 
-	// -------------------------------------------------------------------------
 	// Update
-	// -------------------------------------------------------------------------
 
 	void EditorLayer::OnUpdate(Timestep ts)
 	{
@@ -351,8 +348,19 @@ namespace Waffle {
 				ImGui::EndMenu();
 			}
 
+			if (ImGui::BeginMenu("View"))
+			{
+				ImGui::MenuItem("Settings", nullptr, &m_ShowSettingsPanel);
+				ImGui::Separator();
+				ImGui::MenuItem("Show Physics Colliders", nullptr, &m_ShowPhysicsColliders);
+				ImGui::MenuItem("Show Selection Outline", nullptr, &m_ShowSelectionOutline);
+				ImGui::MenuItem("Use Component Colors", nullptr, &m_UseComponentSelectionColor);
+				ImGui::EndMenu();
+			}
+
 			if (ImGui::BeginMenu("Window"))
 			{
+				ImGui::MenuItem("Settings", nullptr, &m_ShowSettingsPanel);
 				ImGui::MenuItem("Animation Editor", nullptr, &m_ShowAnimationEditor);
 				ImGui::MenuItem("Spritesheet Editor", nullptr, &m_ShowSpritesheetEditor);
 				ImGui::EndMenu();
@@ -431,9 +439,7 @@ namespace Waffle {
 		m_ContentBrowserPanel.OnImGuiRender();
 		m_ConsolePanel.OnImGuiRender();
 
-		ImGui::Begin("Settings");
-		ImGui::Checkbox("Show Physics Colliders", &m_ShowPhysicsColliders);
-		ImGui::End();
+		UI_SettingsPanel();
 
 		// -- Viewport ----------------------------------------------------------
 		ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2{ 0, 0 });
@@ -484,7 +490,12 @@ namespace Waffle {
 				m_HoveredEntity = Entity();
 			}
 
-			uint64_t textureID = m_Framebuffer->GetColorAttachmentRendererID();
+			uint32_t textureID = (uint32_t)m_Framebuffer->GetColorAttachmentRendererID();
+			if (PostProcessing::GetSettings().EnablePostProcessing)
+			{
+				textureID = PostProcessing::Process(textureID, (uint32_t)m_ViewportSize.x, (uint32_t)m_ViewportSize.y);
+			}
+
 			ImGui::Image(
 				reinterpret_cast<void*>(static_cast<uintptr_t>(textureID)),
 				ImVec2{ m_ViewportSize.x, m_ViewportSize.y },
@@ -629,9 +640,7 @@ namespace Waffle {
 		ImGui::End(); // DockSpace
 	}
 
-	// -------------------------------------------------------------------------
 	// UI sub-panels
-	// -------------------------------------------------------------------------
 
 	void EditorLayer::UI_GizmoToolbar()
 	{
@@ -766,11 +775,14 @@ namespace Waffle {
 		// -- Identity ------------------------------------------------------
 		ImGui::SeparatorText("Identity");
 
-		ImGui::SetNextItemWidth(-1);
-		ImGui::InputText("##AppName", m_ExportAppNameBuffer, sizeof(m_ExportAppNameBuffer));
-		ImGui::SameLine(0, 0);
-		ImGui::TextDisabled(" Application Name");
-		if (ImGui::IsItemDeactivatedAfterEdit()) SaveProjectSettings();
+		std::string appNameStr = m_ExportAppNameBuffer;
+		UI::BeginPropertyGrid();
+		if (UI::PropertyString("Application Name", appNameStr))
+		{
+			strncpy_s(m_ExportAppNameBuffer, appNameStr.c_str(), sizeof(m_ExportAppNameBuffer));
+			SaveProjectSettings();
+		}
+		UI::EndPropertyGrid();
 
 		// Icon preview
 		ImGui::Spacing();
@@ -850,12 +862,46 @@ namespace Waffle {
 
 		// -- Physics -------------------------------------------------------
 		ImGui::SeparatorText("Physics");
-		if (ImGui::DragFloat("Gravity Y", &m_ProjectGravity, 0.1f, -100.0f, 0.0f))
+		UI::BeginPropertyGrid();
+		if (UI::PropertyFloat("Gravity Y", m_ProjectGravity, 0.1f, -100.0f, 0.0f))
 		{
 			if (m_ActiveScene && m_ActiveScene->GetPhysicsWorld())
 				m_ActiveScene->GetPhysicsWorld()->SetGravity({ 0.0f, m_ProjectGravity });
 			SaveProjectSettings();
 		}
+		UI::EndPropertyGrid();
+
+		// -- Post-Processing -----------------------------------------------
+		ImGui::SeparatorText("Post-Processing");
+		auto& ppSettings = PostProcessing::GetSettings();
+		UI::BeginPropertyGrid();
+		if (UI::PropertyCheckbox("Enable Post Processing", ppSettings.EnablePostProcessing)) SaveProjectSettings();
+
+		if (ppSettings.EnablePostProcessing)
+		{
+			if (UI::PropertyCheckbox("Enable Bloom", ppSettings.EnableBloom)) SaveProjectSettings();
+			if (ppSettings.EnableBloom)
+			{
+				if (UI::PropertyFloat("Bloom Threshold", ppSettings.BloomThreshold, 0.05f, 0.0f, 2.0f)) SaveProjectSettings();
+				if (UI::PropertyFloat("Bloom Intensity", ppSettings.BloomIntensity, 0.05f, 0.0f, 5.0f)) SaveProjectSettings();
+				if (UI::DrawColorEdit3("Bloom Color", ppSettings.BloomColor)) SaveProjectSettings();
+			}
+
+			if (UI::PropertyCheckbox("Enable Vignette", ppSettings.EnableVignette)) SaveProjectSettings();
+			if (ppSettings.EnableVignette)
+			{
+				if (UI::PropertyFloat("Vignette Intensity", ppSettings.VignetteIntensity, 0.02f, 0.0f, 1.0f)) SaveProjectSettings();
+				if (UI::PropertyFloat("Vignette Smoothness", ppSettings.VignetteSmoothness, 0.02f, 0.0f, 1.0f)) SaveProjectSettings();
+				if (UI::DrawColorEdit3("Vignette Color", ppSettings.VignetteColor)) SaveProjectSettings();
+			}
+
+			if (UI::PropertyCheckbox("Enable Tonemapping", ppSettings.EnableTonemapping)) SaveProjectSettings();
+			if (UI::PropertyFloat("Exposure", ppSettings.Exposure, 0.05f, 0.1f, 5.0f)) SaveProjectSettings();
+			if (UI::PropertyFloat("Contrast", ppSettings.Contrast, 0.05f, 0.1f, 3.0f)) SaveProjectSettings();
+			if (UI::PropertyFloat("Saturation", ppSettings.Saturation, 0.05f, 0.0f, 3.0f)) SaveProjectSettings();
+			if (UI::DrawColorEdit3("Color Tint", ppSettings.ColorGradingTint)) SaveProjectSettings();
+		}
+		UI::EndPropertyGrid();
 
 		// -- Scene Order ---------------------------------------------------
 		ImGui::SeparatorText("Scene Order");
@@ -997,6 +1043,27 @@ namespace Waffle {
 			else
 				WF_CORE_ERROR("Export failed: {0}", errorMsg);
 		}
+
+		ImGui::End();
+	}
+
+	void EditorLayer::UI_SettingsPanel()
+	{
+		if (!m_ShowSettingsPanel)
+			return;
+
+		ImGui::Begin("Settings", &m_ShowSettingsPanel);
+
+		ImGui::SeparatorText("Viewport and Overlay");
+		UI::BeginPropertyGrid();
+		UI::PropertyCheckbox("Show Physics Colliders", m_ShowPhysicsColliders);
+		UI::PropertyCheckbox("Show Selection Outline", m_ShowSelectionOutline);
+		UI::PropertyCheckbox("Use Component Colors", m_UseComponentSelectionColor);
+		UI::DrawColorEdit4("Outline Color", m_SelectionOutlineColor);
+		UI::PropertyFloat("Fill Opacity", m_SelectionFillAlpha, 0.01f, 0.0f, 0.5f);
+		UI::PropertyFloat("Corner Rounding", m_SelectionCornerRadius, 0.005f, 0.0f, 0.2f);
+		UI::PropertyFloat("Selection Padding", m_SelectionPadding, 0.005f, 0.0f, 0.1f);
+		UI::EndPropertyGrid();
 
 		ImGui::End();
 	}
@@ -1282,19 +1349,59 @@ namespace Waffle {
 		}
 
 		// Selected entity outline
-		if (Entity sel = m_SceneHierarchyPanel.GetSelectedEntity())
+		if (m_ShowSelectionOutline)
 		{
-			Renderer2D::DrawRect(
-				m_ActiveScene->GetWorldTransform(sel),
-				glm::vec4(1.0f, 1.0f, 0.0f, 1.0f));
+			if (Entity sel = m_SceneHierarchyPanel.GetSelectedEntity())
+			{
+				// Do not render selection box on Camera entities
+				if (sel && !sel.HasComponent<CameraComponent>())
+				{
+					glm::vec4 outlineColor = m_SelectionOutlineColor;
+
+					if (m_UseComponentSelectionColor)
+					{
+						if (sel.HasComponent<SpriteRendererComponent>())
+						{
+							outlineColor = glm::vec4(0.95f, 0.55f, 0.15f, 1.0f); // Warm Orange for Sprites
+						}
+						else if (sel.HasComponent<CircleRendererComponent>())
+						{
+							outlineColor = glm::vec4(0.2f, 0.8f, 0.95f, 1.0f); // Cyan for Circles
+						}
+						else if (sel.HasComponent<Rigidbody2DComponent>() || sel.HasComponent<BoxCollider2DComponent>() || sel.HasComponent<CircleCollider2DComponent>())
+						{
+							outlineColor = glm::vec4(0.2f, 0.85f, 0.35f, 1.0f); // Green for Physics
+						}
+						else if (sel.HasComponent<ScriptComponent>())
+						{
+							outlineColor = glm::vec4(0.35f, 0.65f, 0.98f, 1.0f); // Blue for Script Entities
+						}
+					}
+
+					glm::mat4 transform = m_ActiveScene->GetWorldTransform(sel);
+					if (m_SelectionPadding > 0.0f)
+					{
+						transform = glm::scale(transform, glm::vec3(1.0f + m_SelectionPadding, 1.0f + m_SelectionPadding, 1.0f));
+					}
+
+					// 1. Soft semi-transparent fill overlay with matching rounded corners
+					if (m_SelectionFillAlpha > 0.0f)
+					{
+						glm::vec4 fillColor = outlineColor;
+						fillColor.a = m_SelectionFillAlpha;
+						Renderer2D::DrawRoundedQuad(transform, fillColor, m_SelectionCornerRadius, 4);
+					}
+
+					// 2. Smooth rounded selection outline (no overlapping sharp corner line artifacts)
+					Renderer2D::DrawRoundedRect(transform, outlineColor, m_SelectionCornerRadius, 4);
+				}
+			}
 		}
 
 		Renderer2D::EndScene();
 	}
 
-	// -------------------------------------------------------------------------
 	// Project management
-	// -------------------------------------------------------------------------
 
 	void EditorLayer::NewProject()
 	{
@@ -1364,6 +1471,31 @@ namespace Waffle {
 		std::error_code ec;
 		std::filesystem::current_path(projectPath, ec);
 
+		// Ensure project has imgui.ini (copied from master template if missing)
+		std::filesystem::path iniPath = projectPath / "imgui.ini";
+		if (!std::filesystem::exists(iniPath))
+		{
+			std::vector<std::filesystem::path> masterCandidates = {
+				"Resources/Templates/Blank2D/imgui.ini",
+				"Resources/imgui.ini",
+				"../Waffle-Editor/imgui.ini",
+				"Waffle-Editor/imgui.ini"
+			};
+			for (const auto& cand : masterCandidates)
+			{
+				if (std::filesystem::exists(cand))
+				{
+					std::filesystem::copy_file(cand, iniPath, std::filesystem::copy_options::overwrite_existing, ec);
+					break;
+				}
+			}
+		}
+
+		if (std::filesystem::exists(iniPath))
+		{
+			ImGui::LoadIniSettingsFromDisk(iniPath.string().c_str());
+		}
+
 		// Load saved project settings (gravity, name, icon, scene order)
 		std::filesystem::path wfpPath = assetsPath / "project.wfp";
 		if (std::filesystem::exists(wfpPath))
@@ -1395,6 +1527,47 @@ namespace Waffle {
 							if (std::filesystem::exists(p))
 								m_SceneList.push_back(p);
 						}
+					}
+
+					auto ppNode = project["PostProcessing"];
+					if (ppNode)
+					{
+						auto& pp = PostProcessing::GetSettings();
+						if (ppNode["EnablePostProcessing"]) pp.EnablePostProcessing = ppNode["EnablePostProcessing"].as<bool>();
+						if (ppNode["EnableBloom"]) pp.EnableBloom = ppNode["EnableBloom"].as<bool>();
+						if (ppNode["BloomThreshold"]) pp.BloomThreshold = ppNode["BloomThreshold"].as<float>();
+						if (ppNode["BloomIntensity"]) pp.BloomIntensity = ppNode["BloomIntensity"].as<float>();
+						if (ppNode["BloomColor"])
+						{
+							pp.BloomColor.r = ppNode["BloomColor"][0].as<float>();
+							pp.BloomColor.g = ppNode["BloomColor"][1].as<float>();
+							pp.BloomColor.b = ppNode["BloomColor"][2].as<float>();
+						}
+
+						if (ppNode["EnableVignette"]) pp.EnableVignette = ppNode["EnableVignette"].as<bool>();
+						if (ppNode["VignetteIntensity"]) pp.VignetteIntensity = ppNode["VignetteIntensity"].as<float>();
+						if (ppNode["VignetteSmoothness"]) pp.VignetteSmoothness = ppNode["VignetteSmoothness"].as<float>();
+						if (ppNode["VignetteColor"])
+						{
+							pp.VignetteColor.r = ppNode["VignetteColor"][0].as<float>();
+							pp.VignetteColor.g = ppNode["VignetteColor"][1].as<float>();
+							pp.VignetteColor.b = ppNode["VignetteColor"][2].as<float>();
+						}
+
+						if (ppNode["EnableTonemapping"]) pp.EnableTonemapping = ppNode["EnableTonemapping"].as<bool>();
+						if (ppNode["Exposure"]) pp.Exposure = ppNode["Exposure"].as<float>();
+						if (ppNode["Contrast"]) pp.Contrast = ppNode["Contrast"].as<float>();
+						if (ppNode["Saturation"]) pp.Saturation = ppNode["Saturation"].as<float>();
+						if (ppNode["ColorGradingTint"])
+						{
+							pp.ColorGradingTint.r = ppNode["ColorGradingTint"][0].as<float>();
+							pp.ColorGradingTint.g = ppNode["ColorGradingTint"][1].as<float>();
+							pp.ColorGradingTint.b = ppNode["ColorGradingTint"][2].as<float>();
+						}
+					}
+					else
+					{
+						PostProcessing::GetSettings() = PostProcessingSettings(); // Default off
 					}
 				}
 			}
@@ -1647,6 +1820,26 @@ namespace Waffle {
 			out << p.string();
 		out << YAML::EndSeq;
 
+		const auto& pp = PostProcessing::GetSettings();
+		out << YAML::Key << "PostProcessing" << YAML::Value << YAML::BeginMap;
+		out << YAML::Key << "EnablePostProcessing" << YAML::Value << pp.EnablePostProcessing;
+		out << YAML::Key << "EnableBloom" << YAML::Value << pp.EnableBloom;
+		out << YAML::Key << "BloomThreshold" << YAML::Value << pp.BloomThreshold;
+		out << YAML::Key << "BloomIntensity" << YAML::Value << pp.BloomIntensity;
+		out << YAML::Key << "BloomColor" << YAML::Value << YAML::Flow << YAML::BeginSeq << pp.BloomColor.r << pp.BloomColor.g << pp.BloomColor.b << YAML::EndSeq;
+
+		out << YAML::Key << "EnableVignette" << YAML::Value << pp.EnableVignette;
+		out << YAML::Key << "VignetteIntensity" << YAML::Value << pp.VignetteIntensity;
+		out << YAML::Key << "VignetteSmoothness" << YAML::Value << pp.VignetteSmoothness;
+		out << YAML::Key << "VignetteColor" << YAML::Value << YAML::Flow << YAML::BeginSeq << pp.VignetteColor.r << pp.VignetteColor.g << pp.VignetteColor.b << YAML::EndSeq;
+
+		out << YAML::Key << "EnableTonemapping" << YAML::Value << pp.EnableTonemapping;
+		out << YAML::Key << "Exposure" << YAML::Value << pp.Exposure;
+		out << YAML::Key << "Contrast" << YAML::Value << pp.Contrast;
+		out << YAML::Key << "Saturation" << YAML::Value << pp.Saturation;
+		out << YAML::Key << "ColorGradingTint" << YAML::Value << YAML::Flow << YAML::BeginSeq << pp.ColorGradingTint.r << pp.ColorGradingTint.g << pp.ColorGradingTint.b << YAML::EndSeq;
+		out << YAML::EndMap;
+
 		out << YAML::EndMap;
 		out << YAML::EndMap;
 
@@ -1674,6 +1867,12 @@ namespace Waffle {
 
 		std::ofstream fout(configPath);
 		fout << out.c_str();
+
+		if (!m_ProjectPath.empty())
+		{
+			std::filesystem::path iniPath = m_ProjectPath / "imgui.ini";
+			ImGui::SaveIniSettingsToDisk(iniPath.string().c_str());
+		}
 	}
 
 	void EditorLayer::LoadEditorConfig()
@@ -1746,9 +1945,7 @@ namespace Waffle {
 		Application::Get().GetWindow().SetTitle(title);
 	}
 
-	// -------------------------------------------------------------------------
 	// Scene play / stop
-	// -------------------------------------------------------------------------
 
 	void EditorLayer::OnScenePlay()
 	{

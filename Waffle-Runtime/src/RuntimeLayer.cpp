@@ -1,8 +1,11 @@
 #include "RuntimeLayer.h"
 #include "Waffle/Scene/SceneSerializer.h"
 #include "Waffle/Core/VFS.h"
+#include "Waffle/Renderer/PostProcessing.h"
 
 #include <yaml-cpp/yaml.h>
+#include <glad/glad.h>
+#include <glm/gtc/matrix_transform.hpp>
 
 namespace Waffle {
 
@@ -13,6 +16,12 @@ namespace Waffle {
 	void RuntimeLayer::OnAttach()
 	{
 		WF_PROFILE_FUNCTION();
+
+		FramebufferSpecification spec;
+		spec.Width = Application::Get().GetWindow().GetWidth();
+		spec.Height = Application::Get().GetWindow().GetHeight();
+		spec.Attachments = { FramebufferTextureFormat::RGBA8, FramebufferTextureFormat::RED_INTEGER, FramebufferTextureFormat::Depth };
+		m_Framebuffer = Framebuffer::Create(spec);
 
 		std::string wfpContent = VFS::ReadFileAsString("Assets/project.wfp");
 		if (!wfpContent.empty())
@@ -26,13 +35,11 @@ namespace Waffle {
 					if (project["Gravity"])
 						m_Gravity = project["Gravity"].as<float>();
 
-					// Read ordered scene list - index 0 is always the start scene
 					if (project["Scenes"])
 					{
 						for (auto node : project["Scenes"])
 						{
 							std::string path = node.as<std::string>();
-							// Normalize backslashes
 							std::replace(path.begin(), path.end(), '\\', '/');
 							if (VFS::Exists(path))
 								m_SceneList.push_back(path);
@@ -41,13 +48,49 @@ namespace Waffle {
 						}
 					}
 
-					// Fallback to StartScene if Scenes list is empty
 					if (m_SceneList.empty() && project["StartScene"])
 					{
 						std::string startScene = project["StartScene"].as<std::string>();
 						std::replace(startScene.begin(), startScene.end(), '\\', '/');
 						if (VFS::Exists(startScene))
 							m_SceneList.push_back(startScene);
+					}
+
+					auto ppNode = project["PostProcessing"];
+					if (ppNode)
+					{
+						auto& pp = PostProcessing::GetSettings();
+						if (ppNode["EnablePostProcessing"]) pp.EnablePostProcessing = ppNode["EnablePostProcessing"].as<bool>();
+						if (ppNode["EnableBloom"]) pp.EnableBloom = ppNode["EnableBloom"].as<bool>();
+						if (ppNode["BloomThreshold"]) pp.BloomThreshold = ppNode["BloomThreshold"].as<float>();
+						if (ppNode["BloomIntensity"]) pp.BloomIntensity = ppNode["BloomIntensity"].as<float>();
+						if (ppNode["BloomColor"])
+						{
+							pp.BloomColor.r = ppNode["BloomColor"][0].as<float>();
+							pp.BloomColor.g = ppNode["BloomColor"][1].as<float>();
+							pp.BloomColor.b = ppNode["BloomColor"][2].as<float>();
+						}
+
+						if (ppNode["EnableVignette"]) pp.EnableVignette = ppNode["EnableVignette"].as<bool>();
+						if (ppNode["VignetteIntensity"]) pp.VignetteIntensity = ppNode["VignetteIntensity"].as<float>();
+						if (ppNode["VignetteSmoothness"]) pp.VignetteSmoothness = ppNode["VignetteSmoothness"].as<float>();
+						if (ppNode["VignetteColor"])
+						{
+							pp.VignetteColor.r = ppNode["VignetteColor"][0].as<float>();
+							pp.VignetteColor.g = ppNode["VignetteColor"][1].as<float>();
+							pp.VignetteColor.b = ppNode["VignetteColor"][2].as<float>();
+						}
+
+						if (ppNode["EnableTonemapping"]) pp.EnableTonemapping = ppNode["EnableTonemapping"].as<bool>();
+						if (ppNode["Exposure"]) pp.Exposure = ppNode["Exposure"].as<float>();
+						if (ppNode["Contrast"]) pp.Contrast = ppNode["Contrast"].as<float>();
+						if (ppNode["Saturation"]) pp.Saturation = ppNode["Saturation"].as<float>();
+						if (ppNode["ColorGradingTint"])
+						{
+							pp.ColorGradingTint.r = ppNode["ColorGradingTint"][0].as<float>();
+							pp.ColorGradingTint.g = ppNode["ColorGradingTint"][1].as<float>();
+							pp.ColorGradingTint.b = ppNode["ColorGradingTint"][2].as<float>();
+						}
 					}
 				}
 			}
@@ -57,7 +100,6 @@ namespace Waffle {
 			}
 		}
 
-		// Last resort: scan VFS & physical disk for .waffle files
 		if (m_SceneList.empty())
 		{
 			if (VFS::IsMounted())
@@ -128,22 +170,62 @@ namespace Waffle {
 		if (!m_Scene)
 			return;
 
-		Entity primaryCam = m_Scene->GetPrimaryCameraEntity();
-		if (primaryCam)
+		if (PostProcessing::GetSettings().EnablePostProcessing)
 		{
-			glm::vec4 clearColor = primaryCam.GetComponent<CameraComponent>().BackgroundColor;
-			RenderCommand::SetClearColor(clearColor);
-			RenderCommand::Clear();
+			uint32_t width = Application::Get().GetWindow().GetWidth();
+			uint32_t height = Application::Get().GetWindow().GetHeight();
+			if (width == 0 || height == 0) return;
+
+			const auto& spec = m_Framebuffer->GetSpecification();
+			if (spec.Width != width || spec.Height != height)
+			{
+				m_Framebuffer->Resize(width, height);
+			}
+
+			m_Framebuffer->Bind();
+
+			Entity primaryCam = m_Scene->GetPrimaryCameraEntity();
+			if (primaryCam)
+			{
+				glm::vec4 clearColor = primaryCam.GetComponent<CameraComponent>().BackgroundColor;
+				RenderCommand::SetClearColor(clearColor);
+				RenderCommand::Clear();
+			}
+			else
+			{
+				RenderCommand::SetClearColor({ 0.1f, 0.1f, 0.1f, 1.0f });
+				RenderCommand::Clear();
+			}
+
+			int pendingScene = m_Scene->OnUpdateRuntime(ts);
+			m_Framebuffer->Unbind();
+
+			uint32_t processedTex = PostProcessing::Process((uint32_t)m_Framebuffer->GetColorAttachmentRendererID(0), width, height);
+
+			PostProcessing::PresentToScreen(processedTex, width, height);
+
+			if (pendingScene != -1)
+				LoadScene(pendingScene);
 		}
 		else
 		{
-			RenderCommand::SetClearColor({ 0.1f, 0.1f, 0.1f, 1.0f });
-			RenderCommand::Clear();
-		}
+			Entity primaryCam = m_Scene->GetPrimaryCameraEntity();
+			if (primaryCam)
+			{
+				glm::vec4 clearColor = primaryCam.GetComponent<CameraComponent>().BackgroundColor;
+				RenderCommand::SetClearColor(clearColor);
+				RenderCommand::Clear();
+			}
+			else
+			{
+				RenderCommand::SetClearColor({ 0.1f, 0.1f, 0.1f, 1.0f });
+				RenderCommand::Clear();
+			}
 
-		int pendingScene = m_Scene->OnUpdateRuntime(ts);
-		if (pendingScene != -1)
-			LoadScene(pendingScene);
+			int pendingScene = m_Scene->OnUpdateRuntime(ts);
+			if (pendingScene != -1)
+				LoadScene(pendingScene);
+		}
 	}
 
 	void RuntimeLayer::OnImGuiRender()

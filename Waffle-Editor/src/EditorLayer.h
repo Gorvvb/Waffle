@@ -6,6 +6,7 @@
 #include "Panels/ConsolePanel.h"
 #include "Panels/AnimationEditorPanel.h"
 #include "Panels/SpritesheetEditorPanel.h"
+#include "Panels/EditorPanelManager.h"
 
 #include "Waffle/Renderer/EditorCamera.h"
 
@@ -59,6 +60,7 @@ namespace Waffle {
 		void UI_Toolbar();
 		void UI_GizmoToolbar();
 		void UI_ProjectSettings();
+		void UI_SettingsPanel();
 		void UI_ExportModal();
 
 		void UpdateWindowTitle();
@@ -84,6 +86,12 @@ namespace Waffle {
 		int m_GizmoType = -1;
 
 		bool m_ShowPhysicsColliders = false;
+		bool m_ShowSelectionOutline = true;
+		bool m_UseComponentSelectionColor = true;
+		glm::vec4 m_SelectionOutlineColor = glm::vec4(0.95f, 0.55f, 0.15f, 1.0f);
+		float m_SelectionFillAlpha = 0.10f;
+		float m_SelectionCornerRadius = 0.03f;
+		float m_SelectionPadding = 0.005f;
 
 		enum class SceneState
 		{
@@ -118,8 +126,10 @@ namespace Waffle {
 		ConsolePanel        m_ConsolePanel;
 		AnimationEditorPanel m_AnimationEditorPanel;
 		SpritesheetEditorPanel m_SpritesheetEditorPanel;
+		EditorPanelManager  m_PanelManager;
 		bool                m_ShowAnimationEditor = true;
 		bool                m_ShowSpritesheetEditor = true;
+		bool                m_ShowSettingsPanel = true;
 
 		float m_fps = 0.0f;
 

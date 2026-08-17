@@ -28,6 +28,7 @@ project "Waffle-Runtime"
 		"%{Includedir.GLAD}",
 		"%{Includedir.glm}",
 		"%{Includedir.entt}",
+		"%{Includedir.ImGui}",
 		"%{Includedir.Lua}",
 		"%{Includedir.yaml_cpp}"
 	}
