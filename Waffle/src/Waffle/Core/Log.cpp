@@ -55,6 +55,11 @@ namespace Waffle {
 
 	void Log::Init()
 	{
+		// spdlog::register_logger throws on duplicate names - a second Init
+		// (e.g. two apps in one process during tests) used to abort.
+		if (s_CoreLogger || s_ClientLogger)
+			return;
+
 		std::vector<spdlog::sink_ptr> logSinks;
 		logSinks.emplace_back(std::make_shared<spdlog::sinks::stdout_color_sink_mt>());
 		logSinks.emplace_back(std::make_shared<spdlog::sinks::basic_file_sink_mt>("Waffle.log", true));

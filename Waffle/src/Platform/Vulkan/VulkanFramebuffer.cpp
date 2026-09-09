@@ -53,8 +53,9 @@ namespace Waffle {
 	// =========================================================================
 	void VulkanFramebuffer::Invalidate()
 	{
-		if (!m_ColorImages.empty())
-			CleanupAttachments();
+		// Always clean up - the old gate on !m_ColorImages.empty() leaked the
+		// depth attachment on every resize of a depth-only framebuffer.
+		CleanupAttachments();
 
 		auto* ctx    = VulkanContext::Get();
 		VkDevice dev = ctx->GetDevice();
@@ -250,6 +251,13 @@ namespace Waffle {
 			ctx->SetRenderingActive(false);
 			m_IsRendering = false;
 		}
+		else
+		{
+			// Unbind without a matching Bind: the images are already in
+			// SHADER_READ_ONLY_OPTIMAL - emitting the transition again is a
+			// layout-mismatch validation error.
+			return;
+		}
 
 		// Transition color attachments → shader read
 		for (size_t i = 0; i < m_ColorImages.size(); i++)
@@ -294,15 +302,18 @@ namespace Waffle {
 	// =========================================================================
 	// ReadPixel
 	// =========================================================================
-	// =========================================================================
-	// ReadPixel
-	// =========================================================================
 	int VulkanFramebuffer::ReadPixel(uint32_t attachmentIndex, int x, int y)
 	{
-		WF_CORE_ASSERT(attachmentIndex < m_ColorImages.size());
-		WF_CORE_ASSERT(m_ColorAttachmentSpecs[attachmentIndex].TextureFormat
-			== FramebufferTextureFormat::RED_INTEGER,
-			"ReadPixel currently only supports RED_INTEGER attachments in Vulkan");
+		// Hard bounds checks - asserts compile out in release and left
+		// m_ColorImages[attachmentIndex] unchecked.
+		if (attachmentIndex >= m_ColorImages.size())
+			return -1;
+		if (m_ColorAttachmentSpecs[attachmentIndex].TextureFormat
+			!= FramebufferTextureFormat::RED_INTEGER)
+		{
+			WF_CORE_WARN("VulkanFramebuffer::ReadPixel currently only supports RED_INTEGER attachments");
+			return -1;
+		}
 
 		auto* ctx    = VulkanContext::Get();
 		VkDevice dev = ctx->GetDevice();
@@ -374,7 +385,13 @@ namespace Waffle {
 				VK_ACCESS_2_TRANSFER_READ_BIT, VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
 				VK_PIPELINE_STAGE_2_TRANSFER_BIT, VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT);
 
-			// End main command buffer recording and submit to GPU
+			// End main command buffer recording and submit to GPU.
+			// Drain all previously submitted work first: this partial submit
+			// carries no fence/semaphore dependency of its own, so without the
+			// wait it races whatever is still in flight on the queue.
+			if (dev != VK_NULL_HANDLE)
+				vkDeviceWaitIdle(dev);
+
 			vkEndCommandBuffer(cmd);
 
 			VkSubmitInfo submitInfo
@@ -468,7 +485,8 @@ namespace Waffle {
 	// =========================================================================
 	void VulkanFramebuffer::ClearAttachment(uint32_t attachmentIndex, int value)
 	{
-		WF_CORE_ASSERT(attachmentIndex < m_ColorImages.size());
+		if (attachmentIndex >= m_ColorImages.size())
+			return;
 
 		auto* ctx = VulkanContext::Get();
 

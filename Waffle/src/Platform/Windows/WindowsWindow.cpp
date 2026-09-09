@@ -192,6 +192,13 @@ namespace Waffle {
 	void WindowsWindow::Shutdown()
 	{
 		WF_PROFILE_FUNCTION();
+		// Destroy the graphics context BEFORE the window: VulkanContext's
+		// teardown destroys a VkSurfaceKHR created from this window, and the
+		// OpenGL HGLRC cannot outlive it either. Never deleting m_Context
+		// leaked the entire device every run.
+		delete m_Context;
+		m_Context = nullptr;
+
 		glfwDestroyWindow(m_Window);
 	}
 
@@ -255,7 +262,7 @@ namespace Waffle {
 				else if (std::filesystem::exists("Resources/Icons/logo.png", ec))
 					iconPath = "Resources/Icons/logo.png";
 				else if (std::filesystem::exists("Waffle-Editor/Assets/images/logo.png", ec))
-					iconPath = "Waffle-Editor/Resources/Icons/logo.png";
+					iconPath = "Waffle-Editor/Assets/images/logo.png";
 				else if (std::filesystem::exists("../Waffle-Editor/Resources/Icons/logo.png", ec))
 					iconPath = "../Waffle-Editor/Resources/Icons/logo.png";
 				else if (std::filesystem::exists("Resources/Icons/Icon.ico", ec))

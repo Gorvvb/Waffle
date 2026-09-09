@@ -24,7 +24,11 @@ namespace Waffle {
 
 		uint32_t GetRefCount() const { return m_RefCount.load(std::memory_order_relaxed); }
 		void IncRefCount() const { m_RefCount.fetch_add(1, std::memory_order_relaxed); }
-		void DecRefCount() const { m_RefCount.fetch_sub(1, std::memory_order_acq_rel); }
+		// Returns the PRE-decrement count: the caller that observes 1 is the
+		// one that dropped the last reference and must delete. Re-reading
+		// GetRefCount() after decrementing races another concurrent
+		// decrement and can double-delete.
+		uint32_t DecRefCount() const { return m_RefCount.fetch_sub(1, std::memory_order_acq_rel); }
 
 	private:
 		mutable std::atomic<uint32_t> m_RefCount{ 0 };
@@ -204,12 +208,11 @@ namespace Waffle {
 		{
 			if (m_Instance)
 			{
-				m_Instance->DecRefCount();
-				if (m_Instance->GetRefCount() == 0)
+				if (m_Instance->DecRefCount() == 1)
 				{
 					delete m_Instance;
-					m_Instance = nullptr;
 				}
+				m_Instance = nullptr;
 			}
 		}
 

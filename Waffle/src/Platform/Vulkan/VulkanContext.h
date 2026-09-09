@@ -67,6 +67,12 @@ namespace Waffle {
 		uint32_t          GetCurrentFrameIndex()    const { return m_CurrentFrameIndex; }
 		uint32_t          GetCurrentImageIndex()    const { return m_CurrentImageIndex; }
 
+		// Host-side barrier before overwriting persistently-mapped buffer
+		// memory (vertex/UBO SetData): waits on the timeline semaphore until
+		// every OTHER frame slot's latest submission has completed, so the
+		// GPU is no longer reading the memory this frame is about to write.
+		void WaitForFrameUploads(uint32_t targetFrameIndex);
+
 		// ---- Rendering state (dynamic rendering without render passes) ------
 		// BeginSwapChainRendering / EndSwapChainRendering manage the default
 		// swap chain render target using VK_KHR_dynamic_rendering.
@@ -100,6 +106,21 @@ namespace Waffle {
 		}
 		void RegisterTexture(uint32_t slot, VkImageView imageView, VkSampler sampler) {
 			m_BoundTextures[slot] = { imageView, sampler };
+		}
+
+		// Called on destruction so the registries never hand out destroyed
+		// handles to BindAndFlushDescriptors (use-after-free at draw time).
+		void UnregisterUniformBuffer(uint32_t binding) {
+			m_BoundUniformBuffers.erase(binding);
+		}
+		void UnregisterTexture(VkImageView imageView, VkSampler sampler) {
+			for (auto it = m_BoundTextures.begin(); it != m_BoundTextures.end(); )
+			{
+				if (it->second.ImageView == imageView && it->second.Sampler == sampler)
+					it = m_BoundTextures.erase(it);
+				else
+					++it;
+			}
 		}
 
 		UniformBufferBindInfo GetUniformBuffer(uint32_t binding) const {
@@ -165,7 +186,9 @@ namespace Waffle {
 		void CreateDescriptorPool();
 
 		// ---- Swap-chain helpers ---------------------------------------------
-		void RecreateSwapChain();
+		// Returns false if recreation was aborted (window closing while
+		// minimised) - callers must tolerate a stale swapchain in that case.
+		bool RecreateSwapChain();
 		void CleanupSwapChain();
 
 		// ---- Device helpers -------------------------------------------------
@@ -235,11 +258,15 @@ namespace Waffle {
 			VkSemaphore     ImageAvailableSemaphore  = VK_NULL_HANDLE;
 			VkSemaphore     RenderFinishedSemaphore  = VK_NULL_HANDLE;
 			VkFence         InFlightFence            = VK_NULL_HANDLE;
+			// Timeline value this slot's submission last signaled - used to
+			// gate host writes to shared mapped buffers (see WaitForFrameUploads).
+			uint64_t        LastTimelineValue        = 0;
 		};
 		std::vector<FrameData> m_Frames;
 		uint32_t m_CurrentFrameIndex = 0;
 		uint32_t m_CurrentImageIndex = 0;
 		uint32_t m_FramesInFlight    = 2;  // configurable before Init()
+		uint64_t m_UploadsSyncedTimeline = 0; // highest timeline value already host-waited
 
 		// Single-time command pool
 		VkCommandPool m_CommandPool = VK_NULL_HANDLE;

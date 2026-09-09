@@ -45,11 +45,17 @@ namespace Waffle {
 			if (entry.is_regular_file(ec))
 			{
 				std::string ext = entry.path().extension().string();
+				for (auto& c : ext) c = (char)tolower((unsigned char)c);
 				if (ext != ".wpack" && ext != ".exe")
 				{
 					files.push_back(entry.path());
 				}
 			}
+		}
+		if (ec)
+		{
+			outErrorMessage = "Failed to enumerate source directory: " + ec.message();
+			return false;
 		}
 
 		if (files.empty())
@@ -147,12 +153,32 @@ namespace Waffle {
 			if (e.Size > 0)
 			{
 				in.read(reinterpret_cast<char*>(buffer.data()), e.Size);
+				if ((uint64_t)in.gcount() != e.Size)
+				{
+					outErrorMessage = "File changed while packing (short read): " + e.FullPath.string();
+					return false;
+				}
 				if (e.Key != 0)
 				{
 					ObfuscateData(buffer.data(), e.Size, e.Key);
 				}
 				out.write(reinterpret_cast<const char*>(buffer.data()), e.Size);
+				if (!out)
+				{
+					outErrorMessage = "Write failed while packing '" + e.FullPath.string() + "' (disk full?)";
+					return false;
+				}
 			}
+		}
+
+		// A truncated pack (disk full, removable media) that still reports
+		// success is worse than failing here: the exporter deletes the loose
+		// assets afterwards, destroying the only complete copy.
+		out.flush();
+		if (!out)
+		{
+			outErrorMessage = "Failed to finalize archive '" + options.OutputWpackPath.string() + "' (disk full?)";
+			return false;
 		}
 
 		WF_CORE_INFO("AssetPacker::CreateArchive - Packed {0} files into '{1}' ({2} bytes).",

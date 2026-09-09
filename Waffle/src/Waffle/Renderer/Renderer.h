@@ -19,6 +19,11 @@ namespace Waffle {
 		static SceneData* m_SceneData;
 	public:
 		static void Init();
+		// Must be called while the graphics context is still alive (i.e.
+		// before the Application's window is destroyed) - releases Renderer2D
+		// and PostProcessing GPU resources that would otherwise only die in
+		// static destructors, after the context is gone.
+		static void Shutdown();
 		static void OnWindowResize(uint32_t width, uint32_t height);
 
 		static void BeginScene(OrthographicCamera& camera);

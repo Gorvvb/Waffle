@@ -16,8 +16,10 @@
 #include <box2d/b2_world_callbacks.h>
 #include <box2d/b2_contact.h>
 #include "LuaIncludes.h"
+#include <imgui.h>
 #include <fstream>
 #include <cctype>
+#include <ctime>
 #include <unordered_map>
 
 namespace Waffle {
@@ -123,9 +125,49 @@ namespace Waffle {
 	// Lua C bindings - Input
 	// -------------------------------------------------------------------------
 
+	// Input arbitration between gameplay and the editor GUI.
+	//
+	// WantCaptureMouse is true over ANY ImGui window - including the game
+	// viewport panel itself - so it alone must never gate gameplay input in
+	// the editor. The real question is whether the mouse is over the game
+	// viewport rect or over editor chrome. The exported runtime sets no
+	// viewport rect and has no GUI windows: gameplay input is never gated.
+	static bool GameplayMouseBlocked()
+	{
+		ImGuiIO& io = ImGui::GetIO();
+		if (!io.WantCaptureMouse)
+			return false;
+		if (!LuaScriptEngine::HasGameViewport())
+			return false; // runtime: nothing competes with gameplay
+
+		// Window-relative mouse (GLFW space) against the window-relative
+		// viewport rect - ImGui::GetMousePos() is in global desktop space
+		// when ViewportsEnable is on and would never match the rect.
+		glm::vec2 m = Input::GetMousePosition();
+		glm::vec2 o = LuaScriptEngine::GetGameViewportOrigin();
+		glm::vec2 sz = LuaScriptEngine::GetGameViewportSize();
+		if (sz.x <= 0.0f || sz.y <= 0.0f)
+			return false;
+		bool insideGame = (m.x >= o.x && m.y >= o.y && m.x < o.x + sz.x && m.y < o.y + sz.y);
+		return !insideGame;
+	}
+
+	// True only while an ImGui text field actually owns the keyboard -
+	// typing in the console or a rename box must not steer gameplay.
+	static bool GameplayKeyboardBlocked()
+	{
+		return ImGui::GetIO().WantTextInput;
+	}
+
 	static int Lua_IsKeyPressed(lua_State* L)
 	{
 		KeyCode code = 0;
+
+		if (GameplayKeyboardBlocked())
+		{
+			lua_pushboolean(L, 0);
+			return 1;
+		}
 
 		if (lua_isnumber(L, 1))
 		{
@@ -194,6 +236,12 @@ namespace Waffle {
 	{
 		MouseCode code = Mouse::ButtonLeft;
 
+		if (GameplayMouseBlocked())
+		{
+			lua_pushboolean(L, 0);
+			return 1;
+		}
+
 		if (lua_isnumber(L, 1))
 		{
 			code = (MouseCode)lua_tonumber(L, 1);
@@ -216,7 +264,11 @@ namespace Waffle {
 
 	static int Lua_GetMousePosition(lua_State* L)
 	{
-		glm::vec2 pos = Input::GetMousePosition();
+		// Viewport-relative: in the editor the game renders into a
+		// sub-region of the window (origin set by the editor); in the
+		// exported runtime the origin is (0,0). Either way the values pair
+		// correctly with ScreenToWorld and the scene viewport size.
+		glm::vec2 pos = Input::GetMousePosition() - LuaScriptEngine::GetGameViewportOrigin();
 		lua_pushnumber(L, pos.x);
 		lua_pushnumber(L, pos.y);
 		return 2;
@@ -703,6 +755,51 @@ namespace Waffle {
 	// Internal helpers
 	// -------------------------------------------------------------------------
 
+	// Opens a curated set of standard libraries and removes the dangerous
+	// entries game scripts have no business touching (os/io/file/loadlib).
+	static void OpenSandboxedLibs(lua_State* L)
+	{
+		luaL_requiref(L, "_G",        luaopen_base,      1); lua_pop(L, 1);
+		luaL_requiref(L, "coroutine", luaopen_coroutine, 1); lua_pop(L, 1);
+		luaL_requiref(L, "table",     luaopen_table,     1); lua_pop(L, 1);
+		luaL_requiref(L, "string",    luaopen_string,    1); lua_pop(L, 1);
+		luaL_requiref(L, "math",      luaopen_math,      1); lua_pop(L, 1);
+		luaL_requiref(L, "utf8",      luaopen_utf8,      1); lua_pop(L, 1);
+
+		// Strip host-OS access and dynamic loading from the base globals.
+		// `load` (with string sources) joins dofile/loadfile/require in the
+		// removal list - it is a compile primitive scripts do not need.
+		static const char* removed[] = { "dofile", "loadfile", "require", "load", nullptr };
+		for (int i = 0; removed[i]; i++)
+		{
+			lua_pushnil(L);
+			lua_setglobal(L, removed[i]);
+		}
+
+		// Inert os stub so scripts using os.time()/os.clock() don't crash.
+		lua_newtable(L);
+		lua_pushinteger(L, (lua_Integer)time(nullptr));
+		lua_setfield(L, -2, "time");
+		lua_pushnumber(L, (lua_Number)clock() / CLOCKS_PER_SEC);
+		lua_setfield(L, -2, "clock");
+		lua_setglobal(L, "os");
+	}
+
+	// Rejects script-supplied paths that try to escape the asset root: any
+	// ".." segment, and absolute/drive paths that bypass the root entirely.
+	static bool PathEscapesAssetRoot(const std::filesystem::path& p)
+	{
+		if (p.is_absolute())
+			return true;
+		for (const auto& part : p)
+		{
+			std::string s = part.string();
+			if (s == ".." || (s.size() >= 2 && s[1] == ':'))
+				return true;
+		}
+		return false;
+	}
+
 	static void ApplyFieldToLua(lua_State* L, const std::string& tableKey, const LuaField& field)
 	{
 		lua_getglobal(L, tableKey.c_str());
@@ -796,8 +893,12 @@ namespace Waffle {
 		if (it != sc.Fields.end() && !it->second.empty())
 			return;
 
+		// Run the script exactly once in a throwaway sandboxed state: the old
+		// code executed the whole chunk twice (a first attempt whose env was
+		// lost, then a "cleaner second attempt"), firing top-level side
+		// effects twice at editor time.
 		lua_State* L = luaL_newstate();
-		luaL_openlibs(L);
+		OpenSandboxedLibs(L);
 
 		std::ifstream file(fullPath, std::ios::binary);
 		if (!file.is_open()) { lua_close(L); return; }
@@ -808,50 +909,16 @@ namespace Waffle {
 		std::string wrapper = "return function(_ENV)\n" + source + "\nend";
 		if (luaL_loadbufferx(L, wrapper.c_str(), wrapper.size(), "@scrape", "t") != LUA_OK)
 		{
+			const char* err = lua_tostring(L, -1);
+			WF_CORE_ERROR("LuaScriptEngine: scrape compile error in '{0}': {1}", fullPath.string(), err ? err : "unknown");
+			lua_pop(L, 1);
 			lua_close(L); return;
 		}
 		if (lua_pcall(L, 0, 1, 0) != LUA_OK)
 		{
-			lua_close(L); return;
-		}
-
-		// Build a minimal env table with a metatable pointing to _G
-		lua_newtable(L);                                          // env
-		lua_newtable(L);                                          // metatable
-		lua_rawgeti(L, LUA_REGISTRYINDEX, LUA_RIDX_GLOBALS);
-		lua_setfield(L, -2, "__index");
-		lua_setmetatable(L, -2);
-
-		// Call the wrapper with the env - this executes the script top-level,
-		// which defines Public = { ... } inside the env table
-		if (lua_pcall(L, 1, 0, 0) != LUA_OK)
-		{
-			lua_close(L); return;
-		}
-
-		// env is now on the registry - but we left it on the stack before pcall
-		// Actually re-push: the env was consumed. Rebuild by running again.
-		// Simpler: just look for Public as a global since we used _G as __index
-		// Instead, rerun with a named env:
-		lua_close(L);
-
-		// Cleaner second attempt - store the env before calling
-		L = luaL_newstate();
-		luaL_openlibs(L);
-
-		file.open(fullPath, std::ios::binary);
-		if (!file.is_open()) { lua_close(L); return; }
-		source = std::string((std::istreambuf_iterator<char>(file)),
-			std::istreambuf_iterator<char>());
-		file.close();
-
-		wrapper = "return function(_ENV)\n" + source + "\nend";
-		if (luaL_loadbufferx(L, wrapper.c_str(), wrapper.size(), "@scrape", "t") != LUA_OK)
-		{
-			lua_close(L); return;
-		}
-		if (lua_pcall(L, 0, 1, 0) != LUA_OK)
-		{
+			const char* err = lua_tostring(L, -1);
+			WF_CORE_ERROR("LuaScriptEngine: scrape exec error in '{0}': {1}", fullPath.string(), err ? err : "unknown");
+			lua_pop(L, 1);
 			lua_close(L); return;
 		}
 
@@ -956,16 +1023,20 @@ namespace Waffle {
 	static int Lua_IsKeyJustPressed(lua_State* L)
 	{
 		int code = 0;
-		if (lua_isnumber(L, 1)) code = (int)lua_tonumber(L, 1);
+		if (lua_isnumber(L, 1))
+		{
+			code = (int)lua_tonumber(L, 1);
+		}
 		else if (lua_isstring(L, 1))
 		{
-			// Reuse existing string → keycode logic by calling IsKeyPressed helper
-			// We only need the code; parse via the same chain already in Lua_IsKeyPressed.
-			// Simplest: just call Input directly after resolving via a temporary Lua call.
-			// Instead, duplicate the minimal lookup here for common keys.
 			const char* str = lua_tostring(L, 1);
 			if (str && strlen(str) == 1) { char c = (char)toupper((unsigned char)str[0]); if (c >= 'A' && c <= 'Z') code = (int)c; }
 		}
+
+		// Unresolvable input must not alias to key 0 (a phantom tracked key
+		// that every other unresolved name also compares against).
+		if (code == 0) { lua_pushboolean(L, 0); return 1; }
+
 		LuaScriptEngine::TrackKey(code);
 		bool prev = LuaScriptEngine::s_PrevKeyStates.count(code) ? LuaScriptEngine::s_PrevKeyStates[code] : false;
 		bool curr = LuaScriptEngine::s_CurrKeyStates.count(code) ? LuaScriptEngine::s_CurrKeyStates[code] : false;
@@ -976,12 +1047,18 @@ namespace Waffle {
 	static int Lua_IsKeyJustReleased(lua_State* L)
 	{
 		int code = 0;
-		if (lua_isnumber(L, 1)) code = (int)lua_tonumber(L, 1);
+		if (lua_isnumber(L, 1))
+		{
+			code = (int)lua_tonumber(L, 1);
+		}
 		else if (lua_isstring(L, 1))
 		{
 			const char* str = lua_tostring(L, 1);
 			if (str && strlen(str) == 1) { char c = (char)toupper((unsigned char)str[0]); if (c >= 'A' && c <= 'Z') code = (int)c; }
 		}
+
+		if (code == 0) { lua_pushboolean(L, 0); return 1; }
+
 		LuaScriptEngine::TrackKey(code);
 		bool prev = LuaScriptEngine::s_PrevKeyStates.count(code) ? LuaScriptEngine::s_PrevKeyStates[code] : false;
 		bool curr = LuaScriptEngine::s_CurrKeyStates.count(code) ? LuaScriptEngine::s_CurrKeyStates[code] : false;
@@ -993,6 +1070,7 @@ namespace Waffle {
 	{
 		int code = 0;
 		if (lua_isnumber(L, 1)) code = (int)lua_tonumber(L, 1);
+		if (GameplayMouseBlocked()) { lua_pushboolean(L, 0); return 1; }
 		LuaScriptEngine::TrackMouse(code);
 		bool prev = LuaScriptEngine::s_PrevMouseStates.count(code) ? LuaScriptEngine::s_PrevMouseStates[code] : false;
 		bool curr = LuaScriptEngine::s_CurrMouseStates.count(code) ? LuaScriptEngine::s_CurrMouseStates[code] : false;
@@ -1004,6 +1082,7 @@ namespace Waffle {
 	{
 		int code = 0;
 		if (lua_isnumber(L, 1)) code = (int)lua_tonumber(L, 1);
+		if (GameplayMouseBlocked()) { lua_pushboolean(L, 0); return 1; }
 		LuaScriptEngine::TrackMouse(code);
 		bool prev = LuaScriptEngine::s_PrevMouseStates.count(code) ? LuaScriptEngine::s_PrevMouseStates[code] : false;
 		bool curr = LuaScriptEngine::s_CurrMouseStates.count(code) ? LuaScriptEngine::s_CurrMouseStates[code] : false;
@@ -1087,6 +1166,11 @@ namespace Waffle {
 		uint32_t entityID = (uint32_t)lua_tonumber(L, 1);
 		const char* pathStr = lua_tostring(L, 2);
 		if (!pathStr) return 0;
+		if (PathEscapesAssetRoot(pathStr))
+		{
+			WF_CORE_WARN("SetTexture: rejected path with '..' segments: '{0}'", pathStr);
+			return 0;
+		}
 
 		Scene* scene = LuaScriptEngine::GetSceneContext();
 		if (!scene) return 0;
@@ -1225,7 +1309,8 @@ namespace Waffle {
 
 		// DuplicateEntity copies all components and returns the new entity
 		Entity newEntity = scene->DuplicateEntity(source);
-		lua_pushnumber(L, newEntity ? (uint32_t)(entt::entity)newEntity : (uint32_t)entt::null);
+		// -1 sentinel on failure, matching every other spawning binding.
+		lua_pushnumber(L, newEntity ? (lua_Number)(uint32_t)(entt::entity)newEntity : -1.0);
 		return 1;
 	}
 
@@ -1236,6 +1321,12 @@ namespace Waffle {
 		float y = lua_isnumber(L, 3) ? (float)lua_tonumber(L, 3) : 0.0f;
 
 		if (!pathStr) { lua_pushnumber(L, -1); return 1; }
+		if (PathEscapesAssetRoot(pathStr))
+		{
+			WF_CORE_WARN("InstantiatePrefab: rejected path with '..' segments: '{0}'", pathStr);
+			lua_pushnumber(L, -1);
+			return 1;
+		}
 
 		Scene* scene = LuaScriptEngine::GetSceneContext();
 		if (!scene) { lua_pushnumber(L, -1); return 1; }
@@ -1903,15 +1994,17 @@ namespace Waffle {
 		}
 
 		const auto& camComp = camEntity.GetComponent<CameraComponent>();
-		const auto& tc      = camEntity.GetComponent<TransformComponent>();
+		// WORLD position - a parented camera's local translation is not
+		// where the view is centered.
+		glm::vec3 camPos = glm::vec3(scene->GetWorldTransform(camEntity)[3]);
 		float orthoSize  = camComp.Camera.GetOrthographicSize();
 		float aspectRatio = camComp.Camera.GetAspectRatio();
 		float vw = (float)scene->GetViewportWidth();
 		float vh = (float)scene->GetViewportHeight();
 		if (vw == 0 || vh == 0) { lua_pushnumber(L, sx); lua_pushnumber(L, sy); return 2; }
 
-		float wx = tc.Translation.x + (sx / vw - 0.5f) * orthoSize * aspectRatio;
-		float wy = tc.Translation.y + (0.5f - sy / vh) * orthoSize; // Y flipped
+		float wx = camPos.x + (sx / vw - 0.5f) * orthoSize * aspectRatio;
+		float wy = camPos.y + (0.5f - sy / vh) * orthoSize; // Y flipped
 		lua_pushnumber(L, wx);
 		lua_pushnumber(L, wy);
 		return 2;
@@ -2342,7 +2435,10 @@ if Global == nil then Global = {} end
 			return;
 
 		s_LuaState = luaL_newstate();
-		luaL_openlibs(s_LuaState);
+		// Sandboxed: base/coroutine/table/string/math/utf8 only. Full
+		// luaL_openlibs would hand game scripts os/io/debug/package
+		// (file deletion, process exit, native library loading).
+		OpenSandboxedLibs(s_LuaState);
 		RegisterGlobals(s_LuaState);
 
 		WF_CORE_INFO("LuaScriptEngine: Initialised.");
@@ -2361,42 +2457,65 @@ if Global == nil then Global = {} end
 	class LuaContactListener : public b2ContactListener
 	{
 	public:
-		void FireCollision(const char* funcName, b2Contact* contact)
+		// Collision events are QUEUED during b2World::Step and dispatched from
+		// DrainEvents() after the step completes. Running scripts inside the
+		// step allowed body creation/destruction/mutation mid-solve
+		// (InstantiatePrefab, SetRigidBodyType, CloneEntity...), which Box2D
+		// forbids - undefined behavior / memory corruption.
+		struct CollisionEvent
 		{
-			b2Body* bodyA = contact->GetFixtureA()->GetBody();
-			b2Body* bodyB = contact->GetFixtureB()->GetBody();
+			const char* FuncName = nullptr;
+			uint32_t    SelfID   = 0;
+			uint32_t    OtherID  = 0;
+		};
 
-			Scene* scene = LuaScriptEngine::GetSceneContext();
+		void BeginContact(b2Contact* contact) override
+		{
+			QueueContact(contact, "OnCollisionBegin", "OnTriggerBegin");
+		}
+		void EndContact(b2Contact* contact) override
+		{
+			QueueContact(contact, "OnCollisionEnd", "OnTriggerEnd");
+		}
+
+		void DrainEvents(Scene* scene)
+		{
+			if (m_Events.empty()) return;
+
 			lua_State* L = LuaScriptEngine::GetLuaState();
-			if (!scene || !L) return;
+			if (!L) { m_Events.clear(); return; }
+
+			// Swap so scripts fired here that produce new contacts append to
+			// the next batch instead of mutating the vector being iterated.
+			std::vector<CollisionEvent> events = std::move(m_Events);
+			m_Events.clear();
+
+			for (const auto& ev : events)
+				FireOnEntity(L, scene, ev.SelfID, ev.FuncName, ev.SelfID, ev.OtherID);
+		}
+
+	private:
+		void QueueContact(b2Contact* contact, const char* collisionFn, const char* triggerFn)
+		{
+			Scene* scene = LuaScriptEngine::GetSceneContext();
+			if (!scene) return;
 
 			auto& bodyMap = scene->GetBodyEntityMap();
+			b2Body* bodyA = contact->GetFixtureA()->GetBody();
+			b2Body* bodyB = contact->GetFixtureB()->GetBody();
 			auto itA = bodyMap.find(bodyA);
 			auto itB = bodyMap.find(bodyB);
 			if (itA == bodyMap.end() || itB == bodyMap.end()) return;
 
+			bool isSensor = contact->GetFixtureA()->IsSensor() || contact->GetFixtureB()->IsSensor();
+			const char* fn = isSensor ? triggerFn : collisionFn;
+
 			uint32_t idA = itA->second;
 			uint32_t idB = itB->second;
-
-			// Fire on A's scripts with B as the other
-			FireOnEntity(L, scene, idA, funcName, idA, idB);
-			// Fire on B's scripts with A as the other
-			FireOnEntity(L, scene, idB, funcName, idB, idA);
+			m_Events.push_back({ fn, idA, idB });
+			m_Events.push_back({ fn, idB, idA });
 		}
 
-		void BeginContact(b2Contact* contact) override
-		{
-			// Check if either fixture is a sensor (trigger)
-			bool isSensor = contact->GetFixtureA()->IsSensor() || contact->GetFixtureB()->IsSensor();
-			FireCollision(isSensor ? "OnTriggerBegin" : "OnCollisionBegin", contact);
-		}
-		void EndContact(b2Contact* contact) override
-		{
-			bool isSensor = contact->GetFixtureA()->IsSensor() || contact->GetFixtureB()->IsSensor();
-			FireCollision(isSensor ? "OnTriggerEnd" : "OnCollisionEnd", contact);
-		}
-
-	private:
 		void FireOnEntity(lua_State* L, Scene* scene, uint32_t entityID,
 			const char* funcName, uint32_t selfID, uint32_t otherID)
 		{
@@ -2404,8 +2523,11 @@ if Global == nil then Global = {} end
 			if (!scene->GetRegistry().valid(enttID)) return;
 			if (!scene->GetRegistry().all_of<ScriptComponent>(enttID)) return;
 
-			auto& sc = scene->GetRegistry().get<ScriptComponent>(enttID);
-			for (const auto& tableKey : sc.ScriptTableKeys)
+			// Copy the keys before calling: the script can spawn/destroy
+			// scripted entities and mutate sc.ScriptTableKeys mid-iteration.
+			auto keys = scene->GetRegistry().get<ScriptComponent>(enttID).ScriptTableKeys;
+
+			for (const auto& tableKey : keys)
 			{
 				lua_getglobal(L, tableKey.c_str());
 				if (!lua_istable(L, -1)) { lua_pop(L, 1); continue; }
@@ -2426,9 +2548,14 @@ if Global == nil then Global = {} end
 				lua_pop(L, 1); // pop the env table
 			}
 		}
+
+		std::vector<CollisionEvent> m_Events;
 	};
 
 	LuaContactListener* LuaScriptEngine::s_ContactListener = nullptr;
+	glm::vec2 LuaScriptEngine::s_GameViewportOrigin = glm::vec2(0.0f);
+	glm::vec2 LuaScriptEngine::s_GameViewportSize = glm::vec2(0.0f);
+	bool LuaScriptEngine::s_HasGameViewport = false;
 
 	void LuaScriptEngine::OnRuntimeStart(Scene* scene)
 	{
@@ -2438,9 +2565,21 @@ if Global == nil then Global = {} end
 		if (!scene || !s_LuaState)
 			return;
 
-		auto view = scene->m_Registry.view<ScriptComponent>();
-		for (auto entityID : view)
+		// Snapshot BEFORE running scripts: OnCreate can call CreateEntity /
+		// InstantiatePrefab, which registers ScriptComponent on new entities
+		// and can reallocate the pool under a live view iterator (UB).
+		std::vector<entt::entity> scriptedEntities;
 		{
+			auto view = scene->m_Registry.view<ScriptComponent>();
+			for (auto entityID : view)
+				scriptedEntities.push_back(entityID);
+		}
+
+		for (auto entityID : scriptedEntities)
+		{
+			// May have been destroyed by an earlier script in this loop.
+			if (!scene->m_Registry.valid(entityID)) continue;
+
 			Entity entity{ entityID, scene };
 			auto& sc = entity.GetComponent<ScriptComponent>();
 
@@ -2496,9 +2635,21 @@ if Global == nil then Global = {} end
 			return;
 		}
 
-		auto view = scene->m_Registry.view<ScriptComponent>();
-		for (auto entityID : view)
+		// Snapshot BEFORE running scripts: OnDestroy can call CreateEntity /
+		// DestroyEntity, which mutates the ScriptComponent pool under a live
+		// view iterator (UB) - same pattern as OnRuntimeStart/Update.
+		std::vector<entt::entity> scriptedEntities;
 		{
+			auto view = scene->m_Registry.view<ScriptComponent>();
+			for (auto entityID : view)
+				scriptedEntities.push_back(entityID);
+		}
+
+		for (auto entityID : scriptedEntities)
+		{
+			if (!scene->m_Registry.valid(entityID))
+				continue;
+
 			Entity entity{ entityID, scene };
 			auto& sc = entity.GetComponent<ScriptComponent>();
 
@@ -2599,10 +2750,24 @@ if Global == nil then Global = {} end
 		UpdateInputStates(); // snapshot prev/curr key and mouse states
 
 		// --- Script update (skip disabled entities) ---
-		auto view = scene->m_Registry.view<ScriptComponent>();
-		for (auto entityID : view)
+		// Snapshot BEFORE running scripts: OnUpdate can call CreateEntity /
+		// InstantiatePrefab, which registers ScriptComponent on new entities
+		// and can reallocate the pool under a live view iterator (UB).
+		std::vector<entt::entity> scriptedEntities;
 		{
-			// Skip disabled entities
+			auto view = scene->m_Registry.view<ScriptComponent>();
+			for (auto entityID : view)
+			{
+				if (!scene->m_Registry.all_of<DisabledComponent>(entityID))
+					scriptedEntities.push_back(entityID);
+			}
+		}
+
+		for (auto entityID : scriptedEntities)
+		{
+			// Re-check: an earlier script this frame may have destroyed or
+			// disabled this entity.
+			if (!scene->m_Registry.valid(entityID)) continue;
 			if (scene->m_Registry.all_of<DisabledComponent>(entityID)) continue;
 
 			Entity entity{ entityID, scene };
@@ -2618,10 +2783,20 @@ if Global == nil then Global = {} end
 					lua_pushnumber(s_LuaState, tsf);
 					});
 
-				// Sync Public table values back into sc.Fields for live inspector display
+				// Sync Public table values back into sc.Fields for live
+				// inspector display. Only sync the field list that belongs to
+				// THIS script env - table keys are "wf_entity_<id>_<stem>".
+				// Match the stem as a '_' delimited SUFFIX: stems may
+				// themselves contain '_' (rfind('_') breaks "player_controller").
 				for (auto& [scriptPath, fieldList] : sc.Fields)
 				{
 					if (fieldList.empty()) continue;
+					std::string stem = std::filesystem::path(scriptPath).stem().string();
+					bool keyMatches =
+						tableKey.size() >= stem.size() + 1 &&
+						tableKey[tableKey.size() - stem.size() - 1] == '_' &&
+						tableKey.compare(tableKey.size() - stem.size(), stem.size(), stem) == 0;
+					if (!keyMatches) continue;
 
 					lua_getglobal(s_LuaState, tableKey.c_str());
 					if (!lua_istable(s_LuaState, -1)) { lua_pop(s_LuaState, 1); continue; }
@@ -2661,29 +2836,50 @@ if Global == nil then Global = {} end
 		}
 
 		// --- Tick timers ---
-		for (auto& t : s_Timers)
+		// Snapshot the firing timers BEFORE running any Lua: a callback that
+		// calls SetTimer push_backs into s_Timers, and a reallocation would
+		// dangle the reference `t` used below (use-after-free).
+		std::vector<size_t> firing;
+		for (size_t i = 0; i < s_Timers.size(); i++)
 		{
-			if (!t.Active) continue;
-			t.Remaining -= (float)ts;
-			if (t.Remaining <= 0.0f)
+			if (!s_Timers[i].Active) continue;
+			s_Timers[i].Remaining -= (float)ts;
+			if (s_Timers[i].Remaining <= 0.0f)
 			{
-				t.Active = false;
-				// Fire callback
-				lua_rawgeti(s_LuaState, LUA_REGISTRYINDEX, t.CallbackRef);
-				if (lua_isfunction(s_LuaState, -1))
-				{
-					if (lua_pcall(s_LuaState, 0, 0, 0) != LUA_OK)
-					{
-						const char* err = lua_tostring(s_LuaState, -1);
-						WF_CORE_ERROR("LuaScriptEngine: Timer callback error: {0}", err ? err : "unknown");
-						lua_pop(s_LuaState, 1);
-					}
-				}
-				else lua_pop(s_LuaState, 1);
-				luaL_unref(s_LuaState, LUA_REGISTRYINDEX, t.CallbackRef);
-				t.CallbackRef = LUA_NOREF;
+				s_Timers[i].Active = false;
+				firing.push_back(i);
 			}
 		}
+
+		for (size_t i : firing)
+		{
+			// Index-based access only: `SetTimer` called from inside a
+			// callback may reallocate s_Timers, so no reference may be held
+			// across the pcall.
+			if (s_Timers[i].CallbackRef == LUA_NOREF) continue;
+
+			lua_rawgeti(s_LuaState, LUA_REGISTRYINDEX, s_Timers[i].CallbackRef);
+			if (lua_isfunction(s_LuaState, -1))
+			{
+				if (lua_pcall(s_LuaState, 0, 0, 0) != LUA_OK)
+				{
+					const char* err = lua_tostring(s_LuaState, -1);
+					WF_CORE_ERROR("LuaScriptEngine: Timer callback error: {0}", err ? err : "unknown");
+					lua_pop(s_LuaState, 1);
+				}
+			}
+			else
+				lua_pop(s_LuaState, 1);
+
+			// The callback may have cancelled this timer (already unrefed) or
+			// grown the vector - re-read through the index.
+			if (s_Timers[i].CallbackRef != LUA_NOREF)
+			{
+				luaL_unref(s_LuaState, LUA_REGISTRYINDEX, s_Timers[i].CallbackRef);
+				s_Timers[i].CallbackRef = LUA_NOREF;
+			}
+		}
+
 		// Compact finished timers
 		s_Timers.erase(std::remove_if(s_Timers.begin(), s_Timers.end(),
 			[](const LuaTimerEntry& t) { return !t.Active; }), s_Timers.end());
@@ -2702,15 +2898,48 @@ if Global == nil then Global = {} end
 			s_DelayedDestroys.end());
 
 		// --- Process deferred destroys ---
-		for (uint32_t id : s_PendingDestroys)
+		// Swap first: OnDestroy handlers can call DestroyEntity, which
+		// push_backs into s_PendingDestroys - appending to the vector being
+		// range-for'd would invalidate the iterator (UB). New requests wait
+		// for the next frame.
+		std::vector<uint32_t> pendingDestroys = std::move(s_PendingDestroys);
+		s_PendingDestroys.clear();
+
+		for (uint32_t id : pendingDestroys)
 		{
 			entt::entity e = (entt::entity)id;
 			if (scene->m_Registry.valid(e))
 			{
 				Entity entity{ e, scene };
+
+				// Fire OnDestroy and drop the entity's Lua environments so
+				// the state doesn't leak one env table (plus closures) per
+				// spawned-then-destroyed scripted entity, and stale globals
+				// can't collide with recycled entity IDs.
+				if (scene->m_Registry.all_of<ScriptComponent>(e))
+				{
+					auto& sc = scene->m_Registry.get<ScriptComponent>(e);
+					uint32_t selfID = id;
+					auto keys = sc.ScriptTableKeys;
+					for (const auto& tableKey : keys)
+					{
+						CallEnvFunction(s_LuaState, tableKey, "OnDestroy", 1, [&]() {
+							lua_pushnumber(s_LuaState, selfID);
+							});
+						lua_pushnil(s_LuaState);
+						lua_setglobal(s_LuaState, tableKey.c_str());
+					}
+					sc.ScriptTableKeys.clear();
+				}
+
 				scene->DestroyEntity(entity);
 			}
 		}
-		s_PendingDestroys.clear();
+	}
+
+	void LuaScriptEngine::DrainCollisionEvents(Scene* scene)
+	{
+		if (s_ContactListener && scene)
+			s_ContactListener->DrainEvents(scene);
 	}
 }

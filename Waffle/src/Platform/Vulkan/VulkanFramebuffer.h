@@ -23,6 +23,10 @@ namespace Waffle {
 		explicit VulkanFramebuffer(const FramebufferSpecification& spec);
 		virtual ~VulkanFramebuffer();
 
+		// Owns raw Vulkan handles - copying would double-destroy them.
+		VulkanFramebuffer(const VulkanFramebuffer&) = delete;
+		VulkanFramebuffer& operator=(const VulkanFramebuffer&) = delete;
+
 		void Invalidate();
 
 		virtual void Bind()   override;

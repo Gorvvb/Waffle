@@ -48,31 +48,42 @@ namespace Waffle {
 		}
 
 		ImGui::SameLine();
-		static bool showTrace = true, showInfo = true, showWarn = true, showError = true;
+		static bool showTrace = true, showInfo = true, showWarn = true, showError = true, showCritical = true;
 		ImGui::Checkbox("Trace", &showTrace); ImGui::SameLine();
 		ImGui::Checkbox("Info", &showInfo); ImGui::SameLine();
 		ImGui::Checkbox("Warn", &showWarn); ImGui::SameLine();
-		ImGui::Checkbox("Error", &showError);
+		ImGui::Checkbox("Error", &showError); ImGui::SameLine();
+		ImGui::Checkbox("Critical", &showCritical);
 
 		ImGui::Separator();
 
 		ImGui::BeginChild("ScrollingRegion", ImVec2(0, 0), false, ImGuiWindowFlags_HorizontalScrollbar);
 
-		std::lock_guard<std::mutex> lock(s_MessageMutex);
-		for (const auto& msg : s_Messages)
+		// Copy under lock, render outside it - holding the mutex across up to
+		// 1000 Text calls stalled producer threads for a frame under heavy
+		// logging.
+		std::vector<ConsoleMessage> snapshot;
+		{
+			std::lock_guard<std::mutex> lock(s_MessageMutex);
+			snapshot = s_Messages;
+		}
+
+		for (const auto& msg : snapshot)
 		{
 			if (msg.LogLevel == ConsoleMessage::Level::Trace && !showTrace) continue;
 			if (msg.LogLevel == ConsoleMessage::Level::Info && !showInfo) continue;
 			if (msg.LogLevel == ConsoleMessage::Level::Warn && !showWarn) continue;
 			if (msg.LogLevel == ConsoleMessage::Level::Error && !showError) continue;
+			if (msg.LogLevel == ConsoleMessage::Level::Critical && !showCritical) continue;
 
 			ImVec4 color = ImVec4(1.0f, 1.0f, 1.0f, 1.0f);
 			switch (msg.LogLevel)
 			{
-				case ConsoleMessage::Level::Trace: color = ImVec4(0.7f, 0.7f, 0.7f, 1.0f); break;
-				case ConsoleMessage::Level::Info:  color = ImVec4(0.2f, 0.8f, 0.2f, 1.0f); break;
-				case ConsoleMessage::Level::Warn:  color = ImVec4(0.9f, 0.9f, 0.2f, 1.0f); break;
-				case ConsoleMessage::Level::Error: color = ImVec4(0.9f, 0.2f, 0.2f, 1.0f); break;
+				case ConsoleMessage::Level::Trace:    color = ImVec4(0.7f, 0.7f, 0.7f, 1.0f); break;
+				case ConsoleMessage::Level::Info:     color = ImVec4(0.2f, 0.8f, 0.2f, 1.0f); break;
+				case ConsoleMessage::Level::Warn:     color = ImVec4(0.9f, 0.9f, 0.2f, 1.0f); break;
+				case ConsoleMessage::Level::Error:    color = ImVec4(0.9f, 0.2f, 0.2f, 1.0f); break;
+				case ConsoleMessage::Level::Critical: color = ImVec4(1.0f, 0.4f, 0.0f, 1.0f); break;
 			}
 
 			ImGui::PushStyleColor(ImGuiCol_Text, color);

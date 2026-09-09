@@ -61,15 +61,40 @@ struct GRPICONDIR {
 #pragma pack(pop)
 
 struct ResItem {
-	LPWSTR type;
-	LPWSTR name;
-	WORD   lang;
+	// The enum callbacks hand out pointers INTO the loaded module image -
+	// they die with FreeLibrary. Keep values: integer IDs as numbers (the
+	// common case), string names copied out.
+	bool typeIsInt = false, nameIsInt = false;
+	uintptr_t typeInt = 0, nameInt = 0;
+	std::wstring typeStr, nameStr;
+	WORD lang = 0;
+
+	LPCWSTR Type() const { return typeIsInt ? (LPCWSTR)typeInt : typeStr.c_str(); }
+	LPCWSTR Name() const { return nameIsInt ? (LPCWSTR)nameInt : nameStr.c_str(); }
 };
+
+static void StoreResID(LPCWSTR p, bool& isInt, uintptr_t& intVal, std::wstring& str)
+{
+	if (IS_INTRESOURCE(p))
+	{
+		isInt = true;
+		intVal = (uintptr_t)p;
+	}
+	else
+	{
+		isInt = false;
+		str = p;
+	}
+}
 
 static BOOL CALLBACK EnumLangsCB(HMODULE hModule, LPCWSTR lpType, LPCWSTR lpName, WORD wLanguage, LONG_PTR lParam)
 {
 	auto* list = reinterpret_cast<std::vector<ResItem>*>(lParam);
-	list->push_back({ (LPWSTR)lpType, (LPWSTR)lpName, wLanguage });
+	ResItem item;
+	item.lang = wLanguage;
+	StoreResID(lpType, item.typeIsInt, item.typeInt, item.typeStr);
+	StoreResID(lpName, item.nameIsInt, item.nameInt, item.nameStr);
+	list->push_back(std::move(item));
 	return TRUE;
 }
 
@@ -188,6 +213,7 @@ static bool EmbedIconInExecutable(const std::filesystem::path& exePath, const st
 	};
 	std::vector<IconResData> iconResList;
 	std::vector<uint8_t>     grpBuffer;
+	std::vector<GRPICONDIRENTRY> grpEntriesScratch;
 	bool                     isIco = false;
 
 	if (ext == ".ico" && fileSize >= (std::streamsize)sizeof(ICONDIRHEADER))
@@ -201,38 +227,54 @@ static bool EmbedIconInExecutable(const std::filesystem::path& exePath, const st
 				const ICONDIRENTRY* entries = reinterpret_cast<const ICONDIRENTRY*>(
 					fileData.data() + sizeof(ICONDIRHEADER));
 
-				size_t gs = sizeof(GRPICONDIR) + count * sizeof(GRPICONDIRENTRY);
-				grpBuffer.assign(gs, 0);
-
-				GRPICONDIR* grpHdr = reinterpret_cast<GRPICONDIR*>(grpBuffer.data());
-				grpHdr->idReserved = 0;
-				grpHdr->idType     = 1;
-				grpHdr->idCount    = count;
-
-				GRPICONDIRENTRY* grpEntries = reinterpret_cast<GRPICONDIRENTRY*>(
-					grpBuffer.data() + sizeof(GRPICONDIR));
-
+				// Collect only entries whose data window lies inside the
+				// file (uint64 arithmetic - uint32 offset+size wraps), and
+				// assign GRPICON IDs ONLY to entries that actually get
+				// written, so directory IDs always match RT_ICON IDs.
 				for (uint16_t i = 0; i < count; i++)
 				{
-					grpEntries[i].bWidth       = entries[i].bWidth;
-					grpEntries[i].bHeight      = entries[i].bHeight;
-					grpEntries[i].bColorCount  = entries[i].bColorCount;
-					grpEntries[i].bReserved    = 0;
-					grpEntries[i].wPlanes      = entries[i].wPlanes;
-					grpEntries[i].wBitsPerPixel= entries[i].wBitsPerPixel;
-					grpEntries[i].dwBytesInRes = entries[i].dwBytesInRes;
-					grpEntries[i].nID          = i + 1;
-
-					if (entries[i].dwImageOffset + entries[i].dwBytesInRes <= fileData.size())
+					uint64_t dataEnd = (uint64_t)entries[i].dwImageOffset + entries[i].dwBytesInRes;
+					if (dataEnd == 0 || dataEnd > (uint64_t)fileData.size())
 					{
-						iconResList.push_back({
-							entries[i].bWidth  ? entries[i].bWidth  : 256,
-							entries[i].bHeight ? entries[i].bHeight : 256,
-							std::vector<uint8_t>(
-								fileData.data() + entries[i].dwImageOffset,
-								fileData.data() + entries[i].dwImageOffset + entries[i].dwBytesInRes)
-						});
+						WF_CORE_WARN("Export: ICO entry {0} points outside the file; skipped.", i);
+						continue;
 					}
+
+					iconResList.push_back({
+						entries[i].bWidth  ? entries[i].bWidth  : 256,
+						entries[i].bHeight ? entries[i].bHeight : 256,
+						std::vector<uint8_t>(
+							fileData.data() + entries[i].dwImageOffset,
+							fileData.data() + dataEnd)
+					});
+
+					GRPICONDIRENTRY ge{};
+					ge.bWidth        = entries[i].bWidth;
+					ge.bHeight       = entries[i].bHeight;
+					ge.bColorCount   = entries[i].bColorCount;
+					ge.bReserved     = 0;
+					ge.wPlanes       = entries[i].wPlanes;
+					ge.wBitsPerPixel = entries[i].wBitsPerPixel;
+					ge.dwBytesInRes  = entries[i].dwBytesInRes;
+					ge.nID           = (uint16_t)iconResList.size();
+					grpEntriesScratch.push_back(ge);
+				}
+
+				if (!grpEntriesScratch.empty())
+				{
+					uint16_t numEntries = (uint16_t)iconResList.size();
+					size_t gs = sizeof(GRPICONDIR) + numEntries * sizeof(GRPICONDIRENTRY);
+					grpBuffer.assign(gs, 0);
+
+					GRPICONDIR* grpHdr = reinterpret_cast<GRPICONDIR*>(grpBuffer.data());
+					grpHdr->idReserved = 0;
+					grpHdr->idType     = 1;
+					grpHdr->idCount    = numEntries;
+
+					GRPICONDIRENTRY* grpEntries = reinterpret_cast<GRPICONDIRENTRY*>(
+						grpBuffer.data() + sizeof(GRPICONDIR));
+					for (uint16_t i = 0; i < numEntries; i++)
+						grpEntries[i] = grpEntriesScratch[i];
 				}
 
 				isIco = !iconResList.empty();
@@ -242,9 +284,11 @@ static bool EmbedIconInExecutable(const std::filesystem::path& exePath, const st
 
 	if (!isIco)
 	{
-		// Raster image path: resize to standard sizes and encode as PNG
+		// Raster image path: resize to standard sizes and encode as PNG.
+		// Decode from the already-read buffer - stbi_load takes an ANSI path
+		// and silently fails for non-ASCII icon paths.
 		int width = 0, height = 0, channels = 0;
-		stbi_uc* srcPixels = stbi_load(iconPath.string().c_str(), &width, &height, &channels, 4);
+		stbi_uc* srcPixels = stbi_load_from_memory(fileData.data(), (int)fileSize, &width, &height, &channels, 4);
 		if (!srcPixels)
 			return false;
 
@@ -315,7 +359,7 @@ static bool EmbedIconInExecutable(const std::filesystem::path& exePath, const st
 	// Step A: purge every existing RT_ICON and RT_GROUP_ICON in this same session
 	for (const auto& item : existingItems)
 	{
-		UpdateResourceW(hUpdate, item.type, item.name, item.lang, NULL, 0);
+		UpdateResourceW(hUpdate, item.Type(), item.Name(), item.lang, NULL, 0);
 	}
 
 	// Step B: write the new icon images
@@ -353,63 +397,101 @@ static bool EmbedIconInExecutable(const std::filesystem::path& exePath, const st
 
 #endif
 
-	static std::filesystem::path FindRuntimeExecutable()
+// Byte offset of the LAST "Assets" path segment in a forward-slashed path,
+// or npos. A plain substring search matched names like "D:/GameAssets/..."
+// and produced wrong runtime-relative scene paths.
+static size_t FindLastAssetsSegment(const std::string& s)
+{
+	size_t best = std::string::npos;
+	size_t pos = 0;
+	while ((pos = s.find("Assets", pos)) != std::string::npos)
 	{
-		std::vector<std::filesystem::path> candidates;
+		bool leftOk = (pos == 0) || s[pos - 1] == '/';
+		size_t end = pos + 6;
+		bool rightOk = (end == s.size()) || s[end] == '/';
+		if (leftOk && rightOk)
+			best = pos;
+		pos = end;
+	}
+	return best;
+}
+
+static std::filesystem::path FindRuntimeExecutable()
+{
+	std::vector<std::filesystem::path> candidates;
 
 #if defined(WF_PLATFORM_WINDOWS)
-		char buffer[MAX_PATH];
-		GetModuleFileNameA(NULL, buffer, MAX_PATH);
-		std::filesystem::path exeDir = std::filesystem::path(buffer).parent_path();
+	char buffer[MAX_PATH];
+	GetModuleFileNameA(NULL, buffer, MAX_PATH);
+	std::filesystem::path exeDir = std::filesystem::path(buffer).parent_path();
 #else
-		std::filesystem::path exeDir = std::filesystem::current_path();
+	std::filesystem::path exeDir = std::filesystem::current_path();
 #endif
 
-		candidates = {
-			exeDir / "Waffle-Runtime.exe",
-			exeDir / "../Waffle-Runtime/Waffle-Runtime.exe",
-			exeDir / "../../bin/Debug-windows-x86_64/Waffle-Runtime/Waffle-Runtime.exe",
-			exeDir / "../../bin/Release-windows-x86_64/Waffle-Runtime/Waffle-Runtime.exe",
-			exeDir / "../../bin/Dist-windows-x86_64/Waffle-Runtime/Waffle-Runtime.exe",
-			"bin/Debug-windows-x86_64/Waffle-Runtime/Waffle-Runtime.exe",
-			"bin/Release-windows-x86_64/Waffle-Runtime/Waffle-Runtime.exe",
-			"bin/Dist-windows-x86_64/Waffle-Runtime/Waffle-Runtime.exe",
-			"../bin/Debug-windows-x86_64/Waffle-Runtime/Waffle-Runtime.exe",
-			"../bin/Release-windows-x86_64/Waffle-Runtime/Waffle-Runtime.exe",
-			"../bin/Dist-windows-x86_64/Waffle-Runtime/Waffle-Runtime.exe",
-			"Waffle-Runtime.exe"
+	candidates = {
+		exeDir / "Waffle-Runtime.exe",
+		exeDir / "../Waffle-Runtime/Waffle-Runtime.exe",
+		exeDir / "../../bin/Debug-windows-x86_64/Waffle-Runtime/Waffle-Runtime.exe",
+		exeDir / "../../bin/Release-windows-x86_64/Waffle-Runtime/Waffle-Runtime.exe",
+		exeDir / "../../bin/Dist-windows-x86_64/Waffle-Runtime/Waffle-Runtime.exe",
+		"bin/Debug-windows-x86_64/Waffle-Runtime/Waffle-Runtime.exe",
+		"bin/Release-windows-x86_64/Waffle-Runtime/Waffle-Runtime.exe",
+		"bin/Dist-windows-x86_64/Waffle-Runtime/Waffle-Runtime.exe",
+		"../bin/Debug-windows-x86_64/Waffle-Runtime/Waffle-Runtime.exe",
+		"../bin/Release-windows-x86_64/Waffle-Runtime/Waffle-Runtime.exe",
+		"../bin/Dist-windows-x86_64/Waffle-Runtime/Waffle-Runtime.exe",
+		"Waffle-Runtime.exe"
+	};
+
+	for (const auto& path : candidates)
+	{
+		std::error_code ec;
+		if (std::filesystem::exists(path, ec))
+		{
+			auto canon = std::filesystem::canonical(path, ec);
+			return ec ? path : canon;
+		}
+	}
+
+	// Last resort: bounded upward search that skips heavyweight directories
+	// (vendored dependencies, VCS metadata, build intermediates) so this
+	// cannot burn minutes scanning an entire drive.
+	try
+	{
+		auto isPruned = [](const std::filesystem::path& dir)
+		{
+			std::string name = dir.filename().string();
+			for (auto& c : name) c = (char)tolower((unsigned char)c);
+			return name == "vendor" || name == ".git" || name == ".vs" ||
+				name == "intermediate" || name == "node_modules" ||
+				name == "wafflehub" || name == "projects";
 		};
 
-		for (const auto& path : candidates)
+		std::filesystem::path current = exeDir;
+		for (int depth = 0; depth < 4 && current.has_parent_path(); ++depth)
 		{
 			std::error_code ec;
-			if (std::filesystem::exists(path, ec))
+			// operator* yields a CONST entry - pruning is an iterator
+			// operation, so walk the iterator explicitly.
+			for (auto it = std::filesystem::recursive_directory_iterator(current, ec);
+				it != std::filesystem::recursive_directory_iterator(); ++it)
 			{
-				auto canon = std::filesystem::canonical(path, ec);
-				return ec ? path : canon;
+				if (ec)
+					break;
+				if (it->is_regular_file(ec) && it->path().filename() == "Waffle-Runtime.exe")
+					return it->path();
+				if (it->is_directory(ec) && isPruned(it->path()))
+					it.disable_recursion_pending();
 			}
+			current = current.parent_path();
 		}
-
-		try
-		{
-			std::filesystem::path current = exeDir;
-			for (int depth = 0; depth < 4 && current.has_parent_path(); ++depth)
-			{
-				std::error_code ec;
-				for (const auto& entry : std::filesystem::recursive_directory_iterator(current, ec))
-				{
-					if (entry.is_regular_file(ec) && entry.path().filename() == "Waffle-Runtime.exe")
-						return entry.path();
-				}
-				current = current.parent_path();
-			}
-		}
-		catch (...)
-		{
-		}
-
-		return "";
 	}
+	catch (...)
+	{
+	}
+
+	return "";
+}
 
 	bool ProjectExporter::ExportProject(const ExportOptions& options, std::string& outErrorMessage)
 	{
@@ -485,8 +567,7 @@ static bool EmbedIconInExecutable(const std::filesystem::path& exePath, const st
 		std::vector<std::filesystem::path> engineAssetCandidates = {
 			exeDir / "Assets",
 			exeDir / "../../Waffle-Editor/Assets",
-			exeDir / "../../../Waffle-Editor/Assets",
-			"C:/Dev/Waffle/Waffle-Editor/Assets"
+			exeDir / "../../../Waffle-Editor/Assets"
 		};
 
 		// 4. Ensure engine base shaders exist in export Assets/shaders
@@ -537,25 +618,51 @@ static bool EmbedIconInExecutable(const std::filesystem::path& exePath, const st
 			}
 		}
 
-		// 7. Copy extra .lua scripts outside Assets/ into targetAssets/Scripts
+		// 7. Copy extra .lua scripts outside Assets/ into targetAssets/Scripts.
+		// Preserve the project-relative directory structure - a flat copy
+		// silently overwrites same-named scripts from different folders.
 		if (std::filesystem::exists(activeProjectPath))
 		{
 			std::filesystem::path targetScripts = targetAssets / "Scripts";
 			std::filesystem::create_directories(targetScripts, ec);
 
-			for (const auto& entry : std::filesystem::recursive_directory_iterator(activeProjectPath))
+			std::error_code iterEc;
+			for (const auto& entry : std::filesystem::recursive_directory_iterator(activeProjectPath, iterEc))
 			{
-				if (entry.is_regular_file() && entry.path().extension() == ".lua")
+				if (iterEc)
+					break;
+				if (!entry.is_regular_file(iterEc))
+					continue;
+
+				std::string ext = entry.path().extension().string();
+				for (auto& c : ext) c = (char)tolower((unsigned char)c);
+				if (ext != ".lua")
+					continue;
+
+				std::error_code relEc;
+				std::filesystem::path rel = std::filesystem::relative(entry.path(), activeProjectPath, relEc);
+				if (relEc || rel.empty())
+					continue;
+
+				// Skip anything under an Assets/Exports/.git segment (any case).
+				bool skip = false;
+				for (const auto& part : rel)
 				{
-					std::string pathStr = entry.path().string();
-					if (pathStr.find("Assets")  == std::string::npos &&
-						pathStr.find("Exports") == std::string::npos)
+					std::string p = part.string();
+					for (auto& c : p) c = (char)tolower((unsigned char)c);
+					if (p == "assets" || p == "exports" || p == ".git")
 					{
-						std::filesystem::copy_file(entry.path(),
-							targetScripts / entry.path().filename(),
-							std::filesystem::copy_options::overwrite_existing, ec);
+						skip = true;
+						break;
 					}
 				}
+				if (skip)
+					continue;
+
+				std::filesystem::path dest = targetScripts / rel;
+				std::filesystem::create_directories(dest.parent_path(), ec);
+				std::filesystem::copy_file(entry.path(), dest,
+					std::filesystem::copy_options::overwrite_existing, ec);
 			}
 		}
 
@@ -624,7 +731,8 @@ static bool EmbedIconInExecutable(const std::filesystem::path& exePath, const st
 		{
 			std::filesystem::path scenePath(options.SelectedScenePath);
 			std::string scenePathStr = scenePath.string();
-			auto assetsPos = scenePathStr.find("Assets");
+			std::replace(scenePathStr.begin(), scenePathStr.end(), '\\', '/');
+			auto assetsPos = FindLastAssetsSegment(scenePathStr);
 			if (assetsPos != std::string::npos)
 				relativeStartScene = scenePathStr.substr(assetsPos);
 			else
@@ -637,7 +745,7 @@ static bool EmbedIconInExecutable(const std::filesystem::path& exePath, const st
 				std::string s = rawPath;
 				// Normalize slashes
 				std::replace(s.begin(), s.end(), '\\', '/');
-				auto pos = s.find("Assets");
+				auto pos = FindLastAssetsSegment(s);
 				if (pos != std::string::npos)
 					return s.substr(pos);
 				// Fallback: just use the filename under Assets/Scenes

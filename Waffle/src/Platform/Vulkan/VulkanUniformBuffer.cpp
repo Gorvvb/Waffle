@@ -123,6 +123,10 @@ namespace Waffle {
 		if (dev != VK_NULL_HANDLE)
 			vkDeviceWaitIdle(dev);
 
+		// Drop our registration BEFORE destroying the VkBuffer - otherwise the
+		// context hands a dead handle to BindAndFlushDescriptors.
+		ctx->UnregisterUniformBuffer(m_Binding);
+
 		if (m_DescriptorSet != VK_NULL_HANDLE)
 			ctx->SafeFreeDescriptorSet(m_DescriptorSet);
 		if (m_DescriptorSetLayout != VK_NULL_HANDLE)
@@ -139,6 +143,10 @@ namespace Waffle {
 	{
 		WF_CORE_ASSERT(m_MappedPtr, "Uniform buffer not mapped!");
 		WF_CORE_ASSERT(offset + size <= m_Size, "Uniform buffer write out of bounds!");
+		// The previous frame may still be sampling this mapped memory -
+		// wait for it before overwriting.
+		if (auto* ctx = VulkanContext::Get())
+			ctx->WaitForFrameUploads(ctx->GetCurrentFrameIndex());
 		memcpy((uint8_t*)m_MappedPtr + offset, data, size);
 
 		// Re-register in case the bound descriptor set was cleared

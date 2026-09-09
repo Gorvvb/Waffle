@@ -137,6 +137,20 @@ namespace Waffle {
 
 		if (m_VertModule) vkDestroyShaderModule(dev, m_VertModule, nullptr);
 		if (m_FragModule) vkDestroyShaderModule(dev, m_FragModule, nullptr);
+
+		// Return every per-frame descriptor set to the shared pool - without
+		// this, each shader load/unload permanently consumed
+		// framesInFlight * setCount sets until the pool was exhausted.
+		// The vkDeviceWaitIdle above makes freeing safe.
+		for (auto& frameSets : m_DescriptorSets)
+		{
+			for (VkDescriptorSet set : frameSets)
+			{
+				if (set != VK_NULL_HANDLE)
+					vkFreeDescriptorSets(dev, ctx->GetDescriptorPool(), 1, &set);
+			}
+		}
+		m_DescriptorSets.clear();
 	}
 
 	// -------------------------------------------------------------------------
@@ -224,6 +238,13 @@ namespace Waffle {
 			std::vector<VkDescriptorBufferInfo> bufferInfos;
 			std::vector<std::vector<VkDescriptorImageInfo>> imageInfoArrays;
 
+			// Reserve BEFORE the fill loop: writes store pointers into
+			// bufferInfos, so a push_back reallocation would dangle every
+			// previously stored pBufferInfo before vkUpdateDescriptorSets reads them.
+			bufferInfos.reserve(m_ReflectedDescriptors.size());
+			imageInfoArrays.reserve(m_ReflectedDescriptors.size());
+			writes.reserve(m_ReflectedDescriptors.size());
+
 			for (const auto& d : m_ReflectedDescriptors)
 			{
 				if (d.Set != (uint32_t)setIdx) continue;
@@ -255,16 +276,29 @@ namespace Waffle {
 					uint32_t count = d.Count;
 					std::vector<VkDescriptorImageInfo> imgInfos(count);
 
+					bool bindingValid = true;
 					for (uint32_t slot = 0; slot < count; slot++)
 					{
 						auto tex = ctx->GetTexture(slot);
 						if (tex.ImageView == VK_NULL_HANDLE || tex.Sampler == VK_NULL_HANDLE)
 							tex = ctx->GetTexture(0);
 
+						// Nothing bound at this slot or at slot 0: writing a
+						// null imageView/sampler is a validation error and an
+						// undefined draw - skip the binding instead.
+						if (tex.ImageView == VK_NULL_HANDLE || tex.Sampler == VK_NULL_HANDLE)
+						{
+							bindingValid = false;
+							break;
+						}
+
 						imgInfos[slot].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 						imgInfos[slot].imageView   = tex.ImageView;
 						imgInfos[slot].sampler     = tex.Sampler;
 					}
+
+					if (!bindingValid)
+						continue;
 
 					imageInfoArrays.push_back(imgInfos);
 
@@ -509,8 +543,9 @@ namespace Waffle {
 
 			size_t nextLinePos = source.find_first_not_of("\r\n", eol);
 			pos = source.find(typeToken, nextLinePos);
-			shaderSources[glStage] = source.substr(nextLinePos,
-				pos - (nextLinePos == std::string::npos ? source.size() - 1 : nextLinePos));
+			size_t sourceBegin = (nextLinePos == std::string::npos) ? source.size() : nextLinePos;
+			size_t sourceLength = (pos == std::string::npos) ? std::string::npos : (pos - sourceBegin);
+			shaderSources[glStage] = source.substr(sourceBegin, sourceLength);
 		}
 		return shaderSources;
 	}
@@ -523,15 +558,26 @@ namespace Waffle {
 		options.SetTargetSpirv(shaderc_spirv_version_1_6);
 		options.SetOptimizationLevel(shaderc_optimization_level_performance);
 
+		for (const auto& [name, value] : Shader::GetGlobalDefines())
+			options.AddMacroDefinition(name, value);
+
 		std::filesystem::path cacheDir = GetVulkanCacheDirectory();
+
+		// Shaders built from in-memory source strings have no file identity;
+		// an empty filename would make every runtime-compiled shader share one
+		// cache entry and load each other's SPIR-V. Only file-backed shaders
+		// participate in the cache.
+		const bool canCache = !m_FilePath.empty();
 
 		for (auto& [stage, src] : sources)
 		{
 			std::filesystem::path filePath  = m_FilePath;
-			std::filesystem::path cachePath = cacheDir / (filePath.filename().string() + StageToVulkanCacheExtension(stage));
+			std::filesystem::path cachePath = canCache
+				? cacheDir / (filePath.filename().string() + "." + Shader::GetGlobalDefinesCacheTag() + StageToVulkanCacheExtension(stage))
+				: std::filesystem::path();
 
 			bool cacheValid = false;
-			if (VFS::Exists(cachePath))
+			if (canCache && VFS::Exists(cachePath))
 			{
 				if (std::filesystem::exists(cachePath) && std::filesystem::exists(filePath))
 				{
@@ -567,7 +613,7 @@ namespace Waffle {
 			m_SPIRV[stage] = std::vector<uint32_t>(module.cbegin(), module.cend());
 
 			// Write cache
-			if (!VFS::IsMounted())
+			if (!VFS::IsMounted() && canCache)
 			{
 				EnsureCacheDirectoryExists();
 				std::ofstream out(cachePath, std::ios::binary);
@@ -654,6 +700,10 @@ namespace Waffle {
 		struct DescriptorInfo { uint32_t set; uint32_t binding; VkDescriptorType type; VkShaderStageFlags stages; uint32_t count; };
 		std::map<std::pair<uint32_t, uint32_t>, DescriptorInfo> mergedDescriptors;
 
+		// spirv_cross::Compiler throws on malformed SPIR-V (bad cache file,
+		// truncated shader); Reflect guards for this, the layout pass must too.
+		try
+		{
 		for (auto& [stage, spirv] : m_SPIRV)
 		{
 			VkShaderStageFlags vkStage = (stage == GL_VERTEX_SHADER)
@@ -753,9 +803,14 @@ namespace Waffle {
 				allocInfo.descriptorSetCount = 1;
 				allocInfo.pSetLayouts        = &m_DescriptorSetLayouts[s];
 
-				VkResult allocRes = vkAllocateDescriptorSets(dev, &allocInfo, &m_DescriptorSets[f][s]);
-				WF_CORE_ASSERT(allocRes == VK_SUCCESS, "Failed to allocate descriptor set for shader!");
+			VkResult allocRes = vkAllocateDescriptorSets(dev, &allocInfo, &m_DescriptorSets[f][s]);
+			if (allocRes != VK_SUCCESS)
+			{
+				WF_CORE_ERROR("VulkanShader: vkAllocateDescriptorSets failed ({0}) - shader '{1}' will not bind textures/uniforms",
+					(int)allocRes, m_FilePath.empty() ? "<memory>" : m_FilePath);
+				m_DescriptorSets[f][s] = VK_NULL_HANDLE;
 			}
+		}
 		}
 
 		// ---------- Push constant range ----------
@@ -774,6 +829,12 @@ namespace Waffle {
 
 		VkResult plRes = vkCreatePipelineLayout(dev, &pipelineLayoutInfo, nullptr, &m_PipelineLayout);
 		WF_CORE_ASSERT(plRes == VK_SUCCESS, "Failed to create pipeline layout!");
+		}
+		catch (const spirv_cross::CompilerError& e)
+		{
+			WF_CORE_ERROR("VulkanShader: SPIR-V reflection failed for '{0}': {1}",
+				m_FilePath.empty() ? "<memory>" : m_FilePath, e.what());
+		}
 	}
 
 	// -------------------------------------------------------------------------

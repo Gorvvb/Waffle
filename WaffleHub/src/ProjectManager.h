@@ -12,6 +12,10 @@ namespace Waffle {
 		std::string Path;
 		std::string LastOpened;
 		std::string IconPath;
+		// True when the folder is currently unavailable (external drive
+		// unplugged, network path offline) - kept in the manifest instead of
+		// being dropped on load.
+		bool Missing = false;
 	};
 
 	class ProjectManager

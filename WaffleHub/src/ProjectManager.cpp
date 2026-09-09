@@ -62,8 +62,13 @@ namespace Waffle {
 					entry.LastOpened = item["LastOpened"] ? item["LastOpened"].as<std::string>() : "";
 					entry.IconPath = item["IconPath"] ? item["IconPath"].as<std::string>() : "";
 
-					if (!entry.Path.empty() && std::filesystem::exists(entry.Path))
+					if (!entry.Path.empty())
 					{
+						// KEEP entries whose folder is (temporarily)
+						// unavailable - an unplugged drive must not
+						// permanently erase the project when the manifest
+						// is next saved.
+						entry.Missing = !std::filesystem::exists(entry.Path);
 						s_Projects.push_back(entry);
 					}
 				}
@@ -236,29 +241,45 @@ namespace Waffle {
 				<< "      BackgroundColor: [0.18, 0.18, 0.19, 1]\n";
 		}
 
-		// Write Project.yaml
-		std::filesystem::path projYaml = targetDir / "Project.yaml";
+		// Write Assets/project.wfp - the file the RUNTIME (and the editor's
+		// project settings) actually read. The old Project.yaml was never
+		// consumed by anything.
+		std::filesystem::path projWfp = targetDir / "Assets" / "project.wfp";
 		YAML::Emitter out;
 		out << YAML::BeginMap;
 		out << YAML::Key << "Project" << YAML::Value << YAML::BeginMap;
 		out << YAML::Key << "Name" << YAML::Value << projectName;
-		out << YAML::Key << "Gravity" << YAML::Value << -9.81f;
 		out << YAML::Key << "StartScene" << YAML::Value << "Assets/Scenes/SampleScene.waffle";
+		out << YAML::Key << "Gravity" << YAML::Value << -9.81f;
 		out << YAML::Key << "Scenes" << YAML::Value << YAML::BeginSeq;
 
-		// Find all .waffle files inside targetDir
-		for (const auto& entry : std::filesystem::recursive_directory_iterator(targetDir))
+		// Scene paths relative to the project root (not absolute, not
+		// machine-specific), sorted for deterministic ChangeScene indices.
+		std::vector<std::string> sceneRelPaths;
+		std::error_code iterEc;
+		for (const auto& entry : std::filesystem::recursive_directory_iterator(targetDir, iterEc))
 		{
-			if (entry.is_regular_file() && entry.path().extension() == ".waffle")
+			if (iterEc) break;
+			if (entry.is_regular_file(iterEc) && entry.path().extension() == ".waffle")
 			{
-				out << entry.path().string();
+				std::error_code relEc;
+				std::filesystem::path rel = std::filesystem::relative(entry.path(), targetDir, relEc);
+				if (!relEc && !rel.empty())
+				{
+					std::string relStr = rel.string();
+					std::replace(relStr.begin(), relStr.end(), '\\', '/');
+					sceneRelPaths.push_back(relStr);
+				}
 			}
 		}
+		std::sort(sceneRelPaths.begin(), sceneRelPaths.end());
+		for (const auto& relStr : sceneRelPaths)
+			out << relStr;
 		out << YAML::EndSeq;
 		out << YAML::EndMap;
 		out << YAML::EndMap;
 
-		std::ofstream fout(projYaml);
+		std::ofstream fout(projWfp);
 		fout << out.c_str();
 
 		AddOrUpdateProject(projectName, outCreatedPath.string());

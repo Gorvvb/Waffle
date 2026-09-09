@@ -183,7 +183,6 @@ namespace Waffle {
 						frameSize = ImVec2(thumbnailSize * aspect, thumbnailSize);
 				}
 
-				tex->SetFilter(TextureFilter::Nearest);
 				ImGui::ImageButton("##FrameKey", (ImTextureID)(uintptr_t)tex->GetRendererID(),
 					frameSize, ImVec2(uvs[3].x, uvs[3].y), ImVec2(uvs[1].x, uvs[1].y));
 			}

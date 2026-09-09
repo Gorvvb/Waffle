@@ -114,6 +114,9 @@ namespace Waffle {
 
 		TextureFilter FilterMode = TextureFilter::Linear;
 
+		int SortingLayer = 0;
+		int SortingOrder = 0;
+
 		SpriteRendererComponent() = default;
 		SpriteRendererComponent(const SpriteRendererComponent&) = default;
 		SpriteRendererComponent(const glm::vec4& color)
@@ -125,6 +128,9 @@ namespace Waffle {
 		glm::vec4 Color{ 1.0f, 1.0f, 1.0f, 1.0f };
 		float Thickness = 1.0f;
 		float Fade = 0.005f;
+
+		int SortingLayer = 0;
+		int SortingOrder = 0;
 
 		CircleRendererComponent() = default;
 		CircleRendererComponent(const CircleRendererComponent&) = default;
@@ -154,8 +160,10 @@ namespace Waffle {
 	{
 		ScriptableEntity* Instance = nullptr;
 
-		ScriptableEntity*(*InstanciateScript)();
-		void (*DestroyScript)(NativeScriptComponent*);
+		// Default-initialized to null: components constructed without Bind()
+		// previously called through garbage function pointers.
+		ScriptableEntity* (*InstanciateScript)() = nullptr;
+		void (*DestroyScript)(NativeScriptComponent*) = nullptr;
 
 		template<typename T>
 		void Bind()
@@ -172,7 +180,10 @@ namespace Waffle {
 		enum class BodyType { Static = 0, Dynamic, Kinematic };
 		BodyType Type = BodyType::Static;
 		bool FixedRotation = false;
-		float Mass = 1.0f;
+		// 0 = derive mass from Density x collider area (the Box2D default).
+		// The old default of 1.0 made SetMassData run for every dynamic body
+		// and silently override density-driven mass.
+		float Mass = 0.0f;
 
 		// Storage for runtime
 		void* RuntimeBody = nullptr;
@@ -300,12 +311,24 @@ namespace Waffle {
 					else if (colonPos != std::string::npos)
 					{
 						std::string sheetPath = path.substr(0, colonPos);
-						int frameIdx = std::stoi(path.substr(colonPos + 1));
+						// stoi sits inside its own try: any path containing ':'
+						// (every absolute Windows path C:/...) lands here and
+						// would throw std::invalid_argument out of a render call.
+						int frameIdx = 0;
+						bool frameIdxValid = false;
 						try {
+							frameIdx = std::stoi(path.substr(colonPos + 1));
+							frameIdxValid = frameIdx >= 0;
+						} catch (...) {}
+						try {
+							if (frameIdxValid)
+							{
 							YAML::Node data = YAML::LoadFile(sheetPath);
 							std::string texName = data["Spritesheet"].as<std::string>("");
 							int cols = data["Columns"].as<int>(1);
 							int rows = data["Rows"].as<int>(1);
+							if (cols > 0 && rows > 0)
+							{
 							std::filesystem::path fullTex = std::filesystem::path(sheetPath).parent_path() / texName;
 							if (std::filesystem::exists(fullTex))
 							{
@@ -318,6 +341,8 @@ namespace Waffle {
 									int row = rows - 1 - (frameIdx / cols);
 									sub = SubTexture2D::CreateFromCoords(tex, { (float)col, (float)row }, { cellW, cellH });
 								}
+							}
+							}
 							}
 						} catch (...) {}
 					}

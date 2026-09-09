@@ -157,31 +157,40 @@ namespace Waffle {
 	{
 		WF_PROFILE_FUNCTION();
 
-		std::unordered_map<GLenum, std::string> shaderSources;
+	// "#type" only counts at the start of a line - a commented-out shader
+	// block mentioning the token must not corrupt parsing.
+	auto findTypeToken = [&source](size_t from) -> size_t
+	{
+		size_t p = source.find("#type", from);
+		while (p != std::string::npos && p > 0 && source[p - 1] != '\n')
+			p = source.find("#type", p + 1);
+		return p;
+	};
 
-		const char* typeToken = "#type";
-		size_t typeTokenLength = strlen(typeToken);
-		size_t pos = source.find(typeToken, 0);
-		while (pos != std::string::npos)
-		{
-			size_t eol = source.find_first_of("\r\n", pos);
-			WF_CORE_ASSERT(eol != std::string::npos, "Syntax error");
-			size_t begin = pos + typeTokenLength + 1;
-			std::string type = source.substr(begin, eol - begin);
-			WF_CORE_ASSERT(ShaderTypeFromString(type), "Invalid shader type specified");
+	std::unordered_map<GLenum, std::string> shaderSources;
 
-			size_t nextLinePos = source.find_first_not_of("\r\n", eol);
-			pos = source.find(typeToken, nextLinePos);
-			shaderSources[Utils::ShaderTypeFromString(type)] = source.substr(nextLinePos, pos - (nextLinePos == std::string::npos ? source.size() - 1 : nextLinePos));
-		}
-		return shaderSources;
+	size_t pos = findTypeToken(0);
+	while (pos != std::string::npos)
+	{
+		size_t eol = source.find_first_of("\r\n", pos);
+		WF_CORE_ASSERT(eol != std::string::npos, "Syntax error");
+		size_t begin = pos + strlen("#type") + 1;
+		std::string type = source.substr(begin, eol - begin);
+		WF_CORE_ASSERT(Utils::ShaderTypeFromString(type), "Invalid shader type specified");
+
+		size_t nextLinePos = source.find_first_not_of("\r\n", eol);
+		pos = findTypeToken(nextLinePos == std::string::npos ? source.size() : nextLinePos);
+		size_t sourceBegin = (nextLinePos == std::string::npos) ? source.size() : nextLinePos;
+		size_t sourceLength = (pos == std::string::npos) ? std::string::npos : (pos - sourceBegin);
+		shaderSources[Utils::ShaderTypeFromString(type)] = source.substr(sourceBegin, sourceLength);
 	}
+	return shaderSources;
+}
 
 	void OpenGLShader::CompileOrGetVulkanBinaries(const std::unordered_map<GLenum, std::string>& shaderSources)
 	{
 		WF_PROFILE_FUNCTION();
 
-		GLuint program = glCreateProgram();
 		shaderc::Compiler compiler;
 		shaderc::CompileOptions options;
 		options.SetTargetEnvironment(shaderc_target_env_vulkan, shaderc_env_version_vulkan_1_2);
@@ -189,17 +198,27 @@ namespace Waffle {
 		if (optimize)
 			options.SetOptimizationLevel(shaderc_optimization_level_performance);
 
+		for (const auto& [name, value] : Shader::GetGlobalDefines())
+			options.AddMacroDefinition(name, value);
+
 		std::filesystem::path cacheDirectory = Utils::GetCacheDirectory();
 
 		auto& shaderData = m_VulkanSPIRV;
 		shaderData.clear();
 		for (auto&& [stage, source] : shaderSources)
 		{
+			// Shaders built from in-memory source strings have no file identity;
+			// an empty filename would make every runtime-compiled shader share
+			// one cache entry and load each other's SPIR-V. Only file-backed
+			// shaders participate in the cache.
+			const bool canCache = !m_FilePath.empty();
 			std::filesystem::path shaderFilePath = m_FilePath;
-			std::filesystem::path cachedPath = cacheDirectory / (shaderFilePath.filename().string() + Utils::GLShaderStageCachedVulkanFileExtension(stage));
+			std::filesystem::path cachedPath = canCache
+				? cacheDirectory / (shaderFilePath.filename().string() + "." + Shader::GetGlobalDefinesCacheTag() + Utils::GLShaderStageCachedVulkanFileExtension(stage))
+				: std::filesystem::path();
 
 			bool isCacheValid = false;
-			if (VFS::Exists(cachedPath))
+			if (canCache && VFS::Exists(cachedPath))
 			{
 				if (std::filesystem::exists(cachedPath) && std::filesystem::exists(shaderFilePath))
 				{
@@ -238,7 +257,7 @@ namespace Waffle {
 
 				shaderData[stage] = std::vector<uint32_t>(module.cbegin(), module.cend());
 
-				if (!VFS::IsMounted())
+				if (!VFS::IsMounted() && canCache)
 				{
 					Utils::CreateCacheDirectoryIfNeeded();
 					std::ofstream out(cachedPath, std::ios::out | std::ios::binary);
@@ -268,17 +287,25 @@ namespace Waffle {
 		if (optimize)
 			options.SetOptimizationLevel(shaderc_optimization_level_performance);
 
+		for (const auto& [name, value] : Shader::GetGlobalDefines())
+			options.AddMacroDefinition(name, value);
+
 		std::filesystem::path cacheDirectory = Utils::GetCacheDirectory();
 
 		shaderData.clear();
 		m_OpenGLSourceCode.clear();
+
+		const bool canCache = !m_FilePath.empty();
+
 		for (auto&& [stage, spirv] : m_VulkanSPIRV)
 		{
 			std::filesystem::path shaderFilePath = m_FilePath;
-			std::filesystem::path cachedPath = cacheDirectory / (shaderFilePath.filename().string() + Utils::GLShaderStageCachedOpenGLFileExtension(stage));
+			std::filesystem::path cachedPath = canCache
+				? cacheDirectory / (shaderFilePath.filename().string() + "." + Shader::GetGlobalDefinesCacheTag() + Utils::GLShaderStageCachedOpenGLFileExtension(stage))
+				: std::filesystem::path();
 
 			bool isCacheValid = false;
-			if (VFS::Exists(cachedPath))
+			if (canCache && VFS::Exists(cachedPath))
 			{
 				if (std::filesystem::exists(cachedPath) && std::filesystem::exists(shaderFilePath))
 				{
@@ -312,7 +339,10 @@ namespace Waffle {
 				m_OpenGLSourceCode[stage] = glslCompiler.compile();
 				auto& source = m_OpenGLSourceCode[stage];
 
-				shaderc::SpvCompilationResult module = compiler.CompileGlslToSpv(source, Utils::GLShaderStageToShaderC(stage), m_FilePath.c_str());
+				// Pass the OpenGL-target options - compiling under default
+				// Vulkan semantics works for simple shaders but diverges
+				// obscurely as soon as GLSL/SPIR-V feature sets differ.
+				shaderc::SpvCompilationResult module = compiler.CompileGlslToSpv(source, Utils::GLShaderStageToShaderC(stage), m_FilePath.c_str(), options);
 				if (module.GetCompilationStatus() != shaderc_compilation_status_success)
 				{
 					WF_CORE_ERROR(module.GetErrorMessage());
@@ -321,7 +351,7 @@ namespace Waffle {
 
 				shaderData[stage] = std::vector<uint32_t>(module.cbegin(), module.cend());
 
-				if (!VFS::IsMounted())
+				if (!VFS::IsMounted() && canCache)
 				{
 					Utils::CreateCacheDirectoryIfNeeded();
 					std::ofstream out(cachedPath, std::ios::out | std::ios::binary);
@@ -363,10 +393,14 @@ namespace Waffle {
 			glGetProgramInfoLog(program, maxLength, &maxLength, infoLog.data());
 			WF_CORE_ERROR("Shader linking failed ({0}):\n{1}", m_FilePath, infoLog.data());
 
-			glDeleteProgram(program);
-
 			for (auto id : shaderIDs)
+			{
+				glDetachShader(program, id);
 				glDeleteShader(id);
+			}
+			glDeleteProgram(program);
+			m_RendererID = 0;
+			return;
 		}
 
 		for (auto id : shaderIDs)
@@ -482,51 +516,66 @@ namespace Waffle {
 		UploadUniformMat4(name, value);
 	}
 
+	// Looks up (and memoizes) a uniform location. The program is immutable
+	// once linked, so the cache never goes stale; glGetUniformLocation is a
+	// string-keyed driver query that was previously issued per uniform per
+	// draw call.
+	GLint OpenGLShader::GetUniformLocation(const std::string& name) const
+	{
+		auto it = m_UniformLocationCache.find(name);
+		if (it != m_UniformLocationCache.end())
+			return it->second;
+
+		GLint location = glGetUniformLocation(m_RendererID, name.c_str());
+		m_UniformLocationCache[name] = location;
+		return location;
+	}
+
 	void OpenGLShader::UploadUniformInt(const std::string& name, int value)
 	{
-		GLint location = glGetUniformLocation(m_RendererID, name.c_str());
-		glUniform1i(location, value);
+		GLint location = GetUniformLocation(name);
+		glProgramUniform1i(m_RendererID, location, value);
 	}
 
 	void OpenGLShader::UploadUniformIntArray(const std::string& name, int* values, uint32_t count)
 	{
-		GLint location = glGetUniformLocation(m_RendererID, name.c_str());
-		glUniform1iv(location, count, values);
+		GLint location = GetUniformLocation(name);
+		glProgramUniform1iv(m_RendererID, location, count, values);
 	}
 
 	void OpenGLShader::UploadUniformFloat(const std::string& name, const float value)
 	{
-		GLint location = glGetUniformLocation(m_RendererID, name.c_str());
-		glUniform1f(location, value);
+		GLint location = GetUniformLocation(name);
+		glProgramUniform1f(m_RendererID, location, value);
 	}
 
 	void OpenGLShader::UploadUniformFloat2(const std::string& name, const glm::vec2& values)
 	{
-		GLint location = glGetUniformLocation(m_RendererID, name.c_str());
-		glUniform2f(location, values.x, values.y);
+		GLint location = GetUniformLocation(name);
+		glProgramUniform2f(m_RendererID, location, values.x, values.y);
 	}
 
 	void OpenGLShader::UploadUniformFloat3(const std::string& name, const glm::vec3& values)
 	{
-		GLint location = glGetUniformLocation(m_RendererID, name.c_str());
-		glUniform3f(location, values.x, values.y, values.z);
+		GLint location = GetUniformLocation(name);
+		glProgramUniform3f(m_RendererID, location, values.x, values.y, values.z);
 	}
 
 	void OpenGLShader::UploadUniformFloat4(const std::string& name, const glm::vec4& values)
 	{
-		GLint location = glGetUniformLocation(m_RendererID, name.c_str());
-		glUniform4f(location, values.x, values.y, values.z, values.w);
+		GLint location = GetUniformLocation(name);
+		glProgramUniform4f(m_RendererID, location, values.x, values.y, values.z, values.w);
 	}
 
 	void OpenGLShader::UploadUniformMat3(const std::string& name, const glm::mat3& matrix)
 	{
-		GLint location = glGetUniformLocation(m_RendererID, name.c_str());
-		glUniformMatrix3fv(location, 1, GL_FALSE, glm::value_ptr(matrix));
+		GLint location = GetUniformLocation(name);
+		glProgramUniformMatrix3fv(m_RendererID, location, 1, GL_FALSE, glm::value_ptr(matrix));
 	}
 
 	void OpenGLShader::UploadUniformMat4(const std::string& name, const glm::mat4& matrix)
 	{
-		GLint location = glGetUniformLocation(m_RendererID, name.c_str());
-		glUniformMatrix4fv(location, 1, GL_FALSE, glm::value_ptr(matrix));
+		GLint location = GetUniformLocation(name);
+		glProgramUniformMatrix4fv(m_RendererID, location, 1, GL_FALSE, glm::value_ptr(matrix));
 	}
 }

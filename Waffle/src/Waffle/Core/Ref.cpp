@@ -4,7 +4,10 @@
 namespace Waffle {
 
 	namespace RefUtils {
-#ifdef WF_TRACK_REF_LEAKS
+		// Tracking is always on: WeakRef::IsValid/Lock depend on it, and with
+		// it disabled they degenerated into `instance != nullptr` - a freed
+		// object "resurrected" through Lock() (UB). The mutex + set cost is
+		// negligible next to a heap allocation.
 		struct LiveRefContext
 		{
 			std::unordered_set<void*> LiveReferences;
@@ -49,11 +52,6 @@ namespace Waffle {
 			std::lock_guard<std::mutex> lock(ctx.Mutex);
 			return ctx.LiveReferences.find(instance) != ctx.LiveReferences.end();
 		}
-#else
-		void AddToLiveReferences(void* instance) {}
-		void RemoveFromLiveReferences(void* instance) {}
-		bool IsLive(void* instance) { return instance != nullptr; }
-#endif
 	}
 
 	RefCounted::RefCounted()

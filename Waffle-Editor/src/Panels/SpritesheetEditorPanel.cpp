@@ -27,6 +27,12 @@ namespace Waffle {
         m_SelectedRegionIndex = -1;
         m_SelectedGroupIndex = -1;
         m_Groups.clear();
+        // A freshly dropped texture starts from the default grid - not the
+        // dimensions left over from the previously loaded sheet.
+        m_GridCols = 4;
+        m_GridRows = 4;
+        m_PaddingX = 0;
+        m_PaddingY = 0;
         AutoSliceGrid();
     }
 
@@ -280,16 +286,16 @@ namespace Waffle {
 
         // ── Grid slice controls ───────────────────────────────────────────────
         ImGui::SetNextItemWidth(60);
-        if (ImGui::DragInt("Cols", &m_GridCols, 1, 1, 64)) AutoSliceGrid();
+        ImGui::DragInt("Cols", &m_GridCols, 1, 1, 64); // re-slice via "Auto Slice" - dragging must not wipe manual regions
         ImGui::SameLine();
         ImGui::SetNextItemWidth(60);
-        if (ImGui::DragInt("Rows", &m_GridRows, 1, 1, 64)) AutoSliceGrid();
+        ImGui::DragInt("Rows", &m_GridRows, 1, 1, 64);
         ImGui::SameLine();
         ImGui::SetNextItemWidth(60);
-        if (ImGui::DragInt("PadX", &m_PaddingX, 1, 0, 64)) AutoSliceGrid();
+        ImGui::DragInt("PadX", &m_PaddingX, 1, 0, 64);
         ImGui::SameLine();
         ImGui::SetNextItemWidth(60);
-        if (ImGui::DragInt("PadY", &m_PaddingY, 1, 0, 64)) AutoSliceGrid();
+        ImGui::DragInt("PadY", &m_PaddingY, 1, 0, 64);
         ImGui::SameLine();
         if (ImGui::Button("Auto Slice")) AutoSliceGrid();
         ImGui::SameLine();
@@ -640,16 +646,16 @@ namespace Waffle {
             ImGui::Text("Region Properties");
 
             char nameBuf[64];
-            strcpy_s(nameBuf, sizeof(nameBuf), reg.Name.c_str());
+            strncpy_s(nameBuf, sizeof(nameBuf), reg.Name.c_str(), _TRUNCATE);
             if (ImGui::InputText("Name##reg", nameBuf, sizeof(nameBuf)))
                 reg.Name = nameBuf;
 
-            if (ImGui::DragFloat2("Min  (px)", &reg.Min.x, 1.0f, 0.0f, texWInsp))
+            if (ImGui::DragFloat2("Min  (px)", &reg.Min.x, 1.0f, 0.0f, texHInsp))
             {
                 reg.Min.x = std::round(reg.Min.x);
                 reg.Min.y = std::round(reg.Min.y);
             }
-            if (ImGui::DragFloat2("Max  (px)", &reg.Max.x, 1.0f, 0.0f, texHInsp))
+            if (ImGui::DragFloat2("Max  (px)", &reg.Max.x, 1.0f, 0.0f, texWInsp))
             {
                 reg.Max.x = std::round(reg.Max.x);
                 reg.Max.y = std::round(reg.Max.y);
@@ -721,7 +727,7 @@ namespace Waffle {
             ImGui::Text("Group Properties");
 
             char groupNameBuf[64];
-            strcpy_s(groupNameBuf, sizeof(groupNameBuf), group.Name.c_str());
+            strncpy_s(groupNameBuf, sizeof(groupNameBuf), group.Name.c_str(), _TRUNCATE);
             if (ImGui::InputText("Name##group", groupNameBuf, sizeof(groupNameBuf)))
                 group.Name = groupNameBuf;
 

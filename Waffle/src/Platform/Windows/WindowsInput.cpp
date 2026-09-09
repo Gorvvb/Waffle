@@ -30,10 +30,59 @@ namespace Waffle {
 	static std::map<int, Controller> s_Controllers;
 	static CursorMode s_CursorMode = CursorMode::Normal;
 
+	// Per-frame keyboard/mouse snapshots for real Pressed/Released edges.
+	static std::map<int, bool> s_KeyDownPrev, s_KeyDownCurr;
+	static std::map<int, bool> s_MouseDownPrev, s_MouseDownCurr;
+
+	static bool WasKeyDownPrev(KeyCode key)
+	{
+		auto it = s_KeyDownPrev.find((int)key);
+		return it != s_KeyDownPrev.end() && it->second;
+	}
+
+	static bool IsKeyDownCurr(KeyCode key)
+	{
+		auto it = s_KeyDownCurr.find((int)key);
+		return it != s_KeyDownCurr.end() && it->second;
+	}
+
+	static bool WasMouseDownPrev(MouseCode button)
+	{
+		auto it = s_MouseDownPrev.find((int)button);
+		return it != s_MouseDownPrev.end() && it->second;
+	}
+
+	static bool IsMouseDownCurr(MouseCode button)
+	{
+		auto it = s_MouseDownCurr.find((int)button);
+		return it != s_MouseDownCurr.end() && it->second;
+	}
+
 	void Input::Update()
 	{
 		auto* window = static_cast<GLFWwindow*>(Application::Get().GetWindow().GetNativeWindow());
 		if (!window) return;
+
+		// Snapshot keyboard/mouse level state for edge queries
+		// (IsKeyReleased / IsActionJustPressed previously had no real edges:
+		// Released was just "!down", true every frame a key was simply up).
+		s_KeyDownPrev = s_KeyDownCurr;
+		s_KeyDownCurr.clear();
+		for (int key = GLFW_KEY_SPACE; key <= GLFW_KEY_LAST; ++key)
+		{
+			int state = glfwGetKey(window, key);
+			if (state == GLFW_PRESS || state == GLFW_REPEAT)
+				s_KeyDownCurr[key] = true;
+		}
+
+		s_MouseDownPrev = s_MouseDownCurr;
+		s_MouseDownCurr.clear();
+		for (int button = 0; button <= GLFW_MOUSE_BUTTON_LAST; ++button)
+		{
+			int state = glfwGetMouseButton(window, button);
+			if (state == GLFW_PRESS)
+				s_MouseDownCurr[button] = true;
+		}
 
 		for (int id = GLFW_JOYSTICK_1; id <= GLFW_JOYSTICK_LAST; ++id)
 		{
@@ -121,6 +170,10 @@ namespace Waffle {
 
 	bool Input::IsKeyPressed(const KeyCode key)
 	{
+		// Level semantics (key is down) - kept deliberately: camera panning,
+		// modifier checks and gameplay scripts all expect held behavior from
+		// this name. True release edges live in IsKeyReleased; for a true
+		// press edge use IsActionJustPressed with a bound action.
 		return IsKeyDown(key);
 	}
 
@@ -131,7 +184,8 @@ namespace Waffle {
 
 	bool Input::IsKeyReleased(const KeyCode key)
 	{
-		return !IsKeyDown(key);
+		// True release edge: was down last frame, up this frame.
+		return WasKeyDownPrev(key) && !IsKeyDownCurr(key);
 	}
 
 	bool Input::IsMouseButtonDown(const MouseCode button)
@@ -155,6 +209,7 @@ namespace Waffle {
 
 	bool Input::IsMouseButtonPressed(const MouseCode button)
 	{
+		// Level semantics, matching IsKeyPressed (see note there).
 		return IsMouseButtonDown(button);
 	}
 
@@ -165,7 +220,8 @@ namespace Waffle {
 
 	bool Input::IsMouseButtonReleased(const MouseCode button)
 	{
-		return !IsMouseButtonDown(button);
+		// True release edge: was down last frame, up this frame.
+		return WasMouseDownPrev(button) && !IsMouseDownCurr(button);
 	}
 
 	glm::vec2 Input::GetMousePosition()
@@ -246,15 +302,38 @@ namespace Waffle {
 
 	bool Input::IsActionJustPressed(const std::string& actionName)
 	{
-		return IsActionPressed(actionName);
+		// Real press edge (prev down, curr up... prev up && curr down) using
+		// the per-frame snapshots - previously this was identical to
+		// IsActionPressed and fired on every held frame.
+		auto it = s_ActionBindings.find(actionName);
+		if (it == s_ActionBindings.end())
+			return false;
+
+		for (auto key : it->second.Keys)
+		{
+			if (!WasKeyDownPrev(key) && IsKeyDownCurr(key))
+				return true;
+		}
+
+		for (auto button : it->second.MouseButtons)
+		{
+			if (!WasMouseDownPrev(button) && IsMouseDownCurr(button))
+				return true;
+		}
+
+		return false;
 	}
 
 	float Input::GetAxis(const std::string& axisName)
 	{
 		std::string name = axisName;
-		for (auto& c : name) c = (char)tolower(c);
+		for (auto& c : name) c = (char)tolower((unsigned char)c);
 
-		auto it = s_AxisBindings.find(axisName);
+		// Look up with the lowercased name - the map may have been bound
+		// with either casing.
+		auto it = s_AxisBindings.find(name);
+		if (it == s_AxisBindings.end())
+			it = s_AxisBindings.find(axisName);
 		if (it != s_AxisBindings.end())
 		{
 			float val = 0.0f;
@@ -303,10 +382,12 @@ namespace Waffle {
 		return (it != s_Controllers.end()) ? &it->second : nullptr;
 	}
 
-	std::string_view Input::GetControllerName(int id)
+	std::string Input::GetControllerName(int id)
 	{
 		const Controller* ctrl = GetController(id);
-		return ctrl ? ctrl->Name : "";
+		// Returns by value: a view into the Controller would dangle as soon
+		// as Update() erases the entry on disconnect.
+		return ctrl ? ctrl->Name : std::string();
 	}
 
 	bool Input::IsControllerButtonPressed(int controllerID, int button)
@@ -367,6 +448,10 @@ namespace Waffle {
 
 	void Input::SetControllerDeadzone(int controllerID, int axis, float deadzone)
 	{
-		s_Controllers[controllerID].DeadZones[axis] = deadzone;
+		// Only touch EXISTING controllers - operator[] would insert a ghost
+		// entry that made IsControllerPresent(id) lie for an absent pad.
+		auto it = s_Controllers.find(controllerID);
+		if (it != s_Controllers.end())
+			it->second.DeadZones[axis] = deadzone;
 	}
 }

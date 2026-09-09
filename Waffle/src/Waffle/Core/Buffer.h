@@ -13,6 +13,9 @@ namespace Waffle {
 	{
 		uint8_t* Data = nullptr;
 		uint64_t Size = 0;
+		// View constructors (from std::array/std::vector) alias foreign
+		// memory - destroying such a Buffer must never delete[] it.
+		bool OwnsData = true;
 
 		Buffer() = default;
 
@@ -28,13 +31,15 @@ namespace Waffle {
 				std::memcpy(Data, data, size);
 		}
 
+		// Non-owning view over the container's memory. The container must
+		// outlive the Buffer.
 		template<typename T, size_t S>
 		Buffer(const std::array<T, S>& arr)
-			: Data((uint8_t*)arr.data()), Size(arr.size() * sizeof(T)) { }
+			: Data((uint8_t*)arr.data()), Size(arr.size() * sizeof(T)), OwnsData(false) { }
 
 		template<typename T>
 		Buffer(const std::vector<T>& vec)
-			: Data((uint8_t*)vec.data()), Size(vec.size() * sizeof(T)) { }
+			: Data((uint8_t*)vec.data()), Size(vec.size() * sizeof(T)), OwnsData(false) { }
 
 		Buffer(const Buffer& other)
 		{
@@ -58,8 +63,10 @@ namespace Waffle {
 		{
 			Data = other.Data;
 			Size = other.Size;
+			OwnsData = other.OwnsData;
 			other.Data = nullptr;
 			other.Size = 0;
+			other.OwnsData = true;
 		}
 
 		Buffer& operator=(Buffer&& other) noexcept
@@ -69,8 +76,10 @@ namespace Waffle {
 				Release();
 				Data = other.Data;
 				Size = other.Size;
+				OwnsData = other.OwnsData;
 				other.Data = nullptr;
 				other.Size = 0;
+				other.OwnsData = true;
 			}
 			return *this;
 		}
@@ -102,6 +111,7 @@ namespace Waffle {
 		{
 			Release();
 			Size = size;
+			OwnsData = true;
 			if (size == 0)
 				return;
 			Data = new uint8_t[size];
@@ -116,9 +126,11 @@ namespace Waffle {
 
 		void Release()
 		{
-			delete[] Data;
+			if (OwnsData)
+				delete[] Data;
 			Data = nullptr;
 			Size = 0;
+			OwnsData = true;
 		}
 
 		void ZeroInitialize()

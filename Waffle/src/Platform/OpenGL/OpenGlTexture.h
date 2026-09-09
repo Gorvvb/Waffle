@@ -17,8 +17,11 @@ namespace Waffle {
 	public:
 		OpenGlTexture2D(uint32_t width, uint32_t height, TextureFilter filter);
 		OpenGlTexture2D(const std::string& path, TextureFilter filter);
-
 		virtual ~OpenGlTexture2D();
+
+		// Owns a raw GL handle - copying would double-delete it.
+		OpenGlTexture2D(const OpenGlTexture2D&) = delete;
+		OpenGlTexture2D& operator=(const OpenGlTexture2D&) = delete;
 
 		virtual uint32_t GetWidth() const override { return m_Width; }
 		virtual uint32_t GetHeight() const override { return m_Height; }
@@ -32,9 +35,10 @@ namespace Waffle {
 
 		virtual std::string GetPath() const override { return m_Path; }
 
-		virtual bool operator==(const Texture& other) const override 
-		{ 
-			return m_RendererID == ((OpenGlTexture2D&)other).m_RendererID;
+		virtual bool operator==(const Texture& other) const override
+		{
+			const OpenGlTexture2D* otherGL = dynamic_cast<const OpenGlTexture2D*>(&other);
+			return otherGL && m_RendererID == otherGL->m_RendererID;
 		};
 	};
 }

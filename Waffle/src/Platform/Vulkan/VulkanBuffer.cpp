@@ -67,6 +67,12 @@ namespace Waffle {
 		auto* ctx = VulkanContext::Get();
 		if (!ctx) return;
 
+		// In-flight frames may still be reading this buffer - free memory
+		// only once the GPU is done (every sibling resource does the same).
+		VkDevice dev = ctx->GetDevice();
+		if (dev != VK_NULL_HANDLE)
+			vkDeviceWaitIdle(dev);
+
 		vmaDestroyBuffer(ctx->GetVmaAllocator(), m_Buffer, m_Allocation);
 		m_Buffer = VK_NULL_HANDLE;
 		m_Allocation = VK_NULL_HANDLE;
@@ -79,6 +85,10 @@ namespace Waffle {
 	void VulkanVertexBuffer::SetData(const void* data, uint32_t size)
 	{
 		WF_CORE_ASSERT(m_HostVisible && m_MappedPtr, "SetData called on non-dynamic vertex buffer!");
+		// The previous frame (different slot, same shared buffer) may still
+		// be executing on the GPU - wait before overwriting the mapping.
+		if (auto* ctx = VulkanContext::Get())
+			ctx->WaitForFrameUploads(ctx->GetCurrentFrameIndex());
 		memcpy(m_MappedPtr, data, size);
 	}
 
@@ -125,6 +135,10 @@ namespace Waffle {
 	{
 		auto* ctx = VulkanContext::Get();
 		if (!ctx) return;
+
+		VkDevice dev = ctx->GetDevice();
+		if (dev != VK_NULL_HANDLE)
+			vkDeviceWaitIdle(dev);
 
 		vmaDestroyBuffer(ctx->GetVmaAllocator(), m_Buffer, m_Allocation);
 		m_Buffer = VK_NULL_HANDLE;

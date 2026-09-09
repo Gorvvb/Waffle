@@ -98,43 +98,47 @@ namespace Waffle {
 
 	VulkanContext::~VulkanContext()
 	{
+		// If Init() failed before the logical device existed, every
+		// vkDestroy* below would run against a null device (UB) - only tear
+		// down the objects that were actually created.
 		if (m_Device != VK_NULL_HANDLE)
+		{
 			vkDeviceWaitIdle(m_Device);
 
-		if (m_TimelineSemaphore != VK_NULL_HANDLE)
-			vkDestroySemaphore(m_Device, m_TimelineSemaphore, nullptr);
+			if (m_TimelineSemaphore != VK_NULL_HANDLE)
+				vkDestroySemaphore(m_Device, m_TimelineSemaphore, nullptr);
 
-		// Depth resources
-		if (m_DepthImageView != VK_NULL_HANDLE)
-			vkDestroyImageView(m_Device, m_DepthImageView, nullptr);
-		if (m_DepthImage != VK_NULL_HANDLE)
-			vmaDestroyImage(m_VmaAllocator, m_DepthImage, m_DepthImageAllocation);
+			// Depth resources
+			if (m_DepthImageView != VK_NULL_HANDLE)
+				vkDestroyImageView(m_Device, m_DepthImageView, nullptr);
+			if (m_DepthImage != VK_NULL_HANDLE)
+				vmaDestroyImage(m_VmaAllocator, m_DepthImage, m_DepthImageAllocation);
 
-		CleanupSwapChain();
+			CleanupSwapChain();
 
-		// Per-frame sync objects + command pools
-		for (auto& frame : m_Frames)
-		{
-			if (frame.ImageAvailableSemaphore)
-				vkDestroySemaphore(m_Device, frame.ImageAvailableSemaphore, nullptr);
-			if (frame.RenderFinishedSemaphore)
-				vkDestroySemaphore(m_Device, frame.RenderFinishedSemaphore, nullptr);
-			if (frame.InFlightFence)
-				vkDestroyFence(m_Device, frame.InFlightFence, nullptr);
-			if (frame.CommandPool)
-				vkDestroyCommandPool(m_Device, frame.CommandPool, nullptr);
-		}
+			// Per-frame sync objects + command pools
+			for (auto& frame : m_Frames)
+			{
+				if (frame.ImageAvailableSemaphore)
+					vkDestroySemaphore(m_Device, frame.ImageAvailableSemaphore, nullptr);
+				if (frame.RenderFinishedSemaphore)
+					vkDestroySemaphore(m_Device, frame.RenderFinishedSemaphore, nullptr);
+				if (frame.InFlightFence)
+					vkDestroyFence(m_Device, frame.InFlightFence, nullptr);
+				if (frame.CommandPool)
+					vkDestroyCommandPool(m_Device, frame.CommandPool, nullptr);
+			}
 
-		if (m_DescriptorPool)
-			vkDestroyDescriptorPool(m_Device, m_DescriptorPool, nullptr);
-		if (m_CommandPool)
-			vkDestroyCommandPool(m_Device, m_CommandPool, nullptr);
+			if (m_DescriptorPool)
+				vkDestroyDescriptorPool(m_Device, m_DescriptorPool, nullptr);
+			if (m_CommandPool)
+				vkDestroyCommandPool(m_Device, m_CommandPool, nullptr);
 
-		if (m_VmaAllocator)
-			vmaDestroyAllocator(m_VmaAllocator);
+			if (m_VmaAllocator)
+				vmaDestroyAllocator(m_VmaAllocator);
 
-		if (m_Device)
 			vkDestroyDevice(m_Device, nullptr);
+		}
 
 		if (s_EnableValidation && m_DebugMessenger)
 			DestroyDebugUtilsMessengerEXT(m_Instance, m_DebugMessenger, nullptr);
@@ -288,8 +292,32 @@ namespace Waffle {
 
 		vkResetFences(m_Device, 1, &m_Frames[m_CurrentFrameIndex].InFlightFence);
 		VkResult submitResult = vkQueueSubmit2(m_GraphicsQueue, 1, &submitInfo, m_Frames[m_CurrentFrameIndex].InFlightFence);
-		if (submitResult != VK_SUCCESS)
+		if (submitResult == VK_SUCCESS)
+		{
+			m_Frames[m_CurrentFrameIndex].LastTimelineValue = signalValue;
+		}
+		else
+		{
 			WF_CORE_ERROR("Vulkan: vkQueueSubmit2 failed ({0})", (int)submitResult);
+			// The fence was reset above and will never be signaled now -
+			// replace it with a pre-signaled one or the next vkWaitForFences
+			// on this slot deadlocks, and skip present (its wait semaphore
+			// was never signaled either).
+			VkFence oldFence = m_Frames[m_CurrentFrameIndex].InFlightFence;
+			VkFenceCreateInfo fci{ VK_STRUCTURE_TYPE_FENCE_CREATE_INFO, nullptr, VK_FENCE_CREATE_SIGNALED_BIT };
+			VkFence newFence = VK_NULL_HANDLE;
+			if (vkCreateFence(m_Device, &fci, nullptr, &newFence) == VK_SUCCESS)
+			{
+				m_Frames[m_CurrentFrameIndex].InFlightFence = newFence;
+				vkDestroyFence(m_Device, oldFence, nullptr);
+			}
+			else
+			{
+				m_Frames[m_CurrentFrameIndex].InFlightFence = oldFence;
+			}
+			m_SwapChainNeedsRecreation = true;
+			return;
+		}
 
 		// Present
 		VkPresentInfoKHR presentInfo
@@ -307,7 +335,11 @@ namespace Waffle {
 			|| m_SwapChainNeedsRecreation)
 		{
 			m_SwapChainNeedsRecreation = false;
-			RecreateSwapChain();
+			// On abort (window closing while minimised) just flag a retry -
+			// don't return here, the acquire loop below blocks until the
+			// window is restored or the app exits.
+			if (!RecreateSwapChain())
+				m_SwapChainNeedsRecreation = true;
 		}
 
 		// Advance frame, acquire next image
@@ -330,18 +362,48 @@ namespace Waffle {
 			}
 		}
 
-		// Acquire next swap-chain image
-		VkResult acquireResult = vkAcquireNextImageKHR(m_Device, m_SwapChain, UINT64_MAX,
-			m_Frames[m_CurrentFrameIndex].ImageAvailableSemaphore, VK_NULL_HANDLE,
-			&m_CurrentImageIndex);
-
-		if (acquireResult == VK_ERROR_OUT_OF_DATE_KHR)
+		// Acquire next swap-chain image, recreating the swapchain until
+		// acquisition succeeds. Recreating invalidates the old image list, so
+		// m_CurrentImageIndex must never be carried across a recreation, and
+		// the frame's command buffer must ALWAYS be reset + begun afterwards -
+		// previously an early return on OUT_OF_DATE skipped the vkBegin, and
+		// the next frame recorded into a non-recording command buffer with a
+		// stale image index.
+		VkResult acquireResult;
+		do
 		{
-			RecreateSwapChain();
-			return;
-		}
+			acquireResult = vkAcquireNextImageKHR(m_Device, m_SwapChain, UINT64_MAX,
+				m_Frames[m_CurrentFrameIndex].ImageAvailableSemaphore, VK_NULL_HANDLE,
+				&m_CurrentImageIndex);
 
-		// Begin the next command buffer
+			if (acquireResult == VK_ERROR_OUT_OF_DATE_KHR)
+			{
+				if (!RecreateSwapChain())
+					break; // window closing while minimised - stop acquiring
+
+				// The spec allows the semaphore to have been signaled even
+				// though acquisition returned OUT_OF_DATE. RecreateSwapChain
+				// waited for the device, so it is safe to replace the
+				// semaphore with a fresh, unsignaled one before retrying.
+				VkSemaphore oldSem = m_Frames[m_CurrentFrameIndex].ImageAvailableSemaphore;
+				VkSemaphoreCreateInfo sci{ VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO, nullptr, 0 };
+				VkSemaphore newSem = VK_NULL_HANDLE;
+				if (vkCreateSemaphore(m_Device, &sci, nullptr, &newSem) == VK_SUCCESS)
+				{
+					m_Frames[m_CurrentFrameIndex].ImageAvailableSemaphore = newSem;
+					vkDestroySemaphore(m_Device, oldSem, nullptr);
+				}
+			}
+			else if (acquireResult != VK_SUCCESS && acquireResult != VK_SUBOPTIMAL_KHR)
+			{
+				WF_CORE_ERROR("Vulkan: vkAcquireNextImageKHR failed ({0})", (int)acquireResult);
+				break;
+			}
+		} while (acquireResult == VK_ERROR_OUT_OF_DATE_KHR);
+
+		// Begin the next command buffer. This runs even when acquisition was
+		// aborted: a later frame must never record into a command buffer that
+		// was never begun.
 		vkResetCommandPool(m_Device, m_Frames[m_CurrentFrameIndex].CommandPool, 0);
 		VkCommandBufferBeginInfo beginInfo
 		{
@@ -350,6 +412,38 @@ namespace Waffle {
 		};
 		VkResult beginCmdRes = vkBeginCommandBuffer(m_Frames[m_CurrentFrameIndex].CommandBuffer, &beginInfo);
 		WF_CORE_ASSERT(beginCmdRes == VK_SUCCESS, "Failed to begin command buffer!");
+	}
+
+	// -----------------------------------------------------------------------
+	// Host-write barrier for persistently-mapped buffers
+	// -----------------------------------------------------------------------
+	void VulkanContext::WaitForFrameUploads(uint32_t targetFrameIndex)
+	{
+		if (m_Device == VK_NULL_HANDLE || m_TimelineSemaphore == VK_NULL_HANDLE)
+			return;
+
+		// The frame-slot fence (waited in SwapBuffers) already covers this
+		// slot's previous submission; only the OTHER slots can still be
+		// executing and reading shared mapped memory. Once a value has been
+		// waited, skip re-waiting for it.
+		for (uint32_t i = 0; i < (uint32_t)m_Frames.size(); i++)
+		{
+			if (i == targetFrameIndex)
+				continue;
+
+			uint64_t v = m_Frames[i].LastTimelineValue;
+			if (v == 0 || v <= m_UploadsSyncedTimeline)
+				continue;
+
+			VkSemaphoreWaitInfo waitInfo
+			{
+				VK_STRUCTURE_TYPE_SEMAPHORE_WAIT_INFO, nullptr,
+				VK_SEMAPHORE_WAIT_ANY_BIT, 1, &m_TimelineSemaphore, &v
+			};
+			if (vkWaitSemaphores(m_Device, &waitInfo, UINT64_MAX) != VK_SUCCESS)
+				return;
+			m_UploadsSyncedTimeline = v;
+		}
 	}
 
 	// -----------------------------------------------------------------------
@@ -587,7 +681,12 @@ namespace Waffle {
 		VkResult res = vkCreateInstance(&createInfo, nullptr, &m_Instance);
 		if (res != VK_SUCCESS)
 		{
-			WF_CORE_ERROR("vkCreateInstance failed with error code: {0}", (int)res);
+			if (res == VK_ERROR_INCOMPATIBLE_DRIVER)
+				WF_CORE_ERROR("Vulkan: this driver does not support Vulkan 1.4 "
+					"(Waffle requires it for synchronization2 + dynamic rendering). "
+					"Update your GPU driver or use the OpenGL backend.");
+			else
+				WF_CORE_ERROR("vkCreateInstance failed with error code: {0}", (int)res);
 			WF_CORE_ASSERT(false, "Failed to create Vulkan instance!");
 			return;
 		}
@@ -951,20 +1050,23 @@ namespace Waffle {
 
 	void VulkanContext::CreateDescriptorPool()
 	{
-		// Large general-purpose pool
+		// Large general-purpose pool. Every shader permanently holds
+		// framesInFlight * sets and each sampler-array set consumes
+		// `descriptorCount` sampler descriptors per frame slot (the quad
+		// shader alone is 32 x 2 = 64), so 1000 was reachable in real scenes.
 		std::vector<VkDescriptorPoolSize> poolSizes = {
-			{ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,          1000 },
-			{ VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,  1000 },
-			{ VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,           1000 },
-			{ VK_DESCRIPTOR_TYPE_SAMPLER,                 1000 },
-			{ VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,          100  },
+			{ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,          4096 },
+			{ VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,  4096 },
+			{ VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,           4096 },
+			{ VK_DESCRIPTOR_TYPE_SAMPLER,                 4096 },
+			{ VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,          512  },
 		};
 
 		VkDescriptorPoolCreateInfo poolInfo
 		{
 			.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
 			.flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT,
-			.maxSets = 2000,
+			.maxSets = 8192,
 			.poolSizeCount = static_cast<uint32_t>(poolSizes.size()),
 			.pPoolSizes = poolSizes.data()
 		};
@@ -987,16 +1089,28 @@ namespace Waffle {
 		m_SwapChainImageViews.clear();
 
 		vkDestroySwapchainKHR(m_Device, m_SwapChain, nullptr);
+		// Null the handle: a failed re-creation must not leave a stale
+		// (destroyed) swapchain that later code still submits to.
+		m_SwapChain = VK_NULL_HANDLE;
+		m_SwapChainImages.clear();
 	}
 
-	void VulkanContext::RecreateSwapChain()
+	bool VulkanContext::RecreateSwapChain()
 	{
-		// Wait for the window to have a valid size (minimised case)
+		// Wait for the window to have a valid size (minimised case). Block on
+		// events rather than spinning, and bail out when the window is closing
+		// so shutting down while minimised can't hang here forever.
 		int width = 0, height = 0;
+		glfwGetFramebufferSize(m_WindowHandle, &width, &height);
 		while (width == 0 || height == 0)
 		{
-			glfwGetFramebufferSize(m_WindowHandle, &width, &height);
+			if (glfwWindowShouldClose(m_WindowHandle))
+			{
+				WF_CORE_WARN("Vulkan: window closing while minimised - swapchain recreation aborted");
+				return false;
+			}
 			glfwWaitEvents();
+			glfwGetFramebufferSize(m_WindowHandle, &width, &height);
 		}
 
 		vkDeviceWaitIdle(m_Device);
@@ -1025,6 +1139,8 @@ namespace Waffle {
 		m_CurrentViewport.width  = (float)m_SwapChainExtent.width;
 		m_CurrentViewport.height = -(float)m_SwapChainExtent.height;
 		m_CurrentScissor.extent  = m_SwapChainExtent;
+
+		return true;
 	}
 
 	// -----------------------------------------------------------------------
@@ -1032,6 +1148,16 @@ namespace Waffle {
 	// -----------------------------------------------------------------------
 	bool VulkanContext::IsDeviceSuitable(VkPhysicalDevice device) const
 	{
+		// Must actually support the instance's target API version - a device
+		// reporting a lower version cannot back the 1.4 features used
+		// (synchronization2, dynamic rendering).
+		VkPhysicalDeviceProperties props;
+		vkGetPhysicalDeviceProperties(device, &props);
+		uint32_t deviceMajor = VK_API_VERSION_MAJOR(props.apiVersion);
+		uint32_t deviceMinor = VK_API_VERSION_MINOR(props.apiVersion);
+		if (deviceMajor < 1 || (deviceMajor == 1 && deviceMinor < 4))
+			return false;
+
 		auto indices = FindQueueFamilies(device);
 		bool extensionsSupported = CheckDeviceExtensionSupport(device);
 

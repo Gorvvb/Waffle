@@ -41,6 +41,9 @@ namespace Waffle {
 		void SetOrthographicFarClip(float farClip) { m_OrthographicFar = farClip; RecalculateProjection(); }
 
 		float GetAspectRatio() const { return m_AspectRatio; }
+	// For fixed-aspect cameras the aspect is never derived from the viewport,
+	// so it must be restorable (e.g. from a scene file).
+	void SetAspectRatio(float aspectRatio) { m_AspectRatio = aspectRatio; RecalculateProjection(); }
 
 		ProjectionType GetProjectionType() const { return m_ProjectionType; }
 		void SetProjectionType(ProjectionType type) { m_ProjectionType = type; RecalculateProjection(); }

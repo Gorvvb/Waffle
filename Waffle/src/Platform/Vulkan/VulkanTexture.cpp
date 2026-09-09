@@ -80,6 +80,10 @@ namespace Waffle {
 		if (dev != VK_NULL_HANDLE)
 			vkDeviceWaitIdle(dev);
 
+		// Drop our registrations BEFORE destroying the handles - otherwise the
+		// context texture registry hands a dead view/sampler to descriptors.
+		ctx->UnregisterTexture(m_ImageView, m_Sampler);
+
 		// Free ImGui descriptor set if allocated
 		if (m_ImGuiDescriptorSet)
 		{
@@ -94,6 +98,7 @@ namespace Waffle {
 			if (ds != VK_NULL_HANDLE)
 				ctx->SafeFreeDescriptorSet(ds);
 		}
+		m_SlotDescriptorSets.clear();
 
 		if (m_Sampler != VK_NULL_HANDLE)
 			vkDestroySampler(dev, m_Sampler, nullptr);
@@ -116,6 +121,14 @@ namespace Waffle {
 		WF_CORE_ASSERT(size == m_Width * m_Height * m_Channels, "Data must be entire texture!");
 
 		auto* ctx = VulkanContext::Get();
+
+		// In-flight frames may still be sampling this image in
+		// SHADER_READ_ONLY_OPTIMAL; wait before re-transitioning the layout
+		// (the single-time submits below have no dependency on those frames).
+		VkDevice dev = ctx->GetDevice();
+		if (dev != VK_NULL_HANDLE)
+			vkDeviceWaitIdle(dev);
+
 		VmaAllocator allocator = ctx->GetVmaAllocator();
 
 		VkBuffer      stagingBuffer;
@@ -163,16 +176,55 @@ namespace Waffle {
 
 	void VulkanTexture2D::SetFilter(TextureFilter filter)
 	{
+		// Idempotence guard: this path stalls the whole device
+		// (vkDeviceWaitIdle + sampler rebuild) and is invoked per frame by
+		// some UI code re-applying the same filter.
+		if (filter == m_CurrentFilter && m_Sampler != VK_NULL_HANDLE)
+			return;
+		m_CurrentFilter = filter;
+
 		auto* ctx = VulkanContext::Get();
-		if (m_Sampler)
-			vkDestroySampler(ctx->GetDevice(), m_Sampler, nullptr);
-		CreateSampler(filter);
+		VkDevice dev = ctx->GetDevice();
+
+		// The sampler may be referenced by in-flight descriptor sets and the
+		// ImGui set - wait, then rebuild every reference against the new one.
+		if (dev != VK_NULL_HANDLE)
+			vkDeviceWaitIdle(dev);
+
+		VkImageView oldView = m_ImageView;
+		VkSampler oldSampler = m_Sampler;
+
+		if (m_ImGuiDescriptorSet)
+		{
+			if (ImGui::GetCurrentContext() && ImGui::GetIO().BackendRendererUserData)
+				ImGui_ImplVulkan_RemoveTexture(m_ImGuiDescriptorSet);
+			m_ImGuiDescriptorSet = VK_NULL_HANDLE;
+		}
+
+		for (auto& [slot, ds] : m_SlotDescriptorSets)
+		{
+			if (ds != VK_NULL_HANDLE)
+				ctx->SafeFreeDescriptorSet(ds);
+		}
 		m_SlotDescriptorSets.clear();
+
+		if (m_Sampler)
+			vkDestroySampler(dev, m_Sampler, nullptr);
+		m_Sampler = VK_NULL_HANDLE;
+
+		CreateSampler(filter);
+		CreateImGuiDescriptorSet();
+
+		// Re-register with the context under the new sampler.
+		ctx->UnregisterTexture(oldView, oldSampler);
 	}
 
 	bool VulkanTexture2D::operator==(const Texture& other) const
 	{
-		return m_Image == dynamic_cast<const VulkanTexture2D&>(other).m_Image;
+		// Pointer form: a reference dynamic_cast throws std::bad_cast when
+		// `other` is a different Texture implementation.
+		const VulkanTexture2D* otherVK = dynamic_cast<const VulkanTexture2D*>(&other);
+		return otherVK && m_Image == otherVK->m_Image;
 	}
 
 	// =========================================================================
@@ -262,6 +314,7 @@ namespace Waffle {
 
 		VkResult res = vkCreateSampler(dev, &samplerInfo, nullptr, &m_Sampler);
 		WF_CORE_ASSERT(res == VK_SUCCESS, "Failed to create texture sampler!");
+		m_CurrentFilter = filter;
 	}
 
 	uint64_t VulkanTexture2D::GetRendererID() const

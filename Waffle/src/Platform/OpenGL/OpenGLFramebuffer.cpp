@@ -197,23 +197,45 @@ namespace Waffle {
 
 	int OpenGLFrameBuffer::ReadPixel(uint32_t attachmentIndex, int x, int y)
 	{
-		WF_CORE_ASSERT(attachmentIndex < m_ColorAttachments.size());
+		// Hard bounds check - the old assert compiles out in release and left
+		// an unchecked vector index.
+		if (attachmentIndex >= m_ColorAttachments.size())
+			return -1;
 
 		GLint previousFBO = 0;
 		glGetIntegerv(GL_READ_FRAMEBUFFER_BINDING, &previousFBO);
 
 		glBindFramebuffer(GL_READ_FRAMEBUFFER, m_RendererID);
 		glReadBuffer(GL_COLOR_ATTACHMENT0 + attachmentIndex);
-		int pixelData = -1;
-		glReadPixels(x, y, 1, 1, GL_RED_INTEGER, GL_INT, &pixelData);
 
+		int pixelData = -1;
+		if (m_ColorAttachmentSpecifications[attachmentIndex].TextureFormat == FramebufferTextureFormat::RED_INTEGER)
+		{
+			glReadPixels(x, y, 1, 1, GL_RED_INTEGER, GL_INT, &pixelData);
+		}
+		else
+		{
+			// Reading an RGBA8 attachment as RED_INTEGER/INT is an invalid
+			// combination - read as RGBA/UNSIGNED_BYTE instead.
+			unsigned char rgba[4] = { 0, 0, 0, 0 };
+			glReadPixels(x, y, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, rgba);
+			pixelData = rgba[0];
+		}
+
+		// Read-buffer state is PER framebuffer object: the caller's
+		// framebuffer was never touched (nothing to restore there), and this
+		// FBO must be left on an attachment it actually has. Restoring the
+		// DEFAULT framebuffer's read buffer (GL_BACK) onto this FBO raised
+		// GL_INVALID_OPERATION ("the required buffer is missing").
+		glReadBuffer(GL_COLOR_ATTACHMENT0);
 		glBindFramebuffer(GL_READ_FRAMEBUFFER, previousFBO);
 		return pixelData;
 	}
 
 	void OpenGLFrameBuffer::ClearAttachment(uint32_t attachmentIndex, int value)
 	{
-		WF_CORE_ASSERT(attachmentIndex < m_ColorAttachments.size());
+		if (attachmentIndex >= m_ColorAttachments.size())
+			return;
 
 		auto& spec = m_ColorAttachmentSpecifications[attachmentIndex];
 		if (spec.TextureFormat == FramebufferTextureFormat::RED_INTEGER)
@@ -222,7 +244,16 @@ namespace Waffle {
 		}
 		else
 		{
-			glClearTexImage(m_ColorAttachments[attachmentIndex], 0, Utils::WaffleFramebufferTextureFormatToOpenGL(spec.TextureFormat), GL_INT, &value);
+			// glClearTexImage takes a pixel transfer format/type pair
+			// (GL_RGBA/GL_UNSIGNED_BYTE), not the internal format, and needs a
+			// full RGBA clear value.
+			uint32_t rgba = 0;
+			unsigned char* c = (unsigned char*)&rgba;
+			c[0] = (unsigned char)(value & 0xFF);
+			c[1] = (unsigned char)((value >> 8) & 0xFF);
+			c[2] = (unsigned char)((value >> 16) & 0xFF);
+			c[3] = (unsigned char)((value >> 24) & 0xFF);
+			glClearTexImage(m_ColorAttachments[attachmentIndex], 0, GL_RGBA, GL_UNSIGNED_BYTE, &rgba);
 		}
 	}
 }

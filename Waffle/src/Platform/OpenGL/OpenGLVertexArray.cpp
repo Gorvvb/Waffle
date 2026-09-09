@@ -93,11 +93,16 @@ namespace Waffle {
 				case ShaderDataType::Mat3:
 				case ShaderDataType::Mat4:
 				{
-					uint8_t count = element.GetComponentCount();
-					for (uint8_t i = 0; i < count; i++)
+					// A matrix attribute occupies one location per COLUMN of
+					// up to 4 components - never `count` components in a
+					// single location (glVertexAttribPointer's size must be
+					// 1..4; passing 9/16 is GL_INVALID_VALUE).
+					uint8_t columns = (element.Type == ShaderDataType::Mat3) ? 3 : 4;
+					uint8_t rows = 4;
+					for (uint8_t i = 0; i < columns; i++)
 					{
 						glEnableVertexAttribArray(m_VertexBufferIndex);
-						glVertexAttribPointer(m_VertexBufferIndex, count, ShaderDataTypeToOpenGLBaseType(element.Type), element.Normalized ? GL_TRUE : GL_FALSE, layout.GetStride(), (const void*)(element.Offset + sizeof(float) * count * i));
+						glVertexAttribPointer(m_VertexBufferIndex, rows, ShaderDataTypeToOpenGLBaseType(element.Type), element.Normalized ? GL_TRUE : GL_FALSE, layout.GetStride(), (const void*)(intptr_t)(element.Offset + sizeof(float) * rows * i));
 						glVertexAttribDivisor(m_VertexBufferIndex, 1);
 						m_VertexBufferIndex++;
 					}

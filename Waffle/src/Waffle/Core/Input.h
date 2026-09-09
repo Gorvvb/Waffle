@@ -93,7 +93,7 @@ namespace Waffle {
 		static bool IsControllerPresent(int id);
 		static std::vector<int> GetConnectedControllerIDs();
 		static const Controller* GetController(int id);
-		static std::string_view GetControllerName(int id);
+		static std::string GetControllerName(int id);
 
 		static bool IsControllerButtonPressed(int controllerID, int button);
 		static bool IsControllerButtonHeld(int controllerID, int button);

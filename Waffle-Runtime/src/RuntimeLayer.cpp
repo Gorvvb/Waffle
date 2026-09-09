@@ -120,6 +120,10 @@ namespace Waffle {
 					if (entry.is_regular_file(ec) && entry.path().extension() == ".waffle")
 						m_SceneList.push_back(entry.path().string());
 			}
+
+			// Both fallbacks iterate unordered maps / raw directory order -
+			// sort so ChangeScene(N) indices are deterministic across runs.
+			std::sort(m_SceneList.begin(), m_SceneList.end());
 		}
 
 		LoadScene(0);
