@@ -5,16 +5,19 @@ namespace Waffle {
 
 	std::vector<Scope<Event>> EventQueue::s_EventQueue;
 	std::mutex EventQueue::s_QueueMutex;
+	bool EventQueue::s_Shutdown = false;
 
 	void EventQueue::Init()
 	{
 		std::lock_guard<std::mutex> lock(s_QueueMutex);
+		s_Shutdown = false;
 		s_EventQueue.clear();
 	}
 
 	void EventQueue::Shutdown()
 	{
 		std::lock_guard<std::mutex> lock(s_QueueMutex);
+		s_Shutdown = true;
 		s_EventQueue.clear();
 	}
 

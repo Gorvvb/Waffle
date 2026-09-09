@@ -12,10 +12,19 @@ namespace Waffle {
 		LayerStack() = default;
 		~LayerStack();
 
+		// Push/pop are DEFERRED while the stack is being iterated (between
+		// BeginIteration/EndIteration): mutating the vector from inside a
+		// layer's OnUpdate/OnEvent/OnImGuiRender invalidates the active
+		// iterator and can delete the layer whose call is still on the stack.
 		void PushLayer(Layer* layer);
 		void PushOverlay(Layer* overlay);
 		void PopLayer(Layer* layer);
 		void PopOverlay(Layer* overlay);
+
+		// Scoped guard marker; safe to nest.
+		void BeginIteration() { m_IterationDepth++; }
+		void EndIteration();
+		bool IsIterating() const { return m_IterationDepth > 0; }
 
 		void Clear();
 		size_t GetCount() const { return m_Layers.size(); }
@@ -40,7 +49,13 @@ namespace Waffle {
 		std::vector<Scope<Layer>>::const_reverse_iterator crend() const { return m_Layers.crend(); }
 
 	private:
+		void FlushPendingOperations();
+
 		std::vector<Scope<Layer>> m_Layers;
 		uint32_t m_LayerInsertIndex = 0;
+		uint32_t m_IterationDepth = 0;
+
+		enum class PendingOp { PushLayer, PushOverlay, PopLayer, PopOverlay };
+		std::vector<std::pair<PendingOp, Layer*>> m_PendingOps;
 	};
 }

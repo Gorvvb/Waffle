@@ -16,7 +16,7 @@ namespace Waffle {
 		long m_Timeout = 2000; // Timeout in milliseconds
 		bool m_Active = false;
 
-		void Handler(const char* what);
+		static void Handler(const char* what);
 
 		static void Timeout();
 

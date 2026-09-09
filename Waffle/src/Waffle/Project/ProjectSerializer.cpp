@@ -58,6 +58,11 @@ namespace Waffle {
 
 		std::ofstream fout(filepath);
 		fout << out.c_str();
+		if (!fout)
+		{
+			WF_CORE_ERROR("Failed to write project file '{0}' (disk full or file locked?)", filepath.string());
+			return false;
+		}
 		return true;
 	}
 
@@ -70,8 +75,10 @@ namespace Waffle {
 		{
 			data = YAML::LoadFile(filepath.string());
 		}
-		catch (YAML::ParserException e)
+		catch (const YAML::Exception& e)
 		{
+			// BadFile / ParserException / InvalidNode alike: a corrupt project
+			// file must fail to load, not crash the app at startup.
 			WF_CORE_ERROR("Failed to load project file '{0}': {1}", filepath.string(), e.what());
 			return false;
 		}
@@ -80,7 +87,14 @@ namespace Waffle {
 		if (!projectNode)
 			return false;
 
-		config.Name = projectNode["Name"].as<std::string>();
+		// Every read below is a conversion that can throw on a truncated or
+		// hand-edited file - keep one bad field from killing the whole load.
+		try
+		{
+		if (projectNode["Name"])
+			config.Name = projectNode["Name"].as<std::string>();
+		else
+			config.Name = filepath.stem().string();
 		if (projectNode["AppName"])
 			config.AppName = projectNode["AppName"].as<std::string>();
 		if (projectNode["AssetDirectory"])
@@ -90,8 +104,12 @@ namespace Waffle {
 
 		if (projectNode["Gravity"])
 		{
-			config.Gravity.x = projectNode["Gravity"][0].as<float>();
-			config.Gravity.y = projectNode["Gravity"][1].as<float>();
+			auto gravity = projectNode["Gravity"];
+			if (gravity.IsSequence() && gravity.size() >= 2)
+			{
+				config.Gravity.x = gravity[0].as<float>();
+				config.Gravity.y = gravity[1].as<float>();
+			}
 		}
 
 		if (projectNode["CustomIconPath"])
@@ -143,6 +161,12 @@ namespace Waffle {
 			}
 
 			PostProcessing::GetSettings() = pp;
+		}
+		}
+		catch (const YAML::Exception& e)
+		{
+			WF_CORE_ERROR("Project file '{0}' has malformed entries (continuing with defaults): {1}",
+				filepath.string(), e.what());
 		}
 
 		config.ProjectDirectory = filepath.parent_path().string();

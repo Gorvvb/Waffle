@@ -98,7 +98,7 @@ namespace Waffle {
 		m_EditorCamera = EditorCamera(30.0f, 1.778f, 0.1f, 1000.0f);
 		Renderer2D::SetLineWidth(4.0f);
 		m_SceneHierarchyPanel.SetContext(m_ActiveScene);
-		m_ContentBrowserPanel.SetContext(m_ActiveScene.get());
+		m_ContentBrowserPanel.SetContext(m_ActiveScene);
 		m_AnimationEditorPanel.SetContext(m_ActiveScene);
 
 		m_ContentBrowserPanel.SetOpenSceneCallback(
@@ -213,6 +213,7 @@ namespace Waffle {
 							(uint32_t)m_ViewportSize.x, (uint32_t)m_ViewportSize.y);
 						m_ActiveScene->OnRuntimeStart();
 						m_SceneHierarchyPanel.SetContext(m_ActiveScene);
+						m_ContentBrowserPanel.SetContext(m_ActiveScene);
 					}
 					else
 					{
@@ -341,7 +342,7 @@ namespace Waffle {
 
 					std::string errorMsg;
 					if (ProjectExporter::ExportProject(options, errorMsg))
-						WF_CORE_INFO("Exported to Projects/{0}/Exports/{1}.exe", projName, appNameStr);
+						WF_CORE_INFO("Exported to {0}/Exports/{1}.exe", m_ProjectPath.empty() ? std::string("<project>") : m_ProjectPath.string(), appNameStr);
 					else
 						WF_CORE_ERROR("Export failed: {0}", errorMsg);
 				}
@@ -453,6 +454,20 @@ namespace Waffle {
 
 			m_ViewportBounds[0] = { cursorScreenPos.x, cursorScreenPos.y };
 			m_ViewportBounds[1] = { cursorScreenPos.x + m_ViewportSize.x, cursorScreenPos.y + m_ViewportSize.y };
+
+			// Gameplay mouse coordinates and input arbitration are expressed
+			// against the game viewport rect in WINDOW-RELATIVE coordinates
+			// (the space Input::GetMousePosition/GLFW report). With
+			// ImGuiConfigFlags_ViewportsEnable, cursorScreenPos is in GLOBAL
+			// desktop space - subtract the host window's desktop position.
+			// (The entity-picking above is immune: it compares two
+			// ImGui-space values.) The exported runtime never calls this;
+			// there origin (0,0) + full window is already correct.
+			ImVec2 hostOrigin = ImGui::GetMainViewport()->Pos;
+			LuaScriptEngine::SetGameViewport(
+				{ m_ViewportBounds[0].x - hostOrigin.x, m_ViewportBounds[0].y - hostOrigin.y },
+				{ m_ViewportBounds[1].x - m_ViewportBounds[0].x,
+				  m_ViewportBounds[1].y - m_ViewportBounds[0].y });
 
 			m_ViewportFocused = ImGui::IsWindowFocused();
 			m_ViewportHovered = ImGui::IsWindowHovered();
@@ -779,7 +794,7 @@ namespace Waffle {
 		UI::BeginPropertyGrid();
 		if (UI::PropertyString("Application Name", appNameStr))
 		{
-			strncpy_s(m_ExportAppNameBuffer, appNameStr.c_str(), sizeof(m_ExportAppNameBuffer));
+			strncpy_s(m_ExportAppNameBuffer, sizeof(m_ExportAppNameBuffer), appNameStr.c_str(), _TRUNCATE);
 			SaveProjectSettings();
 		}
 		UI::EndPropertyGrid();
@@ -825,9 +840,9 @@ namespace Waffle {
 				for (auto& c : ext) c = (char)tolower(c);
 				if (ext == ".png" || ext == ".jpg" || ext == ".ico")
 				{
-					strcpy_s(m_ExportIconPathBuffer,
+					strncpy_s(m_ExportIconPathBuffer,
 						sizeof(m_ExportIconPathBuffer),
-						dropped.string().c_str());
+						dropped.string().c_str(), _TRUNCATE);
 					SaveProjectSettings();
 				}
 			}
@@ -926,14 +941,17 @@ namespace Waffle {
 			ImGui::TableSetupColumn("##dn", ImGuiTableColumnFlags_WidthFixed, 24.0f);
 			ImGui::TableHeadersRow();
 
+			// Cache the current-scene comparison - std::filesystem::equivalent
+			// is a filesystem syscall per call and this runs per row per frame.
+			std::filesystem::path normalizedEditorPath =
+				m_EditorScenePath.lexically_normal();
 			for (int i = 0; i < (int)m_SceneList.size(); i++)
 			{
 				ImGui::TableNextRow();
 
 				// Highlight currently open scene
-				std::error_code ec;
 				bool isCurrent = !m_EditorScenePath.empty() &&
-					std::filesystem::equivalent(m_SceneList[i], m_EditorScenePath, ec);
+					m_SceneList[i].lexically_normal() == normalizedEditorPath;
 				if (isCurrent)
 					ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0,
 						ImGui::ColorConvertFloat4ToU32(ImVec4(0.2f, 0.5f, 0.2f, 0.4f)));
@@ -968,7 +986,11 @@ namespace Waffle {
 						{
 							auto tmp = m_SceneList[from];
 							m_SceneList.erase(m_SceneList.begin() + from);
-							m_SceneList.insert(m_SceneList.begin() + i, tmp);
+							// After erasing, rows below `from` shifted up by
+							// one - compensate so the drop always inserts at
+							// the target row's slot in BOTH drag directions.
+							int to = (from < i) ? i - 1 : i;
+							m_SceneList.insert(m_SceneList.begin() + to, tmp);
 							SaveProjectSettings();
 						}
 					}
@@ -1039,7 +1061,7 @@ namespace Waffle {
 
 			std::string errorMsg;
 			if (ProjectExporter::ExportProject(options, errorMsg))
-				WF_CORE_INFO("Exported to Projects/{0}/Exports/{1}.exe", projName, appNameStr);
+				WF_CORE_INFO("Exported to {0}/Exports/{1}.exe", m_ProjectPath.empty() ? std::string("<project>") : m_ProjectPath.string(), appNameStr);
 			else
 				WF_CORE_ERROR("Export failed: {0}", errorMsg);
 		}
@@ -1133,8 +1155,8 @@ namespace Waffle {
 			std::string sel = FileDialogs::OpenFile(
 				"Image Files (*.png;*.jpg;*.ico)\0*.png;*.jpg;*.ico\0");
 			if (!sel.empty())
-				strcpy_s(m_ExportIconPathBuffer,
-					sizeof(m_ExportIconPathBuffer), sel.c_str());
+				strncpy_s(m_ExportIconPathBuffer,
+					sizeof(m_ExportIconPathBuffer), sel.c_str(), _TRUNCATE);
 		}
 
 		ImGui::Separator();
@@ -1237,6 +1259,13 @@ namespace Waffle {
 		if (m_SceneState == SceneState::Play) return false;
 		if (e.GetRepeatCount() > 0)           return false;
 
+		// Never fire editor shortcuts while an ImGui text input (rename box,
+		// console input, path fields) owns the keyboard - Q/W/E/R, Ctrl+S etc.
+		// would be typed straight into gameplay actions.
+		ImGuiIO& io = ImGui::GetIO();
+		if (io.WantTextInput)
+			return false;
+
 		bool control = Input::IsKeyPressed(Key::LeftControl) ||
 			Input::IsKeyPressed(Key::RightControl);
 		bool shift = Input::IsKeyPressed(Key::LeftShift) ||
@@ -1314,11 +1343,16 @@ namespace Waffle {
 					m_ActiveScene->GetWorldTransform(Entity{ entity, m_ActiveScene.get() }),
 					wTrans, wRot, wScale);
 
+				// The collider offset is body-local in physics
+				// (SetAsBox(..., center, 0)) - rotate it into world space like
+				// the solver does instead of applying it in world axes.
 				glm::mat4 transform =
 					glm::translate(glm::mat4(1.0f),
-						wTrans + glm::vec3(bc2d.Offset, 0.001f))
+						wTrans + glm::vec3(0.0f, 0.0f, 0.001f))
 					* glm::rotate(glm::mat4(1.0f), wRot.z,
 						glm::vec3(0.0f, 0.0f, 1.0f))
+					* glm::translate(glm::mat4(1.0f),
+						glm::vec3(bc2d.Offset, 0.0f))
 					* glm::scale(glm::mat4(1.0f),
 						wScale * glm::vec3(bc2d.Size * 2.0f, 1.0f));
 
@@ -1340,7 +1374,11 @@ namespace Waffle {
 
 				glm::mat4 transform =
 					glm::translate(glm::mat4(1.0f),
-						wTrans + glm::vec3(cc2d.Offset, 0.001f))
+						wTrans + glm::vec3(0.0f, 0.0f, 0.001f))
+					* glm::rotate(glm::mat4(1.0f), wRot.z,
+						glm::vec3(0.0f, 0.0f, 1.0f))
+					* glm::translate(glm::mat4(1.0f),
+						glm::vec3(cc2d.Offset, 0.0f))
 					* glm::scale(glm::mat4(1.0f),
 						wScale * glm::vec3(cc2d.Radius * 2.0f));
 
@@ -1510,12 +1548,12 @@ namespace Waffle {
 						m_ProjectGravity = project["Gravity"].as<float>();
 
 					if (project["Name"])
-						strcpy_s(m_ExportAppNameBuffer, sizeof(m_ExportAppNameBuffer),
-							project["Name"].as<std::string>().c_str());
+						strncpy_s(m_ExportAppNameBuffer, sizeof(m_ExportAppNameBuffer),
+							project["Name"].as<std::string>().c_str(), _TRUNCATE);
 
 					if (project["IconPath"])
-						strcpy_s(m_ExportIconPathBuffer, sizeof(m_ExportIconPathBuffer),
-							project["IconPath"].as<std::string>().c_str());
+						strncpy_s(m_ExportIconPathBuffer, sizeof(m_ExportIconPathBuffer),
+							project["IconPath"].as<std::string>().c_str(), _TRUNCATE);
 
 					// Restore saved scene order first, then merge with disk
 					if (project["Scenes"])
@@ -1641,7 +1679,7 @@ namespace Waffle {
 		if (m_ExportAppNameBuffer[0] == '\0')
 		{
 			std::string def = m_ProjectName.empty() ? "MyGame" : m_ProjectName;
-			strcpy_s(m_ExportAppNameBuffer, sizeof(m_ExportAppNameBuffer), def.c_str());
+			strncpy_s(m_ExportAppNameBuffer, sizeof(m_ExportAppNameBuffer), def.c_str(), _TRUNCATE);
 		}
 
 		RebuildSceneList();
@@ -1653,12 +1691,20 @@ namespace Waffle {
 
 	void EditorLayer::NewScene()
 	{
+		// A fresh scene replaces the runtime one - stop playback first or the
+		// next OnUpdate would run OnUpdateRuntime on a scene that never had
+		// OnRuntimeStart (null physics world).
+		if (m_SceneState != SceneState::Edit)
+			OnSceneStop();
+
 		m_EditorScene = CreateRef<Scene>();
 		m_EditorScene->SetName("Untitled");
 		m_EditorScene->OnViewportResize(
 			(uint32_t)m_ViewportSize.x, (uint32_t)m_ViewportSize.y);
 		m_ActiveScene = m_EditorScene;
 		m_SceneHierarchyPanel.SetContext(m_ActiveScene);
+		m_ContentBrowserPanel.SetContext(m_ActiveScene);
+		m_HoveredEntity = Entity();
 		m_EditorScenePath.clear();
 		UpdateWindowTitle();
 	}
@@ -1691,6 +1737,8 @@ namespace Waffle {
 			m_EditorScene->OnViewportResize(
 				(uint32_t)m_ViewportSize.x, (uint32_t)m_ViewportSize.y);
 			m_SceneHierarchyPanel.SetContext(m_EditorScene);
+			m_ContentBrowserPanel.SetContext(m_EditorScene);
+			m_HoveredEntity = Entity();
 			m_ActiveScene = m_EditorScene;
 			m_EditorScenePath = path;
 			UpdateWindowTitle();
@@ -1700,8 +1748,11 @@ namespace Waffle {
 
 	void EditorLayer::SaveScene()
 	{
+		// Always serialize the editor scene. m_ActiveScene is the runtime copy
+		// while playing - saving it would bake physics-moved transforms and
+		// runtime state into the file.
 		if (!m_EditorScenePath.empty())
-			SerializeScene(m_ActiveScene, m_EditorScenePath);
+			SerializeScene(m_EditorScene, m_EditorScenePath);
 		else
 			SaveSceneAs();
 	}
@@ -1713,8 +1764,8 @@ namespace Waffle {
 		if (!filepath.empty())
 		{
 			std::filesystem::path path(filepath);
-			m_ActiveScene->SetName(path.stem().string());
-			SerializeScene(m_ActiveScene, filepath);
+			m_EditorScene->SetName(path.stem().string());
+			SerializeScene(m_EditorScene, filepath);
 			m_EditorScenePath = filepath;
 			UpdateWindowTitle();
 			SaveEditorConfig();
@@ -1725,7 +1776,8 @@ namespace Waffle {
 		const std::filesystem::path& path)
 	{
 		SceneSerializer serializer(scene);
-		serializer.Serialize(path.string());
+		if (!serializer.Serialize(path.string()))
+			WF_CORE_ERROR("Failed to save scene '{0}'", path.string());
 	}
 
 	void EditorLayer::RebuildSceneList()
@@ -1974,7 +2026,7 @@ namespace Waffle {
 			(uint32_t)m_ViewportSize.x, (uint32_t)m_ViewportSize.y);
 		m_ActiveScene->OnRuntimeStart();
 		m_SceneHierarchyPanel.SetContext(m_ActiveScene);
-		m_ContentBrowserPanel.SetContext(m_ActiveScene.get());
+		m_ContentBrowserPanel.SetContext(m_ActiveScene);
 	}
 
 	void EditorLayer::OnSceneStop()
@@ -1983,8 +2035,11 @@ namespace Waffle {
 		m_ActiveScene->OnRuntimeStop();
 		m_ActiveScene = m_EditorScene;
 		m_SceneHierarchyPanel.SetContext(m_ActiveScene);
-		m_ContentBrowserPanel.SetContext(m_ActiveScene.get());
+		m_ContentBrowserPanel.SetContext(m_ActiveScene);
 		m_AnimationEditorPanel.SetContext(m_ActiveScene);
+		// The hovered entity belongs to the runtime scene that was just
+		// dropped - keep it around and the next HasComponent() reads freed memory.
+		m_HoveredEntity = Entity();
 	}
 
 	void EditorLayer::OnScenePause()

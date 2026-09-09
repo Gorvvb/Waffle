@@ -15,6 +15,10 @@ namespace Waffle {
 		OpenGLVertexArray();
 		virtual ~OpenGLVertexArray();
 
+		// Owns a raw GL handle - copying would double-delete it.
+		OpenGLVertexArray(const OpenGLVertexArray&) = delete;
+		OpenGLVertexArray& operator=(const OpenGLVertexArray&) = delete;
+
 		virtual void Bind() const override;
 		virtual void Unbind() const override;
 

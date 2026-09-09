@@ -11,7 +11,8 @@ namespace Waffle {
 	public:
 		SceneSerializer(const Ref<Scene>& scene);
 
-		void Serialize(const std::string& filepath);
+		// Returns false when the file could not be opened or written.
+		bool Serialize(const std::string& filepath);
 		void SerializeRuntime(const std::string& filepath);
 
 		bool Deserialize(const std::string& filepath);

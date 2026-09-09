@@ -52,16 +52,31 @@ namespace Waffle {
 			WF_CORE_ASSERT(enttMap.find(uuid) != enttMap.end());
 			entt::entity dstEnttID = enttMap.at(uuid);
 
-			auto& component = src.get<Component>(e);
-			dst.emplace_or_replace<Component>(dstEnttID, component);
+			if constexpr (std::is_empty_v<Component>)
+			{
+				// Tag components (DisabledComponent): entt get() yields void
+				// for empties - just emplace the tag on the destination.
+				dst.emplace_or_replace<Component>(dstEnttID);
+			}
+			else
+			{
+				auto& component = src.get<Component>(e);
+				dst.emplace_or_replace<Component>(dstEnttID, component);
+			}
 		}
 	}
 
 	template<typename Component>
 	static void CopyComponentIfExists(Entity dst, Entity src)
 	{
-		if (src.HasComponent<Component>())
-			dst.AddOrReplaceComponent<Component>(src.GetComponent<Component>());
+		// NOTE: tag (empty) components are copied by the callers through the
+		// registry directly - Entity::AddOrReplaceComponent returns T& and
+		// entt yields void for empty types.
+		if constexpr (!std::is_empty_v<Component>)
+		{
+			if (src.HasComponent<Component>())
+				dst.AddOrReplaceComponent<Component>(src.GetComponent<Component>());
+		}
 	}
 
 	Ref<Scene> Scene::Copy(Ref<Scene> other)
@@ -101,6 +116,27 @@ namespace Waffle {
 		CopyComponent<PolygonCollider2DComponent>(dstSceneRegistry, srcSceneRegistry, enttMap);
 		CopyComponent<AnimatorComponent>(dstSceneRegistry, srcSceneRegistry, enttMap);
 
+		// Preserve disabled state in the play-mode copy (Lua SetActive) -
+		// dropping it re-enabled entities mid-play. Tag component: copied
+		// through the registry (see CopyComponentIfExists note).
+		{
+			auto tagView = srcSceneRegistry.view<DisabledComponent>();
+			for (auto e : tagView)
+			{
+				auto it = enttMap.find(srcSceneRegistry.get<IDComponent>(e).ID);
+				if (it != enttMap.end())
+					dstSceneRegistry.emplace_or_replace<DisabledComponent>(it->second);
+			}
+		}
+
+		// Never carry live native-script instances across scenes: the copied
+		// pointer belongs to (and points into) the source scene.
+		{
+			auto nscView = dstSceneRegistry.view<NativeScriptComponent>();
+			for (auto e : nscView)
+				dstSceneRegistry.get<NativeScriptComponent>(e).Instance = nullptr;
+		}
+
 		return newScene;
 	}
 
@@ -116,6 +152,12 @@ namespace Waffle {
 		entity.AddComponent<TransformComponent>();
 		auto& tag = entity.AddComponent<TagComponent>();
 		tag.Tag = name.empty() ? "Empty Entity" : name;
+		// Duplicated UUIDs (hand-edited files, pasted prefab blocks) would
+		// silently orphan the earlier entity - all its relationships re-point
+		// at the new one.
+		auto existing = m_EntityMap.find(uuid);
+		if (existing != m_EntityMap.end() && m_Registry.valid(existing->second))
+			WF_CORE_WARN("Scene: duplicate UUID {0} (entity '{1}') - previous entity becomes unreachable by UUID", (uint64_t)uuid, tag.Tag);
 		m_EntityMap[uuid] = (entt::entity)entity;
 		return entity;
 	}
@@ -172,9 +214,11 @@ namespace Waffle {
 		if (!child || !parent || child == parent)
 			return;
 
-		// Cycle detection
+		// Cycle detection (depth-capped like GetWorldTransform - a
+		// hand-edited cyclic hierarchy must not hang the editor forever)
 		Entity currentParent = parent;
-		while (currentParent && currentParent.HasComponent<RelationshipComponent>())
+		int depth = 0;
+		while (currentParent && currentParent.HasComponent<RelationshipComponent>() && depth++ < 64)
 		{
 			if (currentParent == child)
 				return;
@@ -276,6 +320,9 @@ namespace Waffle {
 	void Scene::OnRuntimeStart()
 	{
 		m_IsRunning = true;
+		// A stop -> start on the same scene object must not replay leftover
+		// time as up to 12 catch-up physics steps.
+		m_PhysicsAccumulator = 0.0f;
 		m_PhysicsWorld = new b2World({ 0.0f, m_GravityY });
 		m_BodyEntityMap.clear();
 
@@ -403,6 +450,24 @@ namespace Waffle {
 	void Scene::OnRuntimeStop()
 	{
 		m_IsRunning = false;
+
+		// Fire OnDestroy and release native script instances - without this
+		// every NSC instance leaked when the played scene was discarded.
+		m_Registry.view<NativeScriptComponent>().each([](auto entity, auto& nsc)
+		{
+			if (nsc.Instance)
+			{
+				nsc.Instance->OnDestroy();
+				if (nsc.DestroyScript)
+					nsc.DestroyScript(&nsc);
+				else
+				{
+					delete nsc.Instance;
+					nsc.Instance = nullptr;
+				}
+			}
+		});
+
 		LuaScriptEngine::OnRuntimeStop(this);
 		AudioEngine::StopAllSounds();
 
@@ -425,21 +490,35 @@ namespace Waffle {
 			if (m_StepFrames > 0)
 				m_StepFrames--;
 
-			// Update scripts
-			{
-				LuaScriptEngine::OnRuntimeUpdate(this, ts);
+				// Update scripts
+				{
+					LuaScriptEngine::OnRuntimeUpdate(this, ts);
 
-				m_Registry.view<NativeScriptComponent>().each([=](auto entity, auto& nsc)
+					// Snapshot: OnCreate can create/destroy scripted entities
+					// and reallocate the pool under a live view iterator.
+					std::vector<entt::entity> nativeScripted;
+					for (auto e : m_Registry.view<NativeScriptComponent>())
+						nativeScripted.push_back(e);
+
+					for (auto entity : nativeScripted)
 					{
+						if (!m_Registry.valid(entity))
+							continue;
+						auto& nsc = m_Registry.get<NativeScriptComponent>(entity);
+						// Unbound components (no Bind() call) have null
+						// function pointers - calling through them is UB.
+						if (!nsc.InstanciateScript)
+							continue;
 						if (!nsc.Instance)
 						{
 							nsc.Instance = nsc.InstanciateScript();
 							nsc.Instance->m_Entity = Entity{ entity, this };
 							nsc.Instance->OnCreate();
 						}
-						nsc.Instance->OnUpdate(ts);
-					});
-			}
+						if (nsc.Instance)
+							nsc.Instance->OnUpdate(ts);
+					}
+				}
 
 			// Lifetime - tick down and destroy expired entities.
 			// Collect first, then destroy, to avoid invalidating the view mid-iteration.
@@ -457,31 +536,43 @@ namespace Waffle {
 					DestroyEntity(entity);
 			}
 
-			// Physics
-			{
-				const int32_t velocityIterations = 6;
-				const int32_t positionIterations = 2;
-
-				m_PhysicsAccumulator += ts;
-				if (m_PhysicsAccumulator > 0.2f)
-					m_PhysicsAccumulator = 0.2f;
-
-				while (m_PhysicsAccumulator >= m_PhysicsFixedStep)
+				// Physics
+				if (m_PhysicsWorld)
 				{
-					m_PhysicsWorld->Step(m_PhysicsFixedStep, velocityIterations, positionIterations);
-					m_PhysicsAccumulator -= m_PhysicsFixedStep;
+					const int32_t velocityIterations = 6;
+					const int32_t positionIterations = 2;
+
+					m_PhysicsAccumulator += ts;
+					if (m_PhysicsAccumulator > 0.2f)
+						m_PhysicsAccumulator = 0.2f;
+
+					while (m_PhysicsAccumulator >= m_PhysicsFixedStep)
+					{
+						m_PhysicsWorld->Step(m_PhysicsFixedStep, velocityIterations, positionIterations);
+						m_PhysicsAccumulator -= m_PhysicsFixedStep;
+
+						// Dispatch collision/trigger Lua callbacks AFTER the step -
+						// they are queued during Step and must never run inside it.
+						LuaScriptEngine::DrainCollisionEvents(this);
+					}
 				}
 
 				auto view = m_Registry.view<Rigidbody2DComponent>();
 				for (auto e : view)
 				{
 					Entity entity = { e, this };
+					// The hierarchy panel allows removing Transform from a
+					// rigidbody entity - that must crash the physics sync.
+					if (!entity.HasComponent<TransformComponent>())
+						continue;
 					auto& transform = entity.GetComponent<TransformComponent>();
 					auto& rb2d = entity.GetComponent<Rigidbody2DComponent>();
 
 					b2Body* body = (b2Body*)rb2d.RuntimeBody;
 					if (!body)
 					{
+						if (!m_PhysicsWorld)
+							continue;
 						// Entity was spawned mid-runtime (e.g. prefab instantiated
 						// from a script) - create its body now instead of crashing.
 						CreateRuntimePhysicsBody(entity);
@@ -517,6 +608,14 @@ namespace Waffle {
 						transform.Rotation.z = body->GetAngle();
 					}
 				}
+
+			// Advance ALL animators here (not in the render loop): off-screen
+			// entities' animations keep playing, and the render section runs
+			// even while paused - animators must not.
+			{
+				auto animatorView = m_Registry.view<AnimatorComponent>(entt::exclude<DisabledComponent>);
+				for (auto e : animatorView)
+					animatorView.get<AnimatorComponent>(e).Update(ts);
 			}
 		}
 
@@ -525,7 +624,9 @@ namespace Waffle {
 		glm::mat4 cameraTransform;
 		CameraComponent* mainCameraComp = nullptr;
 		{
-			auto view = m_Registry.view<TransformComponent, CameraComponent>();
+			// A disabled camera must not drive rendering either - the render
+			// passes exclude DisabledComponent, the camera pick must match.
+			auto view = m_Registry.view<TransformComponent, CameraComponent>(entt::exclude<DisabledComponent>);
 			for (auto entity : view)
 			{
 				auto [transform, camera] = view.get<TransformComponent, CameraComponent>(entity);
@@ -553,53 +654,90 @@ namespace Waffle {
 				Renderer2D::DrawQuad(bgTransform, mainCameraComp->BackgroundImage, mainCameraComp->BackgroundTilingFactor);
 			}
 
-		// Draw sprites - skip disabled or off-screen entities
-		auto group = m_Registry.group<TransformComponent>(entt::get<SpriteRendererComponent>, entt::exclude<DisabledComponent>);
-		for (auto entity : group)
-		{
-			auto [transform, sprite] = group.get<TransformComponent, SpriteRendererComponent>(entity);
-			glm::mat4 worldTransform = GetWorldTransform(Entity{ entity, this });
-
-			glm::vec2 pos = glm::vec2(worldTransform[3]);
-			glm::vec2 scale = glm::vec2(glm::length(worldTransform[0]), glm::length(worldTransform[1]));
-			if (!Renderer2D::IsVisibleInFrustum(pos, scale))
+			struct RenderItem
 			{
-				Renderer2D::GetStats().CulledQuadCount++;
-				continue;
-			}
+				enum class ItemType { Sprite, Circle };
+				ItemType Type;
+				entt::entity EntityID;
+				int SortingLayer = 0;
+				int SortingOrder = 0;
+				float Z = 0.0f;
+				glm::mat4 WorldTransform;
+			};
 
-			auto* animator = m_Registry.try_get<AnimatorComponent>(entity);
-			if (animator)
+			std::vector<RenderItem> renderItems;
+
+			// Gather sprites - skip disabled or off-screen entities
+			auto spriteGroup = m_Registry.group<TransformComponent>(entt::get<SpriteRendererComponent>, entt::exclude<DisabledComponent>);
+			for (auto entity : spriteGroup)
 			{
-				animator->Update(ts);
-				Ref<SubTexture2D> subTexture = animator->GetCurrentSubTexture();
-				if (subTexture)
+				auto [transform, sprite] = spriteGroup.get<TransformComponent, SpriteRendererComponent>(entity);
+				glm::mat4 worldTransform = GetWorldTransform(Entity{ entity, this });
+
+				glm::vec2 pos = glm::vec2(worldTransform[3]);
+				glm::vec2 scale = glm::vec2(glm::length(worldTransform[0]), glm::length(worldTransform[1]));
+				if (!Renderer2D::IsVisibleInFrustum(pos, scale))
 				{
-					Renderer2D::DrawQuad(worldTransform, subTexture, sprite.TilingFactor, sprite.Color, (int)entity);
+					Renderer2D::GetStats().CulledQuadCount++;
 					continue;
 				}
+
+				renderItems.push_back({ RenderItem::ItemType::Sprite, entity, sprite.SortingLayer, sprite.SortingOrder, worldTransform[3].z, worldTransform });
 			}
 
-			Renderer2D::DrawSprite(worldTransform, sprite, (int)entity);
-		}
-
-		// Draw circles - skip disabled or off-screen entities
-		auto view = m_Registry.view<TransformComponent, CircleRendererComponent>(entt::exclude<DisabledComponent>);
-		for (auto entity : view)
-		{
-			auto [transform, circle] = view.get<TransformComponent, CircleRendererComponent>(entity);
-			glm::mat4 worldTransform = GetWorldTransform(Entity{ entity, this });
-
-			glm::vec2 pos = glm::vec2(worldTransform[3]);
-			glm::vec2 scale = glm::vec2(glm::length(worldTransform[0]), glm::length(worldTransform[1]));
-			if (!Renderer2D::IsVisibleInFrustum(pos, scale))
+			// Gather circles - skip disabled or off-screen entities
+			auto circleView = m_Registry.view<TransformComponent, CircleRendererComponent>(entt::exclude<DisabledComponent>);
+			for (auto entity : circleView)
 			{
-				Renderer2D::GetStats().CulledQuadCount++;
-				continue;
+				auto [transform, circle] = circleView.get<TransformComponent, CircleRendererComponent>(entity);
+				glm::mat4 worldTransform = GetWorldTransform(Entity{ entity, this });
+
+				glm::vec2 pos = glm::vec2(worldTransform[3]);
+				glm::vec2 scale = glm::vec2(glm::length(worldTransform[0]), glm::length(worldTransform[1]));
+				if (!Renderer2D::IsVisibleInFrustum(pos, scale))
+				{
+					Renderer2D::GetStats().CulledQuadCount++;
+					continue;
+				}
+
+				renderItems.push_back({ RenderItem::ItemType::Circle, entity, circle.SortingLayer, circle.SortingOrder, worldTransform[3].z, worldTransform });
 			}
 
-			Renderer2D::DrawCircle(worldTransform, circle.Color, circle.Thickness, circle.Fade, (int)entity);
-		}
+			// Back-to-front sorting by Layer -> Order -> Z
+			std::stable_sort(renderItems.begin(), renderItems.end(), [](const RenderItem& a, const RenderItem& b) {
+				if (a.SortingLayer != b.SortingLayer)
+					return a.SortingLayer < b.SortingLayer;
+				if (a.SortingOrder != b.SortingOrder)
+					return a.SortingOrder < b.SortingOrder;
+				return a.Z < b.Z;
+			});
+
+			// Draw all sorted items. Animators were advanced in a pre-pass
+			// (inside the pause guard) - updating them here would run them
+			// while paused and skip culled (off-screen) entities.
+			for (const auto& item : renderItems)
+			{
+				if (item.Type == RenderItem::ItemType::Sprite)
+				{
+					auto& sprite = m_Registry.get<SpriteRendererComponent>(item.EntityID);
+					auto* animator = m_Registry.try_get<AnimatorComponent>(item.EntityID);
+					if (animator)
+					{
+						Ref<SubTexture2D> subTexture = animator->GetCurrentSubTexture();
+						if (subTexture)
+						{
+							Renderer2D::DrawQuad(item.WorldTransform, subTexture, sprite.TilingFactor, sprite.Color, (int)item.EntityID);
+							continue;
+						}
+					}
+					Renderer2D::DrawSprite(item.WorldTransform, sprite, (int)item.EntityID);
+				}
+				else if (item.Type == RenderItem::ItemType::Circle)
+				{
+					auto& circle = m_Registry.get<CircleRendererComponent>(item.EntityID);
+					Renderer2D::DrawCircle(item.WorldTransform, circle.Color, circle.Thickness, circle.Fade, (int)item.EntityID);
+				}
+			}
 
 			Renderer2D::EndScene();
 		}
@@ -644,6 +782,14 @@ namespace Waffle {
 	{
 		Renderer2D::BeginScene(camera);
 
+		// Advance animators for ALL entities (not just visible ones) before
+		// the culled gather pass.
+		{
+			auto animatorView = m_Registry.view<AnimatorComponent>(entt::exclude<DisabledComponent>);
+			for (auto e : animatorView)
+				animatorView.get<AnimatorComponent>(e).Update(ts);
+		}
+
 		Entity primaryCamEntity = GetPrimaryCameraEntity();
 		if (primaryCamEntity && primaryCamEntity.HasComponent<CameraComponent>())
 		{
@@ -659,11 +805,24 @@ namespace Waffle {
 			}
 		}
 
-		// Draw sprites - skip off-screen entities
-		auto group = m_Registry.group<TransformComponent>(entt::get<SpriteRendererComponent>);
-		for (auto entity : group)
+		struct RenderItem
 		{
-			auto [transform, sprite] = group.get<TransformComponent, SpriteRendererComponent>(entity);
+			enum class ItemType { Sprite, Circle };
+			ItemType Type;
+			entt::entity EntityID;
+			int SortingLayer = 0;
+			int SortingOrder = 0;
+			float Z = 0.0f;
+			glm::mat4 WorldTransform;
+		};
+
+		std::vector<RenderItem> renderItems;
+
+		// Editor path matches runtime: exclude DisabledComponent.
+		auto spriteGroup = m_Registry.group<TransformComponent>(entt::get<SpriteRendererComponent>, entt::exclude<DisabledComponent>);
+		for (auto entity : spriteGroup)
+		{
+			auto [transform, sprite] = spriteGroup.get<TransformComponent, SpriteRendererComponent>(entity);
 			glm::mat4 worldTransform = GetWorldTransform(Entity{ entity, this });
 
 			glm::vec2 pos = glm::vec2(worldTransform[3]);
@@ -674,26 +833,14 @@ namespace Waffle {
 				continue;
 			}
 
-			auto* animator = m_Registry.try_get<AnimatorComponent>(entity);
-			if (animator)
-			{
-				animator->Update(ts);
-				Ref<SubTexture2D> subTexture = animator->GetCurrentSubTexture();
-				if (subTexture)
-				{
-					Renderer2D::DrawQuad(worldTransform, subTexture, sprite.TilingFactor, sprite.Color, (int)entity);
-					continue;
-				}
-			}
-
-			Renderer2D::DrawSprite(worldTransform, sprite, (int)entity);
+			renderItems.push_back({ RenderItem::ItemType::Sprite, entity, sprite.SortingLayer, sprite.SortingOrder, worldTransform[3].z, worldTransform });
 		}
 
-		// Draw circles - skip off-screen entities
-		auto view = m_Registry.view<TransformComponent, CircleRendererComponent>();
-		for (auto entity : view)
+		// Editor path matches runtime: exclude DisabledComponent.
+		auto circleView = m_Registry.view<TransformComponent, CircleRendererComponent>(entt::exclude<DisabledComponent>);
+		for (auto entity : circleView)
 		{
-			auto [transform, circle] = view.get<TransformComponent, CircleRendererComponent>(entity);
+			auto [transform, circle] = circleView.get<TransformComponent, CircleRendererComponent>(entity);
 			glm::mat4 worldTransform = GetWorldTransform(Entity{ entity, this });
 
 			glm::vec2 pos = glm::vec2(worldTransform[3]);
@@ -704,7 +851,42 @@ namespace Waffle {
 				continue;
 			}
 
-			Renderer2D::DrawCircle(worldTransform, circle.Color, circle.Thickness, circle.Fade, (int)entity);
+			renderItems.push_back({ RenderItem::ItemType::Circle, entity, circle.SortingLayer, circle.SortingOrder, worldTransform[3].z, worldTransform });
+		}
+
+		// Back-to-front sorting by Layer -> Order -> Z
+		std::stable_sort(renderItems.begin(), renderItems.end(), [](const RenderItem& a, const RenderItem& b) {
+			if (a.SortingLayer != b.SortingLayer)
+				return a.SortingLayer < b.SortingLayer;
+			if (a.SortingOrder != b.SortingOrder)
+				return a.SortingOrder < b.SortingOrder;
+			return a.Z < b.Z;
+		});
+
+		// Draw all sorted items. Animator pre-pass above keeps off-screen
+		// animations advancing and out of the draw loop.
+		for (const auto& item : renderItems)
+		{
+			if (item.Type == RenderItem::ItemType::Sprite)
+			{
+				auto& sprite = m_Registry.get<SpriteRendererComponent>(item.EntityID);
+				auto* animator = m_Registry.try_get<AnimatorComponent>(item.EntityID);
+				if (animator)
+				{
+					Ref<SubTexture2D> subTexture = animator->GetCurrentSubTexture();
+					if (subTexture)
+					{
+						Renderer2D::DrawQuad(item.WorldTransform, subTexture, sprite.TilingFactor, sprite.Color, (int)item.EntityID);
+						continue;
+					}
+				}
+				Renderer2D::DrawSprite(item.WorldTransform, sprite, (int)item.EntityID);
+			}
+			else if (item.Type == RenderItem::ItemType::Circle)
+			{
+				auto& circle = m_Registry.get<CircleRendererComponent>(item.EntityID);
+				Renderer2D::DrawCircle(item.WorldTransform, circle.Color, circle.Thickness, circle.Fade, (int)item.EntityID);
+			}
 		}
 
 		Renderer2D::EndScene();
@@ -752,6 +934,16 @@ namespace Waffle {
 		CopyComponentIfExists<PolygonCollider2DComponent>(newEntity, entity);
 		CopyComponentIfExists<AnimatorComponent>(newEntity, entity);
 
+		// Preserve Lua-disabled state in duplicates too (tag component -
+		// direct registry emplace, see CopyComponentIfExists note).
+		if (entity.HasComponent<DisabledComponent>())
+			m_Registry.emplace_or_replace<DisabledComponent>((entt::entity)newEntity);
+
+		// A duplicated native script must not share the original's live
+		// instance - its m_Entity points at the ORIGINAL entity.
+		if (newEntity.HasComponent<NativeScriptComponent>())
+			newEntity.GetComponent<NativeScriptComponent>().Instance = nullptr;
+
 		// The copies must not share the original's Box2D body/fixture pointers -
 		// that would corrupt the simulation and double-destroy bodies later.
 		if (newEntity.HasComponent<Rigidbody2DComponent>())
@@ -798,7 +990,9 @@ namespace Waffle {
 
 	Entity Scene::GetPrimaryCameraEntity()
 	{
-		auto view = m_Registry.view<CameraComponent>();
+		// Disabled cameras are excluded from rendering - they must not drive
+		// it either.
+		auto view = m_Registry.view<CameraComponent>(entt::exclude<DisabledComponent>);
 		for (auto entity : view)
 		{
 			const auto& camera = view.get<CameraComponent>(entity);

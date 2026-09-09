@@ -44,6 +44,26 @@ namespace Waffle {
 		static void OnRuntimeStop(Scene* scene);
 		static void OnRuntimeUpdate(Scene* scene, Timestep ts);
 
+		// Dispatch queued collision/trigger callbacks. MUST be called after
+		// b2World::Step returns (scripts run deferred, never inside the step).
+		static void DrainCollisionEvents(Scene* scene);
+
+		// Game viewport rect in WINDOW coordinates. The editor sets this
+		// every frame (the viewport is a sub-region of the window); the
+		// exported runtime never does - there window == viewport and the
+		// origin stays (0,0). Gameplay mouse queries (GetMousePosition) are
+		// returned relative to the origin so scripts behave identically in
+		// both, and gameplay-vs-GUI input arbitration uses the rect.
+		static void SetGameViewport(const glm::vec2& origin, const glm::vec2& size)
+		{
+			s_GameViewportOrigin = origin;
+			s_GameViewportSize = size;
+			s_HasGameViewport = true;
+		}
+		static glm::vec2 GetGameViewportOrigin() { return s_GameViewportOrigin; }
+		static glm::vec2 GetGameViewportSize() { return s_GameViewportSize; }
+		static bool HasGameViewport() { return s_HasGameViewport; }
+
 		static Scene* GetSceneContext() { return s_SceneContext; }
 		static lua_State* GetLuaState() { return s_LuaState; }
 
@@ -74,6 +94,10 @@ namespace Waffle {
 		static lua_State*                    s_LuaState;
 		static Scene*                        s_SceneContext;
 		static LuaContactListener*           s_ContactListener;
+		// Game viewport rect in window coords - see SetGameViewport.
+		static glm::vec2                     s_GameViewportOrigin;
+		static glm::vec2                     s_GameViewportSize;
+		static bool                          s_HasGameViewport;
 		static int                           s_PendingSceneChange;
 		static int                           s_CurrentSceneIndex;
 

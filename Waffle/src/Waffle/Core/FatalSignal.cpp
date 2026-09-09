@@ -1,9 +1,12 @@
 #include "wfpch.h"
 #include "FatalSignal.h"
 
-#include <iostream>
-#include <thread>
-#include <chrono>
+#include <atomic>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+#include <csignal>
+#include <io.h>
 #include <exception>
 
 namespace Waffle {
@@ -14,39 +17,32 @@ namespace Waffle {
 	}
 
 	void FatalSignal::Timeout() {
-		std::cerr << "FATAL SIGNAL TIMEOUT" << std::endl;
+		// Called from the watchdog thread only - std::cerr may be fine here,
+		// but keep to stdio to stay consistent with the handler.
+		std::fputs("FATAL SIGNAL TIMEOUT\n", stderr);
 		Die();
 	}
 
 	void FatalSignal::Handler(const char* what) {
-		if (m_Active) {
-			std::cerr << "NESTED ERROR STATE: " << what << std::endl;
-			Die();
-		}
+		// Runs from a signal handler / terminate handler. Creating threads,
+		// formatting into streams or touching the heap here can deadlock if
+		// the crash happened while the heap lock was held (common for heap
+		// corruption, which is what SIGSEGV usually is). Keep it to
+		// async-signal-safe calls: write() + _Exit().
+		static std::atomic<bool> active{ false };
+		if (active.exchange(true))
+			Die(); // nested fault while handling - bail out immediately
 
-		std::cerr << "FATAL SIGNAL RECEIVED: " << what << std::endl;
-		m_Active = true;
-
-		std::thread t([&] {
-			auto dur = std::chrono::duration<long, std::milli>(m_Timeout);
-			std::this_thread::sleep_for(dur);
-			Timeout();
-		});
-		t.detach();
-
-		for (auto& fn : m_Callbacks)
-		{
-			try {
-				fn();
-			}
-			catch (...) {}
-		}
+		auto writeStr = [](const char* s) { _write(2, s, (unsigned int)strlen(s)); };
+		writeStr("FATAL SIGNAL RECEIVED: ");
+		writeStr(what);
+		writeStr("\n");
 
 		Die();
 	}
 
 	void FatalSignal::Install(long timeout) {
-		s_State.m_Timeout = timeout;
+		(void)timeout; // watchdog thread removed - see Handler note
 
 		std::set_terminate([] {
 			auto eptr = std::current_exception();
@@ -57,20 +53,20 @@ namespace Waffle {
 			catch (const std::exception& e) {
 				what = e.what();
 			}
-			s_State.Handler(what);
+			Handler(what);
 		});
 
 		auto sig = [](int signalCode) {
 			const char* name = "<none>";
 			switch (signalCode) {
 			case SIGABRT: name = "SIGABRT"; break;
-			case SIGFPE: name = "SIGFPE"; break;
-			case SIGILL: name = "SIGILL"; break;
-			case SIGINT: name = "SIGINT"; break;
+			case SIGFPE:  name = "SIGFPE";  break;
+			case SIGILL:  name = "SIGILL";  break;
+			case SIGINT:  name = "SIGINT";  break;
 			case SIGSEGV: name = "SIGSEGV"; break;
 			case SIGTERM: name = "SIGTERM"; break;
 			}
-			s_State.Handler(name);
+			Handler(name);
 		};
 
 		signal(SIGABRT, sig);

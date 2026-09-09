@@ -4,18 +4,20 @@
 
 #include "Waffle/Renderer/Texture.h"
 #include "Waffle/Renderer/SubTexture2D.h"
+#include "Waffle/Scene/Scene.h"
 #include <glm/glm.hpp>
 
 namespace Waffle {
 
-	class Scene;
 	extern std::filesystem::path g_AssetPath;
 
 	class ContentBrowserPanel
 	{
 	private:
 		std::filesystem::path m_CurrentDirectory;
-		Scene* m_SceneContext = nullptr;
+		// Ref (not raw pointer): the panel outlives scene swaps and must never
+		// dereference a destroyed scene through a stale context.
+		Ref<Scene> m_SceneContext;
 
 		Ref<Texture2D> m_DirectoryIcon;
 		Ref<Texture2D> m_FileIcon;
@@ -67,7 +69,7 @@ namespace Waffle {
 		void OnImGuiRender();
 
 		const std::filesystem::path& GetCurrentDirectory() const { return m_CurrentDirectory; }
-		void SetContext(Scene* scene) { m_SceneContext = scene; }
+		void SetContext(const Ref<Scene>& scene) { m_SceneContext = scene; }
 		void SetAssetDirectory(const std::filesystem::path& path);
 		void SetOpenSceneCallback(const std::function<void(const std::filesystem::path&)>& callback) { m_OpenSceneCallback = callback; }
 		void SetSceneRenamedCallback(const std::function<void(const std::filesystem::path&, const std::filesystem::path&)>& callback) { m_SceneRenamedCallback = callback; }

@@ -48,11 +48,14 @@ namespace Waffle {
 		// Detach and destroy layers in REVERSE order (top-to-bottom: overlays first down to base layers)
 		m_LayerStack.Clear();
 
+		// Release renderer GPU resources HERE, while the window/context
+		// still exists - static destructors run after main() on a dead
+		// context (leaks at best, crashes at worst).
+		Renderer::Shutdown();
+
 		SubsystemManager::Shutdown();
 		EventQueue::Shutdown();
 		JobSystem::Shutdown();
-
-		//Renderer::Shutdown();
 	}
 
 	void Application::PushLayer(Layer* layer)
@@ -75,12 +78,16 @@ namespace Waffle {
 		dispatcher.Dispatch<WindowCloseEvent>(WF_BIND_EVENT_FN(Application::OnWindowClose));
 		dispatcher.Dispatch<WindowResizeEvent>(WF_BIND_EVENT_FN(Application::OnWindowResize));
 
+		// Iteration guard: a handler may push/pop layers; the stack defers
+		// those mutations until the walk finishes.
+		m_LayerStack.BeginIteration();
 		for (auto it = m_LayerStack.rbegin(); it != m_LayerStack.rend(); ++it)
 		{
 			if (e.handled)
 				break;
 			(*it)->OnEvent(e);
 		}
+		m_LayerStack.EndIteration();
 	}
 
 	void Application::Run()
@@ -96,6 +103,10 @@ namespace Waffle {
 			m_lastFrameTime = time;
 			Timestep timestep = std::min(rawDelta, 0.1f); // Cap timestep to 100ms to prevent dt explosion
 
+			// Advance input edge-detection state machines (keyboard/mouse/
+			// gamepad Pressed/Released transitions) for this frame.
+			Input::Update();
+
 			// Dispatch queued deferred events from background threads / systems
 			EventQueue::DispatchPendingEvents(WF_BIND_EVENT_FN(Application::OnEvent));
 
@@ -103,15 +114,26 @@ namespace Waffle {
 			{
 				// 1. Fixed Timestep Accumulator Step (Physics & Fixed Logic)
 				m_Accumulator += timestep.GetSeconds() * m_TimeScale;
-				while (m_Accumulator >= m_FixedTimestep)
+				if (m_FixedTimestep > 0.0f)
 				{
-					WF_PROFILE_SCOPE("LayerStack OnFixedUpdate");
-					SubsystemManager::OnFixedUpdate(m_FixedTimestep);
+					while (m_Accumulator >= m_FixedTimestep)
+					{
+						WF_PROFILE_SCOPE("LayerStack OnFixedUpdate");
+						SubsystemManager::OnFixedUpdate(m_FixedTimestep);
 
-					for (const auto& layer : m_LayerStack)
-						layer->OnFixedUpdate(m_FixedTimestep);
+						m_LayerStack.BeginIteration();
+						for (const auto& layer : m_LayerStack)
+							layer->OnFixedUpdate(m_FixedTimestep);
+						m_LayerStack.EndIteration();
 
-					m_Accumulator -= m_FixedTimestep;
+						m_Accumulator -= m_FixedTimestep;
+					}
+				}
+				else
+				{
+					// A zero/negative fixed timestep would hang the loop -
+					// clamp instead of draining.
+					m_Accumulator = 0.0f;
 				}
 
 				// 2. Variable Frame Update Step (Render & Frame Logic)
@@ -119,15 +141,19 @@ namespace Waffle {
 					WF_PROFILE_SCOPE("LayerStack OnUpdate");
 					SubsystemManager::OnUpdate(timestep);
 
+					m_LayerStack.BeginIteration();
 					for (const auto& layer : m_LayerStack)
 						layer->OnUpdate(timestep);
+					m_LayerStack.EndIteration();
 				}
 
 				m_ImGuiLayer->Begin();
 				{
 					WF_PROFILE_SCOPE("LayerStack OnImGuiRender");
+					m_LayerStack.BeginIteration();
 					for (const auto& layer : m_LayerStack)
 						layer->OnImGuiRender();
+					m_LayerStack.EndIteration();
 				}
 				m_ImGuiLayer->End();
 			}

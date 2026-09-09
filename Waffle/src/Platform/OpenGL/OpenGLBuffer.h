@@ -14,6 +14,10 @@ namespace Waffle {
 		OpenGLVertexBuffer(float* vertecies, uint32_t size);
 		virtual ~OpenGLVertexBuffer();
 
+		// Owns a raw GL handle - copying would double-delete it.
+		OpenGLVertexBuffer(const OpenGLVertexBuffer&) = delete;
+		OpenGLVertexBuffer& operator=(const OpenGLVertexBuffer&) = delete;
+
 		virtual void Bind() const override;
 		virtual void Unbind() const override;
 
@@ -31,6 +35,10 @@ namespace Waffle {
 	public:
 		OpenGLIndexBuffer(uint32_t* indecies, uint32_t count);
 		virtual ~OpenGLIndexBuffer();
+
+		// Owns a raw GL handle - copying would double-delete it.
+		OpenGLIndexBuffer(const OpenGLIndexBuffer&) = delete;
+		OpenGLIndexBuffer& operator=(const OpenGLIndexBuffer&) = delete;
 
 		virtual void Bind() const override;
 		virtual void Unbind() const override;

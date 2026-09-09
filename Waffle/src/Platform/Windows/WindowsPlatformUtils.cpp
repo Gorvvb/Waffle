@@ -14,52 +14,81 @@
 
 namespace Waffle {
 
+	// Converts an ANSI filter ("Name\0*.ext\0" with a double-null
+	// terminator) to its wide form for the W dialog APIs.
+	static std::wstring WideFileFilter(const char* filter)
+	{
+		std::string narrow;
+		if (filter)
+		{
+			const char* p = filter;
+			while (*p)
+			{
+				narrow.append(p);
+				narrow.push_back('\0');
+				p += strlen(p);
+			}
+			narrow.push_back('\0');
+		}
+
+		int len = MultiByteToWideChar(CP_UTF8, 0, narrow.c_str(), (int)narrow.size(), nullptr, 0);
+		std::wstring wide((size_t)len, L'\0');
+		MultiByteToWideChar(CP_UTF8, 0, narrow.c_str(), (int)narrow.size(), wide.data(), len);
+		return wide;
+	}
+
 	std::string FileDialogs::OpenFile(const char* filter)
 	{
-		OPENFILENAMEA ofn;
-		CHAR szFile[260] = { 0 };
-		ZeroMemory(&ofn, sizeof(OPENFILENAME));
-		ofn.lStructSize = sizeof(OPENFILENAME);
+		// W (wide) API: the ANSI dialogs mangled paths outside the user's
+		// code page (CJK, Cyrillic, ...) into '?' substitutions.
+		std::wstring wFilter = WideFileFilter(filter);
+		wchar_t szFile[MAX_PATH] = { 0 };
+		OPENFILENAMEW ofn;
+		ZeroMemory(&ofn, sizeof(OPENFILENAMEW));
+		ofn.lStructSize = sizeof(OPENFILENAMEW);
 		ofn.hwndOwner = glfwGetWin32Window((GLFWwindow*)Application::Get().GetWindow().GetNativeWindow());
 		ofn.lpstrFile = szFile;
-		ofn.nMaxFile = sizeof(szFile);
-		ofn.lpstrFilter = filter;
+		ofn.nMaxFile = MAX_PATH;
+		ofn.lpstrFilter = wFilter.c_str();
 		ofn.nFilterIndex = 1;
-		
+
 		std::filesystem::path initPath = std::filesystem::current_path() / "projects";
-		std::string initPathStr = initPath.string();
+		std::wstring initDir = initPath.wstring();
 		if (std::filesystem::exists(initPath))
-			ofn.lpstrInitialDir = initPathStr.c_str();
+			ofn.lpstrInitialDir = initDir.c_str();
 
 		ofn.Flags = OFN_PATHMUSTEXIST | OFN_FILEMUSTEXIST | OFN_NOCHANGEDIR;
-		if (GetOpenFileNameA(&ofn) == TRUE)
+		if (GetOpenFileNameW(&ofn) == TRUE)
 		{
-			return ofn.lpstrFile;
+			return std::filesystem::path(szFile).string();
 		}
 		return std::string();
 	}
 
 	std::string FileDialogs::SaveFile(const char* filter)
 	{
-		OPENFILENAMEA ofn;
-		CHAR szFile[260] = { 0 };
-		ZeroMemory(&ofn, sizeof(OPENFILENAME));
-		ofn.lStructSize = sizeof(OPENFILENAME);
+		std::wstring wFilter = WideFileFilter(filter);
+		wchar_t szFile[MAX_PATH] = { 0 };
+		OPENFILENAMEW ofn;
+		ZeroMemory(&ofn, sizeof(OPENFILENAMEW));
+		ofn.lStructSize = sizeof(OPENFILENAMEW);
 		ofn.hwndOwner = glfwGetWin32Window((GLFWwindow*)Application::Get().GetWindow().GetNativeWindow());
 		ofn.lpstrFile = szFile;
-		ofn.nMaxFile = sizeof(szFile);
-		ofn.lpstrFilter = filter;
+		ofn.nMaxFile = MAX_PATH;
+		ofn.lpstrFilter = wFilter.c_str();
 		ofn.nFilterIndex = 1;
 
 		std::filesystem::path initPath = std::filesystem::current_path() / "projects";
-		std::string initPathStr = initPath.string();
+		std::wstring initDir = initPath.wstring();
 		if (std::filesystem::exists(initPath))
-			ofn.lpstrInitialDir = initPathStr.c_str();
+			ofn.lpstrInitialDir = initDir.c_str();
 
-		ofn.Flags = OFN_PATHMUSTEXIST | OFN_FILEMUSTEXIST | OFN_NOCHANGEDIR;
-		if (GetSaveFileNameA(&ofn) == TRUE)
+		// No OFN_FILEMUSTEXIST on a save dialog - it expects a possibly-new
+		// name; OVERWRITEPROMPT guards accidental replacement instead.
+		ofn.Flags = OFN_PATHMUSTEXIST | OFN_OVERWRITEPROMPT | OFN_NOCHANGEDIR;
+		if (GetSaveFileNameW(&ofn) == TRUE)
 		{
-			return ofn.lpstrFile;
+			return std::filesystem::path(szFile).string();
 		}
 		return std::string();
 	}
@@ -67,7 +96,7 @@ namespace Waffle {
 	std::string FileDialogs::OpenFolder(const char* initialFolder)
 	{
 		std::string result = "";
-		CoInitializeEx(NULL, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
+		HRESULT hrCom = CoInitializeEx(NULL, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
 
 		IFileOpenDialog* pFileOpen = nullptr;
 		HRESULT hr = CoCreateInstance(CLSID_FileOpenDialog, NULL, CLSCTX_ALL, IID_IFileOpenDialog, reinterpret_cast<void**>(&pFileOpen));
@@ -114,6 +143,10 @@ namespace Waffle {
 			pFileOpen->Release();
 		}
 
+		// Balance the CoInitializeEx above (S_FALSE still requires it).
+		if (SUCCEEDED(hrCom))
+			CoUninitialize();
+
 		return result;
 	}
 
@@ -122,10 +155,11 @@ namespace Waffle {
 		std::filesystem::path absPath = std::filesystem::absolute(filepath);
 		std::string pathStr = absPath.string();
 
-		HINSTANCE res = ShellExecuteA(NULL, "open", "code", pathStr.c_str(), NULL, SW_SHOW);
+		std::string quoted = "\"" + pathStr + "\"";
+		HINSTANCE res = ShellExecuteA(NULL, "open", "code", quoted.c_str(), NULL, SW_SHOW);
 		if ((INT_PTR)res <= 32)
 		{
-			ShellExecuteA(NULL, "open", "notepad.exe", pathStr.c_str(), NULL, SW_SHOW);
+			ShellExecuteA(NULL, "open", "notepad.exe", quoted.c_str(), NULL, SW_SHOW);
 		}
 	}
 }

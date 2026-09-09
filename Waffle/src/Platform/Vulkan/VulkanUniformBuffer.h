@@ -22,6 +22,10 @@ namespace Waffle {
 		VulkanUniformBuffer(uint32_t size, uint32_t binding);
 		virtual ~VulkanUniformBuffer();
 
+		// Owns raw Vulkan handles - copying would double-destroy them.
+		VulkanUniformBuffer(const VulkanUniformBuffer&) = delete;
+		VulkanUniformBuffer& operator=(const VulkanUniformBuffer&) = delete;
+
 		virtual void SetData(const void* data, uint32_t size, uint32_t offset = 0) override;
 
 		VkDescriptorSet GetDescriptorSet() const { return m_DescriptorSet; }

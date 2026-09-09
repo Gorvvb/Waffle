@@ -17,15 +17,18 @@ namespace Waffle {
 		virtual void SetClearColor(const glm::vec4& color) override;
 		virtual void Clear() override;
 
-		virtual void DrawIndexed(const Ref<VertexArray>& vertexArray, uint32_t indexCount = 0) override;
-		virtual void DrawLines(const Ref<VertexArray>& vertexArray, uint32_t vertexCount) override;
+		virtual void DrawIndexed(const Ref<VertexArray>& vertexArray, uint32_t indexCount = 0, uint32_t indexOffset = 0) override;
+		virtual void DrawLines(const Ref<VertexArray>& vertexArray, uint32_t vertexCount, uint32_t vertexOffset = 0) override;
 		virtual void SetLineWidth(float width) override;
+
+		virtual uint32_t GetMaxTextureSlots() const override;
 
 	private:
 		void BindPipelineAndDraw(const Ref<VertexArray>& vertexArray,
 			VkPrimitiveTopology topology,
 			uint32_t count,
-			bool indexed);
+			bool indexed,
+			uint32_t offset = 0);
 	};
 
 } // namespace Waffle

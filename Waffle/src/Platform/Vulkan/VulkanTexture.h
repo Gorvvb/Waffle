@@ -19,6 +19,10 @@ namespace Waffle {
 		VulkanTexture2D(const std::string& path, TextureFilter filter);
 		virtual ~VulkanTexture2D();
 
+		// Owns raw Vulkan handles - copying would double-destroy them.
+		VulkanTexture2D(const VulkanTexture2D&) = delete;
+		VulkanTexture2D& operator=(const VulkanTexture2D&) = delete;
+
 		virtual uint32_t GetWidth()  const override { return m_Width;  }
 		virtual uint32_t GetHeight() const override { return m_Height; }
 
@@ -53,6 +57,10 @@ namespace Waffle {
 		VkImageView   m_ImageView   = VK_NULL_HANDLE;
 		VkSampler     m_Sampler     = VK_NULL_HANDLE;
 		VkFormat      m_Format      = VK_FORMAT_R8G8B8A8_UNORM;
+		// Current sampler mode - SetFilter is a full device stall, so it must
+		// early-out when callers (e.g. per-frame UI code) re-apply the same
+		// filter every frame.
+		TextureFilter m_CurrentFilter = TextureFilter::Linear;
 
 		// Pre-allocated descriptor set for use with ImGui and texture slots
 		VkDescriptorSet m_ImGuiDescriptorSet = VK_NULL_HANDLE;

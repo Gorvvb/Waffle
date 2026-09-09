@@ -28,6 +28,9 @@ namespace Waffle {
 	{
 		g_AssetPath = path;
 		m_CurrentDirectory = g_AssetPath;
+		// Thumbnails are keyed by absolute path - drop them on project switch
+		// or stale cross-project entries linger forever.
+		m_TextureCache.clear();
 	}
 
 	void ContentBrowserPanel::OnImGuiRender()
@@ -106,45 +109,54 @@ namespace Waffle {
 							}
 						}
 					}
-					else if (ext == ".prefab")
-					{
-						std::string pathStr = path.string();
-						auto it = m_TextureCache.find(pathStr);
-						if (it != m_TextureCache.end() && it->second)
+						else if (ext == ".prefab")
 						{
-							icon = it->second;
-						}
-						else
-						{
-							try {
-								YAML::Node data = YAML::LoadFile(pathStr);
-								auto entityNode = data["Entity"];
-								if (entityNode && entityNode["SpriteRendererComponent"] && entityNode["SpriteRendererComponent"]["TexturePath"])
-								{
-									std::string texRelPath = entityNode["SpriteRendererComponent"]["TexturePath"].as<std::string>();
-									if (!texRelPath.empty())
-										texRelPath = (g_AssetPath / texRelPath).string();
-
-									if (std::filesystem::exists(texRelPath))
+							std::string pathStr = path.string();
+							auto it = m_TextureCache.find(pathStr);
+							if (it != m_TextureCache.end() && it->second)
+							{
+								icon = it->second;
+							}
+							else
+							{
+								try {
+									YAML::Node data = YAML::LoadFile(pathStr);
+									auto entityNode = data["Entity"];
+									if (entityNode && entityNode["SpriteRendererComponent"] && entityNode["SpriteRendererComponent"]["TexturePath"])
 									{
-										Ref<Texture2D> loadedTex = Texture2D::Create(texRelPath, TextureFilter::Nearest);
-										if (loadedTex)
+										std::string texRelPath = entityNode["SpriteRendererComponent"]["TexturePath"].as<std::string>();
+										if (!texRelPath.empty())
+											texRelPath = (g_AssetPath / texRelPath).string();
+
+										if (std::filesystem::exists(texRelPath))
 										{
-											m_TextureCache[pathStr] = loadedTex;
-											icon = loadedTex;
+											Ref<Texture2D> loadedTex = Texture2D::Create(texRelPath, TextureFilter::Nearest);
+											if (loadedTex)
+											{
+												m_TextureCache[pathStr] = loadedTex;
+												icon = loadedTex;
+											}
 										}
 									}
+								} catch (...) {}
+
+								if (icon == m_FileIcon)
+								{
+									// Cache the "no thumbnail" result (as the
+									// file icon) so prefabs without a sprite
+									// don't re-parse YAML from disk EVERY frame.
+									m_TextureCache[pathStr] = m_FileIcon;
 								}
-							} catch (...) {}
+							}
 						}
-					}
 				}
 
 				ImVec2 iconSize = { thumbnailSize, thumbnailSize };
 				if (icon && icon != m_DirectoryIcon && icon != m_FileIcon)
 				{
-					icon->SetFilter(TextureFilter::Nearest); // reapply every frame before ImGui draws it
-
+					// Textures load with TextureFilter::Nearest already; the
+					// old per-frame SetFilter(Nearest) here stalled the whole
+					// Vulkan device once per thumbnail per frame.
 					float aspect = (float)icon->GetWidth() / (float)icon->GetHeight();
 					if (aspect > 0.0f)
 					{
@@ -312,7 +324,7 @@ namespace Waffle {
 					}
 				}
 
-				ImGui::TextWrapped(filenameString.c_str());
+				ImGui::TextWrapped("%s", filenameString.c_str());
 
 				ImGui::NextColumn();
 
@@ -406,9 +418,20 @@ namespace Waffle {
 
 			if (ImGui::Button("Delete", ImVec2(120, 0)))
 			{
-				if (std::filesystem::exists(m_ItemToDelete))
+				std::error_code ec;
+				if (std::filesystem::exists(m_ItemToDelete, ec))
 				{
-					std::filesystem::remove_all(m_ItemToDelete);
+					std::filesystem::remove_all(m_ItemToDelete, ec);
+					if (ec)
+						WF_CORE_ERROR("Failed to delete '{0}': {1}", m_ItemToDelete.string(), ec.message());
+					// Evict cached thumbnails under the deleted path.
+					for (auto it = m_TextureCache.begin(); it != m_TextureCache.end(); )
+					{
+						if (it->first.rfind(m_ItemToDelete.string(), 0) == 0)
+							it = m_TextureCache.erase(it);
+						else
+							++it;
+					}
 				}
 				if (m_SelectedItem == m_ItemToDelete)
 					m_SelectedItem.clear();
@@ -450,12 +473,38 @@ namespace Waffle {
 
 					if (newPath != m_ItemToRename)
 					{
-						std::filesystem::path oldPath = m_ItemToRename;
-						std::filesystem::rename(m_ItemToRename, newPath);
-
-						if (oldPath.extension() == ".waffle" && m_SceneRenamedCallback)
+						// Never silently destroy an existing file: MSVC's
+						// rename uses MOVEFILE_REPLACE_EXISTING.
+						if (std::filesystem::exists(newPath))
 						{
-							m_SceneRenamedCallback(oldPath, newPath);
+							WF_CORE_ERROR("Rename failed: '{0}' already exists", newPath.filename().string());
+						}
+						else
+						{
+							std::error_code ec;
+							std::filesystem::path oldPath = m_ItemToRename;
+							std::filesystem::rename(m_ItemToRename, newPath, ec);
+							if (ec)
+							{
+								// Invalid characters / locked file throw
+								// out of the ImGui render loop otherwise.
+								WF_CORE_ERROR("Rename failed: {0}", ec.message());
+							}
+							else
+							{
+								// Move cached thumbnail to the new key.
+								auto it = m_TextureCache.find(oldPath.string());
+								if (it != m_TextureCache.end())
+								{
+									m_TextureCache[newPath.string()] = it->second;
+									m_TextureCache.erase(it);
+								}
+
+								if (oldPath.extension() == ".waffle" && m_SceneRenamedCallback)
+								{
+									m_SceneRenamedCallback(oldPath, newPath);
+								}
+							}
 						}
 					}
 				}
@@ -624,8 +673,13 @@ namespace Waffle {
 		}
 
 
-		ImGui::SetCursorPos(ImVec2(0, 0));
-		ImGui::Dummy(ImVec2(0, 0));
+		// A zero-size Dummy can never be hovered, so the previous background
+		// drop target was unreachable dead code - use a real filler item that
+		// covers the remaining panel space.
+		ImVec2 remaining = ImGui::GetContentRegionAvail();
+		remaining.x = glm::max(remaining.x, 1.0f);
+		remaining.y = glm::max(remaining.y, 1.0f);
+		ImGui::Dummy(remaining);
 		if (ImGui::BeginDragDropTarget())
 		{
 			if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("SCENE_HIERARCHY_ENTITY"))

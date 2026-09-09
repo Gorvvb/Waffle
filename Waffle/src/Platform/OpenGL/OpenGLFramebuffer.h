@@ -19,6 +19,10 @@ namespace Waffle {
 		OpenGLFrameBuffer(const FramebufferSpecification& spec);
 		virtual ~OpenGLFrameBuffer() override;
 
+		// Owns raw GL handles - copying would double-delete them.
+		OpenGLFrameBuffer(const OpenGLFrameBuffer&) = delete;
+		OpenGLFrameBuffer& operator=(const OpenGLFrameBuffer&) = delete;
+
 		void Invalidate();
 
 		virtual void Bind() override;
@@ -29,7 +33,12 @@ namespace Waffle {
 
 		virtual void ClearAttachment(uint32_t attachmentIndex, int value) override;
 
-		virtual uint64_t GetColorAttachmentRendererID(uint32_t index = 0) const override { WF_CORE_ASSERT(index < m_ColorAttachments.size()); return m_ColorAttachments[index]; }
+		virtual uint64_t GetColorAttachmentRendererID(uint32_t index = 0) const override
+		{
+			if (index >= m_ColorAttachments.size())
+				return 0;
+			return m_ColorAttachments[index];
+		}
 
 		virtual const FramebufferSpecification& GetSpecification() const override { return m_Specification; }
 	};

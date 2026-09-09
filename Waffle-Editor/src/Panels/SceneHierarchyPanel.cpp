@@ -26,6 +26,9 @@ namespace Waffle {
 	{
 		m_Context = context;
 		m_SelectionContext = {};
+		// A stale m_RenamingEntity keeps the Delete-key handler disabled
+		// after a scene switch mid-rename.
+		m_RenamingEntity = {};
 	}
 
 	void SceneHierarchyPanel::OnImGuiRender()
@@ -173,7 +176,7 @@ namespace Waffle {
 		{
 			m_RenamingEntity = entity;
 			memset(m_RenameBuffer, 0, sizeof(m_RenameBuffer));
-			strcpy_s(m_RenameBuffer, sizeof(m_RenameBuffer), tag.c_str());
+			strncpy_s(m_RenameBuffer, sizeof(m_RenameBuffer), tag.c_str(), _TRUNCATE);
 		}
 
 		// Drag Source
@@ -250,7 +253,7 @@ namespace Waffle {
 			{
 				m_RenamingEntity = entity;
 				memset(m_RenameBuffer, 0, sizeof(m_RenameBuffer));
-				strcpy_s(m_RenameBuffer, sizeof(m_RenameBuffer), tag.c_str());
+				strncpy_s(m_RenameBuffer, sizeof(m_RenameBuffer), tag.c_str(), _TRUNCATE);
 			}
 			if (ImGui::MenuItem("Duplicate Entity"))
 				entityDuplicated = true;
@@ -354,7 +357,7 @@ namespace Waffle {
 
 			char buffer[256];
 			memset(buffer, 0, sizeof(buffer));
-			strcpy_s(buffer, sizeof(buffer), tag.c_str());
+			strncpy_s(buffer, sizeof(buffer), tag.c_str(), _TRUNCATE);
 
 			float buttonWidth = 120.0f;
 			float labelWidth = 35.0f;
@@ -533,18 +536,27 @@ namespace Waffle {
 					component.ScriptPaths.push_back("");
 				}
 
-				// Gather all .lua files from Assets directory for the dropdown
-				std::vector<std::filesystem::path> luaFiles;
-				if (std::filesystem::exists(g_AssetPath))
+				// Gather all .lua files for the dropdown from a CACHE -
+				// this ran a full recursive asset-tree walk per scripted
+				// entity PER FRAME. Refresh every 2 seconds.
+				static std::vector<std::filesystem::path> s_LuaFileCache;
+				static float s_LuaFileCacheAge = 1e9f;
+				s_LuaFileCacheAge += ImGui::GetIO().DeltaTime;
+				if (s_LuaFileCacheAge >= 2.0f && std::filesystem::exists(g_AssetPath))
 				{
-					for (auto& entry : std::filesystem::recursive_directory_iterator(g_AssetPath))
+					s_LuaFileCacheAge = 0.0f;
+					s_LuaFileCache.clear();
+					std::error_code itEc;
+					for (auto& entry : std::filesystem::recursive_directory_iterator(g_AssetPath, itEc))
 					{
-						if (entry.is_regular_file() && entry.path().extension() == ".lua")
+						if (itEc) break;
+						if (entry.is_regular_file(itEc) && entry.path().extension() == ".lua")
 						{
-							luaFiles.push_back(std::filesystem::relative(entry.path(), g_AssetPath));
+							s_LuaFileCache.push_back(std::filesystem::relative(entry.path(), g_AssetPath));
 						}
 					}
 				}
+				const std::vector<std::filesystem::path>& luaFiles = s_LuaFileCache;
 
 				for (size_t i = 0; i < component.ScriptPaths.size(); i++)
 				{
@@ -793,6 +805,8 @@ namespace Waffle {
 			}
 
 			ImGui::DragFloat2("Tiling Factor", glm::value_ptr(component.TilingFactor), 0.1f, 0.0f, 100.0f);
+			ImGui::DragInt("Sorting Layer", &component.SortingLayer, 1.0f, -100, 100);
+			ImGui::DragInt("Order in Layer", &component.SortingOrder, 1.0f, -1000, 1000);
 		});
 
 		DrawComponent<CircleRendererComponent>("Circle Renderer (2D)", entity, [](auto& component)
@@ -801,6 +815,8 @@ namespace Waffle {
 			UI::DrawColorEdit4("Color", component.Color);
 			UI::PropertyFloat("Thickness", component.Thickness, 0.025f, 0.0f, 1.0f);
 			UI::PropertyFloat("Fade", component.Fade, 0.00025f, 0.0f, 1.0f);
+			UI::PropertyInt("Sorting Layer", component.SortingLayer);
+			UI::PropertyInt("Order in Layer", component.SortingOrder);
 			UI::EndPropertyGrid();
 		});
 

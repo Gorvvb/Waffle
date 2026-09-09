@@ -22,6 +22,10 @@ namespace Waffle {
 		VulkanVertexBuffer(float* vertices, uint32_t size);
 		virtual ~VulkanVertexBuffer();
 
+		// Owns raw Vulkan handles - copying would double-destroy them.
+		VulkanVertexBuffer(const VulkanVertexBuffer&) = delete;
+		VulkanVertexBuffer& operator=(const VulkanVertexBuffer&) = delete;
+
 		virtual void Bind()   const override;
 		virtual void Unbind() const override;
 
@@ -51,6 +55,10 @@ namespace Waffle {
 	public:
 		VulkanIndexBuffer(uint32_t* indices, uint32_t count);
 		virtual ~VulkanIndexBuffer();
+
+		// Owns raw Vulkan handles - copying would double-destroy them.
+		VulkanIndexBuffer(const VulkanIndexBuffer&) = delete;
+		VulkanIndexBuffer& operator=(const VulkanIndexBuffer&) = delete;
 
 		virtual void Bind()   const override;
 		virtual void Unbind() const override;

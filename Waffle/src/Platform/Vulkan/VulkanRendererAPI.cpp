@@ -14,6 +14,18 @@ namespace Waffle {
 		// Nothing extra needed here.
 	}
 
+	uint32_t VulkanRendererAPI::GetMaxTextureSlots() const
+	{
+		auto* ctx = VulkanContext::Get();
+		if (!ctx || !ctx->GetPhysicalDevice())
+			return 32;
+
+		VkPhysicalDeviceProperties props{};
+		vkGetPhysicalDeviceProperties(ctx->GetPhysicalDevice(), &props);
+		// Vulkan guarantees at least 16 sampled images per stage.
+		return props.limits.maxPerStageDescriptorSampledImages;
+	}
+
 	void VulkanRendererAPI::SetViewPort(uint32_t x, uint32_t y, uint32_t width, uint32_t height)
 	{
 		auto* ctx = VulkanContext::Get();
@@ -67,18 +79,18 @@ namespace Waffle {
 	// -------------------------------------------------------------------------
 	// DrawIndexed
 	// -------------------------------------------------------------------------
-	void VulkanRendererAPI::DrawIndexed(const Ref<VertexArray>& vertexArray, uint32_t indexCount)
+	void VulkanRendererAPI::DrawIndexed(const Ref<VertexArray>& vertexArray, uint32_t indexCount, uint32_t indexOffset)
 	{
 		uint32_t count = indexCount ? indexCount : vertexArray->GetIndexBuffer()->GetCount();
-		BindPipelineAndDraw(vertexArray, VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST, count, true);
+		BindPipelineAndDraw(vertexArray, VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST, count, true, indexOffset);
 	}
 
 	// -------------------------------------------------------------------------
 	// DrawLines
 	// -------------------------------------------------------------------------
-	void VulkanRendererAPI::DrawLines(const Ref<VertexArray>& vertexArray, uint32_t vertexCount)
+	void VulkanRendererAPI::DrawLines(const Ref<VertexArray>& vertexArray, uint32_t vertexCount, uint32_t vertexOffset)
 	{
-		BindPipelineAndDraw(vertexArray, VK_PRIMITIVE_TOPOLOGY_LINE_LIST, vertexCount, false);
+		BindPipelineAndDraw(vertexArray, VK_PRIMITIVE_TOPOLOGY_LINE_LIST, vertexCount, false, vertexOffset);
 	}
 
 	// -------------------------------------------------------------------------
@@ -96,7 +108,8 @@ namespace Waffle {
 	void VulkanRendererAPI::BindPipelineAndDraw(const Ref<VertexArray>& vertexArray,
 		VkPrimitiveTopology topology,
 		uint32_t count,
-		bool indexed)
+		bool indexed,
+		uint32_t offset)
 	{
 		WF_PROFILE_FUNCTION();
 
@@ -166,11 +179,11 @@ namespace Waffle {
 			VkBuffer idxBuf = va->GetVkIndexBuffer();
 			WF_CORE_ASSERT(idxBuf != VK_NULL_HANDLE, "No index buffer bound!");
 			vkCmdBindIndexBuffer(cmd, idxBuf, 0, VK_INDEX_TYPE_UINT32);
-			vkCmdDrawIndexed(cmd, count, 1, 0, 0, 0);
+			vkCmdDrawIndexed(cmd, count, 1, offset, 0, 0);
 		}
 		else
 		{
-			vkCmdDraw(cmd, count, 1, 0, 0);
+			vkCmdDraw(cmd, count, 1, offset, 0);
 		}
 	}
 

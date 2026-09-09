@@ -225,6 +225,11 @@ namespace Waffle {
 
 			out << YAML::Key << "Primary" << YAML::Value << cameraComponent.Primary;
 			out << YAML::Key << "FixedAspectRatio" << YAML::Value << cameraComponent.FixedAspectRatio;
+			// Fixed-aspect cameras are never driven by OnViewportResize - the
+			// aspect must be persisted or it comes back as 0 (degenerate
+			// projection) after a reload.
+			if (cameraComponent.FixedAspectRatio)
+				out << YAML::Key << "AspectRatio" << YAML::Value << camera.GetAspectRatio();
 			out << YAML::Key << "BackgroundColor" << YAML::Value << cameraComponent.BackgroundColor;
 			out << YAML::Key << "BackgroundImagePath" << YAML::Value << GetNormalizedAssetPath(cameraComponent.BackgroundImagePath);
 			out << YAML::Key << "BackgroundTilingFactor" << YAML::Value << cameraComponent.BackgroundTilingFactor;
@@ -245,8 +250,9 @@ namespace Waffle {
 				out << YAML::Key << "TexturePath" << YAML::Value << GetNormalizedAssetPath(spriteRendererComponent.Texture->GetPath());
 
 			out << YAML::Key << "FilterMode" << YAML::Value << static_cast<int>(spriteRendererComponent.FilterMode);
-
 			out << YAML::Key << "TilingFactor" << YAML::Value << spriteRendererComponent.TilingFactor;
+			out << YAML::Key << "SortingLayer" << YAML::Value << spriteRendererComponent.SortingLayer;
+			out << YAML::Key << "SortingOrder" << YAML::Value << spriteRendererComponent.SortingOrder;
 
 			out << YAML::EndMap; // SpriteRendererComponent
 		}
@@ -260,6 +266,8 @@ namespace Waffle {
 			out << YAML::Key << "Color" << YAML::Value << circleRendererComponent.Color;
 			out << YAML::Key << "Thickness" << YAML::Value << circleRendererComponent.Thickness;
 			out << YAML::Key << "Fade" << YAML::Value << circleRendererComponent.Fade;
+			out << YAML::Key << "SortingLayer" << YAML::Value << circleRendererComponent.SortingLayer;
+			out << YAML::Key << "SortingOrder" << YAML::Value << circleRendererComponent.SortingOrder;
 
 			out << YAML::EndMap; // CircleRendererComponent
 		}
@@ -290,13 +298,22 @@ namespace Waffle {
 
 			if (!sc.Fields.empty())
 			{
+				// sc.Fields is an unordered_map - emit in sorted key order so
+				// the file is deterministic across loads and machines.
+				std::vector<const std::pair<const std::string, std::vector<LuaField>>*> sortedFields;
+				sortedFields.reserve(sc.Fields.size());
+				for (const auto& entry : sc.Fields)
+					sortedFields.push_back(&entry);
+				std::sort(sortedFields.begin(), sortedFields.end(),
+					[](auto* a, auto* b) { return a->first < b->first; });
+
 				out << YAML::Key << "PublicFields" << YAML::Value << YAML::BeginSeq;
-				for (const auto& [scriptPath, fieldList] : sc.Fields)
+				for (const auto* entry : sortedFields)
 				{
-					for (const auto& field : fieldList)
+					for (const auto& field : entry->second)
 					{
 						out << YAML::BeginMap;
-						out << YAML::Key << "Script" << YAML::Value << scriptPath;
+						out << YAML::Key << "Script" << YAML::Value << entry->first;
 						out << YAML::Key << "Name" << YAML::Value << field.Name;
 						out << YAML::Key << "Type" << YAML::Value << (int)field.Type;
 						out << YAML::Key << "UserModified" << YAML::Value << field.UserModified;
@@ -380,12 +397,22 @@ namespace Waffle {
 			auto& animator = entity.GetComponent<AnimatorComponent>();
 			out << YAML::Key << "CurrentClip" << YAML::Value << animator.CurrentClip;
 
+			// animator.Clips is an unordered_map - emit sorted for
+			// deterministic output.
+			std::vector<const std::pair<const std::string, AnimationClip>*> sortedClips;
+			sortedClips.reserve(animator.Clips.size());
+			for (const auto& clipEntry : animator.Clips)
+				sortedClips.push_back(&clipEntry);
+			std::sort(sortedClips.begin(), sortedClips.end(),
+				[](auto* a, auto* b) { return a->first < b->first; });
+
 			out << YAML::Key << "Clips" << YAML::Value << YAML::BeginSeq;
-			for (auto& [name, clip] : animator.Clips)
+			for (const auto* clipEntry : sortedClips)
 			{
+				const auto& clip = clipEntry->second;
 				out << YAML::BeginMap;
 				out << YAML::Key << "Name" << YAML::Value << clip.Name;
-				out << YAML::Key << "TexturePath" << YAML::Value << clip.TexturePath;
+				out << YAML::Key << "TexturePath" << YAML::Value << GetNormalizedAssetPath(clip.TexturePath);
 				out << YAML::Key << "Columns" << YAML::Value << clip.Columns;
 				out << YAML::Key << "Rows" << YAML::Value << clip.Rows;
 				out << YAML::Key << "StartFrame" << YAML::Value << clip.StartFrame;
@@ -395,7 +422,7 @@ namespace Waffle {
 
 				out << YAML::Key << "KeyframeImagePaths" << YAML::Value << YAML::BeginSeq;
 				for (auto& kfPath : clip.KeyframeImagePaths)
-					out << kfPath;
+					out << GetNormalizedAssetPath(kfPath);
 				out << YAML::EndSeq;
 
 				out << YAML::EndMap;
@@ -426,7 +453,7 @@ namespace Waffle {
 		out << YAML::EndMap; // Entity
 	}
 
-	void SceneSerializer::Serialize(const std::string& filepath)
+	bool SceneSerializer::Serialize(const std::string& filepath)
 	{
 		YAML::Emitter out;
 		out << YAML::BeginMap; // Scene
@@ -447,6 +474,12 @@ namespace Waffle {
 
 		std::ofstream fout(filepath);
 		fout << out.c_str();
+		if (!fout)
+		{
+			WF_CORE_ERROR("Failed to write scene file '{0}' (disk full or file locked?)", filepath);
+			return false;
+		}
+		return true;
 	}
 
 	void SceneSerializer::SerializeRuntime(const std::string& filepath)
@@ -470,23 +503,55 @@ namespace Waffle {
 				data = YAML::LoadFile(filepath);
 			}
 		}
-		catch (YAML::ParserException e)
+		catch (const YAML::Exception& e)
 		{
-			WF_CORE_ERROR("Failed to load .hazel file '{0}'\n     {1}", filepath, e.what());
+			// Catches ParserException, BadFile, InvalidNode, BadConversion -
+			// a missing/corrupt scene must fail to load, not kill the process.
+			WF_CORE_ERROR("Failed to load scene file '{0}'\n     {1}", filepath, e.what());
 			return false;
 		}
 
 		if (!data["Scene"])
 			return false;
 
-		std::string sceneName = data["Scene"].as<std::string>();
+		std::string sceneName;
+		try { sceneName = data["Scene"].as<std::string>(); }
+		catch (const YAML::Exception&) { sceneName = "Scene"; }
 		m_Scene->SetName(sceneName);
 		WF_CORE_TRACE("Deserializing scene '{0}'", sceneName);
 
 		auto entities = data["Entities"];
 		if (entities)
 		{
+			// The recursive fallback scan below walks the whole asset tree
+			// per unresolved script path - cache it once per deserialize.
+			std::unordered_map<std::string, std::filesystem::path> scriptScanCache;
+			bool scriptScanDone = false;
+			auto findScriptAnywhere = [&](const std::string& scriptPath) -> std::filesystem::path
+			{
+				if (!scriptScanDone)
+				{
+					scriptScanDone = true;
+					std::error_code ec;
+					for (auto& entry : std::filesystem::recursive_directory_iterator("Assets", ec))
+					{
+						if (entry.is_regular_file(ec))
+						{
+							std::string fn = entry.path().filename().string();
+							if (fn.size() >= 4 && fn.compare(fn.size() - 4, 4, ".lua") == 0)
+								scriptScanCache[fn] = entry.path();
+						}
+					}
+				}
+				auto it = scriptScanCache.find(scriptPath);
+				return (it != scriptScanCache.end()) ? it->second : std::filesystem::path();
+			};
+
 			for (auto entity : entities)
+			{
+			// One malformed entity (missing key, wrong type) must not take
+			// the whole load down - skip it and keep going.
+			try
 			{
 				uint64_t uuid = entity["Entity"].as<uint64_t>();
 
@@ -549,31 +614,26 @@ namespace Waffle {
 					}
 
 					// Scrape any scripts that had no saved fields yet, or pick up new fields added to the script
-					for (const auto& scriptPath : sc.ScriptPaths)
-					{
-						if (scriptPath.empty()) continue;
-
-						std::filesystem::path fullPath = scriptPath;
-						if (!std::filesystem::exists(fullPath))
-							fullPath = std::filesystem::path("Assets") / scriptPath;
-						if (!std::filesystem::exists(fullPath) && std::filesystem::exists("Assets"))
+						for (const auto& scriptPath : sc.ScriptPaths)
 						{
-							std::string searchName = std::filesystem::path(scriptPath).filename().string();
-							if (searchName.find(".lua") == std::string::npos)
-								searchName += ".lua";
-							for (auto& entry : std::filesystem::recursive_directory_iterator("Assets"))
-							{
-								if (entry.is_regular_file() && entry.path().filename().string() == searchName)
-								{
-									fullPath = entry.path();
-									break;
-								}
-							}
-						}
+							if (scriptPath.empty()) continue;
 
-						if (std::filesystem::exists(fullPath))
-							LuaScriptEngine::ScrapeFieldsFromScript(fullPath, scriptPath, sc);
-					}
+							std::filesystem::path fullPath = scriptPath;
+							if (!std::filesystem::exists(fullPath))
+								fullPath = std::filesystem::path("Assets") / scriptPath;
+							if (!std::filesystem::exists(fullPath) && std::filesystem::exists("Assets"))
+							{
+								std::string searchName = std::filesystem::path(scriptPath).filename().string();
+								if (searchName.find(".lua") == std::string::npos)
+									searchName += ".lua";
+								std::filesystem::path found = findScriptAnywhere(searchName);
+								if (!found.empty())
+									fullPath = found;
+							}
+
+							if (std::filesystem::exists(fullPath))
+								LuaScriptEngine::ScrapeFieldsFromScript(fullPath, scriptPath, sc);
+						}
 				}
 
 				auto lifetimeComponent = entity["LifetimeComponent"];
@@ -623,6 +683,19 @@ namespace Waffle {
 					if (cameraComponent["FixedAspectRatio"])
 						cc.FixedAspectRatio = cameraComponent["FixedAspectRatio"].as<bool>(false);
 
+					// Fixed-aspect cameras never receive OnViewportResize, so
+					// restore the persisted aspect (fall back to 16:9 for old
+					// files that never stored one) or the projection is
+					// degenerate (left == right == 0).
+					if (cc.FixedAspectRatio)
+					{
+						float aspect = cameraComponent["AspectRatio"]
+							? cameraComponent["AspectRatio"].as<float>(16.0f / 9.0f)
+							: 16.0f / 9.0f;
+						if (aspect > 0.0f)
+							cc.Camera.SetAspectRatio(aspect);
+					}
+
 					if (cameraComponent["BackgroundColor"])
 						cc.BackgroundColor = cameraComponent["BackgroundColor"].as<glm::vec4>();
 
@@ -658,7 +731,11 @@ namespace Waffle {
 						std::filesystem::path p(texturePath);
 						std::string ext = p.extension().string();
 						std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
-						if (ext == ".png" || ext == ".jpg" || ext == ".jpeg")
+						// stbi (and the editor) accept all of these - a
+						// narrower whitelist here silently dropped the path on
+						// the next save (TexturePath is only written when the
+						// texture loaded).
+						if (ext == ".png" || ext == ".jpg" || ext == ".jpeg" || ext == ".bmp" || ext == ".tga")
 					    {
 							std::filesystem::path resolved = ResolveTexturePath(texturePath);
 							src.Texture = Texture2D::Create(resolved.string(), src.FilterMode);
@@ -679,6 +756,10 @@ namespace Waffle {
 
 					if (spriteRendererComponent["TilingFactor"])
 						src.TilingFactor = spriteRendererComponent["TilingFactor"].as<glm::vec2>();
+					if (spriteRendererComponent["SortingLayer"])
+						src.SortingLayer = spriteRendererComponent["SortingLayer"].as<int>(0);
+					if (spriteRendererComponent["SortingOrder"])
+						src.SortingOrder = spriteRendererComponent["SortingOrder"].as<int>(0);
 				}
 
 				auto circleRendererComponent = entity["CircleRendererComponent"];
@@ -688,6 +769,10 @@ namespace Waffle {
 					crc.Color = circleRendererComponent["Color"].as<glm::vec4>();
 					crc.Thickness = circleRendererComponent["Thickness"].as<float>();
 					crc.Fade = circleRendererComponent["Fade"].as<float>();
+					if (circleRendererComponent["SortingLayer"])
+						crc.SortingLayer = circleRendererComponent["SortingLayer"].as<int>(0);
+					if (circleRendererComponent["SortingOrder"])
+						crc.SortingOrder = circleRendererComponent["SortingOrder"].as<int>(0);
 				}
 
 				auto rigidbody2DComponent = entity["Rigidbody2DComponent"];
@@ -788,6 +873,17 @@ namespace Waffle {
 					}
 				}
 			}
+			catch (const YAML::Exception& e)
+			{
+				WF_CORE_ERROR("Scene '{0}': skipping malformed entity entry: {1}",
+					filepath, e.what());
+			}
+			catch (const std::exception& e)
+			{
+				WF_CORE_ERROR("Scene '{0}': skipping entity entry: {1}",
+					filepath, e.what());
+			}
+			}
 		}
 
 		return true;
@@ -804,50 +900,61 @@ namespace Waffle {
 	{
 		if (!entity) return false;
 
+		// Depth-capped descendant collection - a hand-edited cycle in the
+		// hierarchy must not hang serialization.
+		std::vector<Entity> descendants;
+		std::vector<UUID> stack{ entity.GetUUID() };
+		int depth = 0;
+		while (!stack.empty() && depth < 256)
+		{
+			UUID current = stack.back();
+			stack.pop_back();
+			Entity e = entity.GetScene()->GetEntityByUUID(current);
+			if (!e || !e.HasComponent<RelationshipComponent>())
+				continue;
+			for (UUID childUUID : e.GetComponent<RelationshipComponent>().Children)
+			{
+				Entity child = entity.GetScene()->GetEntityByUUID(childUUID);
+				if (child)
+				{
+					descendants.push_back(child);
+					stack.push_back(childUUID);
+				}
+			}
+			depth++;
+		}
+
 		YAML::Emitter out;
 		out << YAML::BeginMap;
 		out << YAML::Key << "Prefab" << YAML::Value << entity.GetComponent<TagComponent>().Tag;
 		out << YAML::Key << "Entity" << YAML::Value;
 		SerializeEntity(out, entity);
+
+		// Embed descendants so the hierarchy survives the round trip.
+		if (!descendants.empty())
+		{
+			out << YAML::Key << "Entities" << YAML::Value << YAML::BeginSeq;
+			for (auto& child : descendants)
+				SerializeEntity(out, child);
+			out << YAML::EndSeq;
+		}
 		out << YAML::EndMap;
 
 		std::ofstream fout(filepath);
 		fout << out.c_str();
+		if (!fout)
+		{
+			WF_CORE_ERROR("Failed to write prefab file '{0}'", filepath);
+			return false;
+		}
 		return true;
 	}
 
-	Entity SceneSerializer::DeserializePrefabToEntity(Scene* scene, const std::string& filepath, float x, float y)
+	// Component parsing shared by the prefab root and its embedded children.
+	// RelationshipComponent is intentionally NOT handled here - hierarchy is
+	// rebuilt from the serialized UUIDs after all entities exist.
+	static void DeserializePrefabComponents(Entity& deserializedEntity, const YAML::Node& entityNode)
 	{
-		if (!scene) return {};
-
-		std::string content = VFS::ReadFileAsString(filepath);
-		if (content.empty())
-		{
-			WF_CORE_ERROR("Failed to load prefab file '{0}'", filepath);
-			return {};
-		}
-
-		YAML::Node data;
-		try
-		{
-			data = YAML::Load(content);
-		}
-		catch (...)
-		{
-			WF_CORE_ERROR("Failed to load prefab file '{0}'", filepath);
-			return {};
-		}
-
-		auto entityNode = data["Entity"];
-		if (!entityNode) return {};
-
-		std::string name = "Entity";
-		auto tagComponent = entityNode["TagComponent"];
-		if (tagComponent)
-			name = tagComponent["Tag"].as<std::string>();
-
-		Entity deserializedEntity = scene->CreateEntity(name);
-
 		auto transformComponent = entityNode["TransformComponent"];
 		if (transformComponent)
 		{
@@ -857,11 +964,58 @@ namespace Waffle {
 			tc.Scale = transformComponent["Scale"].as<glm::vec3>();
 		}
 
-		if (x != 0.0f || y != 0.0f)
+		auto cameraComponent = entityNode["CameraComponent"];
+		if (cameraComponent && cameraComponent.IsMap())
 		{
-			auto& tc = deserializedEntity.GetComponent<TransformComponent>();
-			tc.Translation.x = x;
-			tc.Translation.y = y;
+			auto& cc = deserializedEntity.AddComponent<CameraComponent>();
+
+			const auto& cameraProps = cameraComponent["Camera"];
+			if (cameraProps)
+			{
+				if (cameraProps["ProjectionType"])
+					cc.Camera.SetProjectionType(static_cast<SceneCamera::ProjectionType>(cameraProps["ProjectionType"].as<int>(1)));
+				if (cameraProps["PerspectiveFov"])
+					cc.Camera.SetPerspectiveVerticalFOV(cameraProps["PerspectiveFov"].as<float>(45.0f));
+				if (cameraProps["PerspectiveNear"])
+					cc.Camera.SetPerspectiveNearClip(cameraProps["PerspectiveNear"].as<float>(0.01f));
+				if (cameraProps["PerspectiveFar"])
+					cc.Camera.SetPerspectiveFarClip(cameraProps["PerspectiveFar"].as<float>(1000.0f));
+				if (cameraProps["OrthographicSize"])
+					cc.Camera.SetOrthographicSize(cameraProps["OrthographicSize"].as<float>(10.0f));
+				if (cameraProps["OrthographicNear"])
+					cc.Camera.SetOrthographicNearClip(cameraProps["OrthographicNear"].as<float>(-1.0f));
+				if (cameraProps["OrthographicFar"])
+					cc.Camera.SetOrthographicFarClip(cameraProps["OrthographicFar"].as<float>(1.0f));
+			}
+
+			if (cameraComponent["Primary"])
+				cc.Primary = cameraComponent["Primary"].as<bool>(true);
+			if (cameraComponent["FixedAspectRatio"])
+				cc.FixedAspectRatio = cameraComponent["FixedAspectRatio"].as<bool>(false);
+			if (cc.FixedAspectRatio)
+			{
+				float aspect = cameraComponent["AspectRatio"]
+					? cameraComponent["AspectRatio"].as<float>(16.0f / 9.0f)
+					: 16.0f / 9.0f;
+				if (aspect > 0.0f)
+					cc.Camera.SetAspectRatio(aspect);
+			}
+			if (cameraComponent["BackgroundColor"])
+				cc.BackgroundColor = cameraComponent["BackgroundColor"].as<glm::vec4>();
+			if (cameraComponent["BackgroundTilingFactor"])
+				cc.BackgroundTilingFactor = cameraComponent["BackgroundTilingFactor"].as<glm::vec2>();
+			if (cameraComponent["BackgroundFilterMode"])
+				cc.BackgroundFilterMode = static_cast<TextureFilter>(cameraComponent["BackgroundFilterMode"].as<int>());
+			if (cameraComponent["BackgroundImagePath"])
+			{
+				cc.BackgroundImagePath = cameraComponent["BackgroundImagePath"].as<std::string>();
+				if (!cc.BackgroundImagePath.empty())
+				{
+					std::filesystem::path resolved = ResolveTexturePath(cc.BackgroundImagePath);
+					if (std::filesystem::exists(resolved))
+						cc.BackgroundImage = Texture2D::Create(resolved.string(), cc.BackgroundFilterMode);
+				}
+			}
 		}
 
 		auto spriteRendererComponent = entityNode["SpriteRendererComponent"];
@@ -876,7 +1030,7 @@ namespace Waffle {
 				std::filesystem::path p(texturePath);
 				std::string ext = p.extension().string();
 				std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
-				if (ext == ".png" || ext == ".jpg" || ext == ".jpeg")
+				if (ext == ".png" || ext == ".jpg" || ext == ".jpeg" || ext == ".bmp" || ext == ".tga")
 				{
 					std::filesystem::path resolved = ResolveTexturePath(texturePath);
 					src.Texture = Texture2D::Create(resolved.string(), src.FilterMode);
@@ -896,6 +1050,10 @@ namespace Waffle {
 
 			if (spriteRendererComponent["TilingFactor"])
 				src.TilingFactor = spriteRendererComponent["TilingFactor"].as<glm::vec2>();
+			if (spriteRendererComponent["SortingLayer"])
+				src.SortingLayer = spriteRendererComponent["SortingLayer"].as<int>(0);
+			if (spriteRendererComponent["SortingOrder"])
+				src.SortingOrder = spriteRendererComponent["SortingOrder"].as<int>(0);
 		}
 
 		auto circleRendererComponent = entityNode["CircleRendererComponent"];
@@ -905,6 +1063,10 @@ namespace Waffle {
 			crc.Color = circleRendererComponent["Color"].as<glm::vec4>();
 			crc.Thickness = circleRendererComponent["Thickness"].as<float>();
 			crc.Fade = circleRendererComponent["Fade"].as<float>();
+			if (circleRendererComponent["SortingLayer"])
+				crc.SortingLayer = circleRendererComponent["SortingLayer"].as<int>(0);
+			if (circleRendererComponent["SortingOrder"])
+				crc.SortingOrder = circleRendererComponent["SortingOrder"].as<int>(0);
 		}
 
 		auto rigidbody2DComponent = entityNode["Rigidbody2DComponent"];
@@ -919,7 +1081,7 @@ namespace Waffle {
 
 		auto boxCollider2DComponent = entityNode["BoxCollider2DComponent"];
 		if (!boxCollider2DComponent)
-			boxCollider2DComponent = entityNode["RectCollider2DComponent"];
+			boxCollider2DComponent = entityNode["RectCollider2DComponent"]; // Backwards compatibility
 
 		if (boxCollider2DComponent)
 		{
@@ -972,10 +1134,53 @@ namespace Waffle {
 			lc.RemainingTime = lc.Lifetime;
 		}
 
+		auto animatorComponent = entityNode["AnimatorComponent"];
+		if (animatorComponent)
+		{
+			auto& animator = deserializedEntity.AddComponent<AnimatorComponent>();
+			animator.CurrentClip = animatorComponent["CurrentClip"].as<std::string>("");
+
+			auto clips = animatorComponent["Clips"];
+			if (clips)
+			{
+				for (auto clipNode : clips)
+				{
+					AnimationClip clip;
+					clip.Name = clipNode["Name"].as<std::string>("Default");
+					clip.TexturePath = clipNode["TexturePath"].as<std::string>("");
+					clip.Columns = clipNode["Columns"].as<int>(1);
+					clip.Rows = clipNode["Rows"].as<int>(1);
+					clip.StartFrame = clipNode["StartFrame"].as<int>(0);
+					clip.EndFrame = clipNode["EndFrame"].as<int>(0);
+					clip.FPS = clipNode["FPS"].as<float>(12.0f);
+					clip.Loop = clipNode["Loop"].as<bool>(true);
+
+					auto kfPaths = clipNode["KeyframeImagePaths"];
+					if (kfPaths)
+					{
+						for (auto kf : kfPaths)
+							clip.KeyframeImagePaths.push_back(kf.as<std::string>());
+					}
+
+					if (!clip.TexturePath.empty())
+					{
+						std::filesystem::path resolved = ResolveTexturePath(clip.TexturePath);
+						if (std::filesystem::exists(resolved))
+							clip.Texture = Texture2D::Create(resolved.string());
+					}
+					clip.RefreshSubTextures();
+					animator.Clips[clip.Name] = clip;
+				}
+			}
+		}
+
 		auto scriptComponent = entityNode["ScriptComponent"];
 		if (scriptComponent)
 		{
 			auto& sc = deserializedEntity.AddComponent<ScriptComponent>();
+			if (scriptComponent["ClassName"])
+				sc.ClassName = scriptComponent["ClassName"].as<std::string>();
+
 			if (scriptComponent["ScriptPath"])
 				sc.ScriptPaths.push_back(scriptComponent["ScriptPath"].as<std::string>());
 			if (scriptComponent["ScriptPaths"])
@@ -983,8 +1188,136 @@ namespace Waffle {
 				for (auto pNode : scriptComponent["ScriptPaths"])
 					sc.ScriptPaths.push_back(pNode.as<std::string>());
 			}
+			if (sc.ScriptPaths.empty() && !sc.ClassName.empty())
+				sc.ScriptPaths.push_back(sc.ClassName);
+
+			auto publicFields = scriptComponent["PublicFields"];
+			if (publicFields)
+			{
+				for (auto fieldNode : publicFields)
+				{
+					LuaField field;
+					std::string scriptPath = fieldNode["Script"].as<std::string>();
+					field.Name = fieldNode["Name"].as<std::string>();
+					field.Type = (LuaFieldType)fieldNode["Type"].as<int>();
+					field.UserModified = fieldNode["UserModified"] ? fieldNode["UserModified"].as<bool>() : false;
+					switch (field.Type)
+					{
+					case LuaFieldType::Float:  field.FloatVal = fieldNode["Value"].as<float>();       break;
+					case LuaFieldType::Int:    field.IntVal = fieldNode["Value"].as<int>();         break;
+					case LuaFieldType::Bool:   field.BoolVal = fieldNode["Value"].as<bool>();        break;
+					case LuaFieldType::String: field.StringVal = fieldNode["Value"].as<std::string>(); break;
+					}
+					sc.Fields[scriptPath].push_back(field);
+				}
+			}
+		}
+	}
+
+	Entity SceneSerializer::DeserializePrefabToEntity(Scene* scene, const std::string& filepath, float x, float y)
+	{
+		if (!scene) return {};
+
+		std::string content = VFS::ReadFileAsString(filepath);
+		if (content.empty())
+		{
+			WF_CORE_ERROR("Failed to load prefab file '{0}'", filepath);
+			return {};
 		}
 
-		return deserializedEntity;
+		YAML::Node data;
+		try
+		{
+			data = YAML::Load(content);
+		}
+		catch (const std::exception& e)
+		{
+			WF_CORE_ERROR("Failed to parse prefab file '{0}': {1}", filepath, e.what());
+			return {};
+		}
+
+		// prefab-internal UUID -> spawned Entity (hierarchy is rebuilt
+		// through this table after every entity exists).
+		std::unordered_map<uint64_t, Entity> spawned;
+		Entity root{};
+
+		// One malformed entry must not leak a half-built entity into the
+		// scene - destroy everything spawned so far on failure.
+		try
+		{
+			auto entityNode = data["Entity"];
+			if (!entityNode) return {};
+
+			std::string name = "Entity";
+			auto tagComponent = entityNode["TagComponent"];
+			if (tagComponent)
+				name = tagComponent["Tag"].as<std::string>();
+
+			root = scene->CreateEntity(name);
+			uint64_t rootUUID = entityNode["Entity"].as<uint64_t>(0);
+			if (rootUUID)
+				spawned[rootUUID] = root;
+
+			DeserializePrefabComponents(root, entityNode);
+
+			if (x != 0.0f || y != 0.0f)
+			{
+				auto& tc = root.GetComponent<TransformComponent>();
+				tc.Translation.x = x;
+				tc.Translation.y = y;
+			}
+
+			// Spawn embedded descendants with fresh UUIDs.
+			std::vector<std::pair<uint64_t, YAML::Node>> childNodes;
+			auto extraEntities = data["Entities"];
+			if (extraEntities)
+			{
+				for (auto en : extraEntities)
+				{
+					std::string childName = "Entity";
+					auto childTag = en["TagComponent"];
+					if (childTag)
+						childName = childTag["Tag"].as<std::string>();
+
+					Entity child = scene->CreateEntity(childName);
+					uint64_t childUUID = en["Entity"].as<uint64_t>(0);
+					if (childUUID)
+					{
+						spawned[childUUID] = child;
+						childNodes.push_back({ childUUID, en });
+					}
+					DeserializePrefabComponents(child, en);
+				}
+			}
+
+			// Rebuild the hierarchy: parent each child to the remapped parent
+			// of its serialized relationship. References to UUIDs outside the
+			// prefab (e.g. the root's original parent) are dropped.
+			for (auto& [childUUID, node] : childNodes)
+			{
+				auto relationship = node["RelationshipComponent"];
+				if (!relationship)
+					continue;
+				uint64_t parentUUID = relationship["Parent"].as<uint64_t>(0);
+				if (!parentUUID)
+					continue;
+				auto parentIt = spawned.find(parentUUID);
+				if (parentIt == spawned.end())
+					continue;
+				scene->ParentEntity(spawned[childUUID], parentIt->second);
+			}
+		}
+		catch (const std::exception& e)
+		{
+			WF_CORE_ERROR("Failed to deserialize prefab '{0}': {1}", filepath, e.what());
+			for (auto& [uuid, ent] : spawned)
+			{
+				if (ent)
+					scene->DestroyEntity(ent);
+			}
+			return {};
+		}
+
+		return root;
 	}
 }

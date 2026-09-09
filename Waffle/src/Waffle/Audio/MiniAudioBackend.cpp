@@ -166,7 +166,7 @@ namespace Waffle {
 		instance.Initialized = true;
 		instance.PausedByEngine = false;
 
-		ma_sound_set_volume(&instance.Sound, volume * m_Data->MasterVolume);
+		ma_sound_set_volume(&instance.Sound, volume); // master volume is applied by ma_engine_set_volume - multiplying here double-attenuated every sound
 		ma_sound_set_pitch(&instance.Sound, pitch);
 		ma_sound_set_looping(&instance.Sound, loop ? MA_TRUE : MA_FALSE);
 
@@ -298,7 +298,7 @@ namespace Waffle {
 		auto it = m_Data->Sounds.find(filepath);
 		if (it != m_Data->Sounds.end() && it->second.Initialized)
 		{
-			ma_sound_set_volume(&it->second.Sound, volume * m_Data->MasterVolume);
+			ma_sound_set_volume(&it->second.Sound, volume); // engine volume already carries master
 		}
 	}
 

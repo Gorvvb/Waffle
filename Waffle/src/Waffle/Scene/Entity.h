@@ -63,6 +63,7 @@ namespace Waffle {
 
 		UUID GetUUID() { return GetComponent<IDComponent>().ID; }
 		const std::string& GetName() { return GetComponent<TagComponent>().Tag; }
+		Scene* GetScene() { return m_Scene; }
 
 		bool operator==(const Entity& other) const
 		{
