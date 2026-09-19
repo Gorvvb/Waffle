@@ -1,5 +1,6 @@
 #include "EditorLayer.h"
 #include "ProjectExporter.h"
+#include "EditorTheme.h"
 
 #include "Waffle/Scene/SceneSerializer.h"
 #include "Waffle/Utils/PlatformUtils.h"
@@ -417,22 +418,29 @@ namespace Waffle {
 		{
 			float frameTimeMs = m_fps * 1000.0f;
 			float fps = m_fps > 0.0f ? 1.0f / m_fps : 0.0f;
-			ImGui::Text("Performance: %.1f FPS (%.2f ms)", fps, frameTimeMs);
-			ImGui::Separator();
 
+			// Performance headline: FPS tinted green when smooth, amber when
+			// dropping below 50.
+			ImVec4 fpsTint = (fps >= 50.0f) ? UI::Theme::Success : UI::Theme::Accent;
+			ImGui::TextColored(fpsTint, "%.1f FPS", fps);
+			ImGui::SameLine(0.0f, 8.0f);
+			ImGui::TextColored(UI::Theme::TextFaint, "%.2f ms", frameTimeMs);
+
+			UI::SectionLabel("SELECTION");
 			std::string hovName = "None";
 			if (m_HoveredEntity && m_HoveredEntity.HasComponent<TagComponent>())
 				hovName = m_HoveredEntity.GetComponent<TagComponent>().Tag;
-			ImGui::Text("Hovered Entity: %s", hovName.c_str());
-			ImGui::Separator();
+			ImGui::TextColored(UI::Theme::Text, "%s", hovName.c_str());
 
+			UI::SectionLabel("RENDERER");
 			auto stats = Renderer2D::GetStats();
-			ImGui::Text("Renderer2D Stats:");
-			ImGui::Text("  Draw Calls: %d", stats.DrawCalls);
-			ImGui::Text("  Quads: %d", stats.QuadCount);
-			ImGui::Text("  Culled Quads: %d", stats.CulledQuadCount);
-			ImGui::Text("  Vertices: %d", stats.GetTotalVertexCount());
-			ImGui::Text("  Indices: %d", stats.GetTotalIndexCount());
+			ImGui::PushStyleColor(ImGuiCol_Text, UI::Theme::TextDim);
+			ImGui::Text("Draw calls   %d", stats.DrawCalls);
+			ImGui::Text("Quads        %d", stats.QuadCount);
+			ImGui::Text("Culled       %d", stats.CulledQuadCount);
+			ImGui::Text("Vertices     %d", stats.GetTotalVertexCount());
+			ImGui::Text("Indices      %d", stats.GetTotalIndexCount());
+			ImGui::PopStyleColor();
 		}
 		ImGui::End();
 
@@ -704,8 +712,19 @@ namespace Waffle {
 
 	void EditorLayer::UI_Toolbar()
 	{
-		ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(6, 6));
-		ImGui::PushStyleVar(ImGuiStyleVar_ItemInnerSpacing, ImVec2(6, 6));
+	// Transport controls centered at the top of the viewport, amber accents
+	// while the game is running.
+	const float iconSize = 24.0f;
+	const float pad = 11.0f;
+	const float clusterW = 3.0f * (iconSize + pad) + pad;
+	const float availW = ImGui::GetWindowContentRegionMax().x;
+	const float startX = (availW - clusterW) * 0.5f;
+	const float startY = 36.0f;
+	const bool  playing = (m_SceneState == SceneState::Play);
+
+	ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(pad, pad));
+		ImGui::PushStyleVar(ImGuiStyleVar_ItemInnerSpacing, ImVec2(pad, pad));
+		ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 8.0f);
 		ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0, 0, 0, 0));
 
 		auto& colors = ImGui::GetStyle().Colors;
@@ -718,39 +737,35 @@ namespace Waffle {
 				colors[ImGuiCol_ButtonActive].y,
 				colors[ImGuiCol_ButtonActive].z, 0.5f));
 
-		const float    iconSize = 24.0f;
-		const float    padding = 10.0f;
-		const float    pillWidth = 3.0f * (iconSize + padding) + padding;
-		const float    availableWidth = ImGui::GetWindowContentRegionMax().x;
-		const float    startX = (availableWidth - pillWidth) * 0.5f;
-		ImVec4         tintColor = ImVec4(1, 1, 1, (bool)m_ActiveScene ? 1.0f : 0.5f);
+		ImVec4 tintIdle = ImVec4(1, 1, 1, (bool)m_ActiveScene ? 1.0f : 0.4f);
+		ImVec4 tintHot = ImVec4(0.914f, 0.608f, 0.176f, (bool)m_ActiveScene ? 1.0f : 0.5f);
 
-		ImGui::SetCursorPosY(38.0f);
+		ImGui::SetCursorPosY(startY);
 		ImGui::SetCursorPosX(startX);
 
-		// Play / Stop
-		Ref<Texture2D> playIcon =
-			(m_SceneState == SceneState::Edit) ? m_IconPlay : m_IconStop;
+		// Play / Stop (icon swaps with state; amber while running)
+		Ref<Texture2D> playIcon = (m_SceneState == SceneState::Edit) ? m_IconPlay : m_IconStop;
 		if (ImGui::ImageButton("##Play",
 			(ImTextureID)(uintptr_t)playIcon->GetRendererID(),
 			ImVec2(iconSize, iconSize), ImVec2(0, 0), ImVec2(1, 1),
-			ImVec4(0, 0, 0, 0), tintColor) && m_ActiveScene)
+			ImVec4(0, 0, 0, 0), playing ? tintHot : tintIdle) && m_ActiveScene)
 		{
 			if (m_SceneState == SceneState::Edit) OnScenePlay();
 			else                                  OnSceneStop();
 		}
 
-		// Pause
-		ImGui::SameLine(0.0f, padding);
+		// Pause (amber while paused)
+		ImGui::SameLine(0.0f, pad);
 		bool isPaused = m_ActiveScene ? m_ActiveScene->IsPaused() : false;
 		{
 			Ref<Texture2D> icon = (m_SceneState == SceneState::Play)
 				? (isPaused ? m_IconPlay : m_IconPause)
 				: m_IconPauseInactive;
+			ImVec4 pauseTint = (m_SceneState == SceneState::Play && isPaused) ? tintHot : tintIdle;
 			if (ImGui::ImageButton("##Pause",
 				(ImTextureID)(uintptr_t)icon->GetRendererID(),
 				ImVec2(iconSize, iconSize), ImVec2(0, 0), ImVec2(1, 1),
-				ImVec4(0, 0, 0, 0), tintColor) && m_ActiveScene)
+				ImVec4(0, 0, 0, 0), pauseTint) && m_ActiveScene)
 			{
 				WF_CORE_INFO("[AudioPauseLog] Editor Toolbar Pause Clicked! SceneState is {0}, Current isPaused: {1}", (int)m_SceneState, isPaused);
 				if (m_SceneState == SceneState::Play)
@@ -761,14 +776,14 @@ namespace Waffle {
 		}
 
 		// Step
-		ImGui::SameLine(0.0f, padding);
+		ImGui::SameLine(0.0f, pad);
 		{
 			Ref<Texture2D> icon = (m_SceneState == SceneState::Play)
 				? m_IconStep : m_IconStepInactive;
 			if (ImGui::ImageButton("##Step",
 				(ImTextureID)(uintptr_t)icon->GetRendererID(),
 				ImVec2(iconSize, iconSize), ImVec2(0, 0), ImVec2(1, 1),
-				ImVec4(0, 0, 0, 0), tintColor) && m_ActiveScene)
+				ImVec4(0, 0, 0, 0), tintIdle) && m_ActiveScene)
 			{
 				if (m_SceneState == SceneState::Play && isPaused)
 					m_ActiveScene->Step();
@@ -776,7 +791,7 @@ namespace Waffle {
 		}
 
 		ImGui::PopStyleColor(3);
-		ImGui::PopStyleVar(2);
+		ImGui::PopStyleVar(3);
 	}
 
 	void EditorLayer::UI_ProjectSettings()

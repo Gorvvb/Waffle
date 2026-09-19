@@ -273,13 +273,13 @@ namespace Waffle {
 		style.GrabMinSize = 10.0f;
 
 		// ── Rounding ─────────────────────────────────────────────────────
-		style.WindowRounding = 4.0f;
-		style.ChildRounding = 4.0f;
-		style.FrameRounding = 4.0f;
-		style.PopupRounding = 6.0f;
+		style.WindowRounding = 6.0f;
+		style.ChildRounding = 6.0f;
+		style.FrameRounding = 6.0f;
+		style.PopupRounding = 8.0f;
 		style.ScrollbarRounding = 9.0f;
 		style.GrabRounding = 3.0f;
-		style.TabRounding = 4.0f;
+		style.TabRounding = 6.0f;
 
 		// ── Borders & alignment ──────────────────────────────────────────
 		style.WindowBorderSize = 1.0f;
@@ -292,85 +292,85 @@ namespace Waffle {
 
 		auto& colors = style.Colors;
 
-		// Single accent used consistently for interactive highlights
-		const ImVec4 accent = ImVec4{ 0.24f, 0.44f, 0.85f, 1.0f };
-		const ImVec4 accentHovered = ImVec4{ 0.32f, 0.52f, 0.92f, 1.0f };
-		const ImVec4 accentActive = ImVec4{ 0.20f, 0.38f, 0.76f, 1.0f };
+		// Brand accent (waffle amber) + darker warm states.
+		const ImVec4 accent = ImVec4{ 0.914f, 0.608f, 0.176f, 1.0f };
+		const ImVec4 accentHovered = ImVec4{ 0.965f, 0.690f, 0.278f, 1.0f };
+		const ImVec4 accentActive = ImVec4{ 0.835f, 0.540f, 0.145f, 1.0f };
 
 		// ── Text ─────────────────────────────────────────────────────────
-		colors[ImGuiCol_Text] = ImVec4{ 0.92f, 0.93f, 0.94f, 1.0f };
-		colors[ImGuiCol_TextDisabled] = ImVec4{ 0.50f, 0.52f, 0.55f, 1.0f };
-		colors[ImGuiCol_TextSelectedBg] = ImVec4{ accent.x, accent.y, accent.z, 0.35f };
+		colors[ImGuiCol_Text] = ImVec4{ 0.91f, 0.92f, 0.94f, 1.0f };
+		colors[ImGuiCol_TextDisabled] = ImVec4{ 0.46f, 0.49f, 0.54f, 1.0f };
+		colors[ImGuiCol_TextSelectedBg] = ImVec4{ accent.x, accent.y, accent.z, 0.30f };
 
-		// ── Backgrounds ──────────────────────────────────────────────────
-		colors[ImGuiCol_WindowBg] = ImVec4{ 0.11f, 0.114f, 0.125f, 1.0f };
-		colors[ImGuiCol_ChildBg] = ImVec4{ 0.11f, 0.114f, 0.125f, 1.0f };
-		colors[ImGuiCol_PopupBg] = ImVec4{ 0.14f, 0.145f, 0.16f,  0.98f };
-		colors[ImGuiCol_MenuBarBg] = ImVec4{ 0.13f, 0.135f, 0.15f, 1.0f };
-		colors[ImGuiCol_Border] = ImVec4{ 0.22f, 0.23f,  0.25f,  0.6f };
+		// ── Backgrounds (charcoal, slightly blue-tinted) ──────────────────
+		colors[ImGuiCol_WindowBg] = ImVec4{ 0.086f, 0.094f, 0.114f, 1.0f };
+		colors[ImGuiCol_ChildBg] = ImVec4{ 0.102f, 0.110f, 0.133f, 1.0f };
+		colors[ImGuiCol_PopupBg] = ImVec4{ 0.118f, 0.128f, 0.153f, 0.985f };
+		colors[ImGuiCol_MenuBarBg] = ImVec4{ 0.070f, 0.076f, 0.092f, 1.0f };
+		colors[ImGuiCol_Border] = ImVec4{ 0.21f, 0.23f, 0.27f, 0.60f };
 		colors[ImGuiCol_BorderShadow] = ImVec4{ 0.0f, 0.0f, 0.0f, 0.0f };
-		colors[ImGuiCol_ModalWindowDimBg] = ImVec4{ 0.0f, 0.0f, 0.0f, 0.55f };
+		colors[ImGuiCol_ModalWindowDimBg] = ImVec4{ 0.02f, 0.02f, 0.04f, 0.60f };
 
 		// ── Headers (tree nodes, selectables, collapsing headers) ────────
-		colors[ImGuiCol_Header] = ImVec4{ 0.19f, 0.20f, 0.22f, 1.0f };
-		colors[ImGuiCol_HeaderHovered] = ImVec4{ 0.26f, 0.27f, 0.30f, 1.0f };
-		colors[ImGuiCol_HeaderActive] = ImVec4{ 0.22f, 0.23f, 0.25f, 1.0f };
+		colors[ImGuiCol_Header] = ImVec4{ 0.155f, 0.168f, 0.195f, 1.0f };
+		colors[ImGuiCol_HeaderHovered] = ImVec4{ 0.20f, 0.215f, 0.25f, 1.0f };
+		colors[ImGuiCol_HeaderActive] = ImVec4{ 0.235f, 0.25f, 0.29f, 1.0f };
 
 		// ── Buttons ──────────────────────────────────────────────────────
-		colors[ImGuiCol_Button] = ImVec4{ 0.18f, 0.19f, 0.21f, 1.0f };
-		colors[ImGuiCol_ButtonHovered] = ImVec4{ 0.26f, 0.27f, 0.30f, 1.0f };
-		colors[ImGuiCol_ButtonActive] = ImVec4{ 0.15f, 0.16f, 0.18f, 1.0f };
+		colors[ImGuiCol_Button] = ImVec4{ 0.155f, 0.168f, 0.195f, 1.0f };
+		colors[ImGuiCol_ButtonHovered] = ImVec4{ 0.21f, 0.225f, 0.26f, 1.0f };
+		colors[ImGuiCol_ButtonActive] = ImVec4{ 0.24f, 0.255f, 0.30f, 1.0f };
 
 		// ── Frames (inputs, drags, combos) ───────────────────────────────
-		colors[ImGuiCol_FrameBg] = ImVec4{ 0.16f, 0.17f, 0.19f, 1.0f };
-		colors[ImGuiCol_FrameBgHovered] = ImVec4{ 0.22f, 0.23f, 0.26f, 1.0f };
-		colors[ImGuiCol_FrameBgActive] = ImVec4{ 0.14f, 0.15f, 0.17f, 1.0f };
+		colors[ImGuiCol_FrameBg] = ImVec4{ 0.13f, 0.14f, 0.165f, 1.0f };
+		colors[ImGuiCol_FrameBgHovered] = ImVec4{ 0.18f, 0.195f, 0.225f, 1.0f };
+		colors[ImGuiCol_FrameBgActive] = ImVec4{ 0.20f, 0.215f, 0.25f, 1.0f };
 
 		// ── Widgets ──────────────────────────────────────────────────────
-		colors[ImGuiCol_CheckMark] = accentHovered;
+		colors[ImGuiCol_CheckMark] = accent;
 		colors[ImGuiCol_SliderGrab] = accent;
 		colors[ImGuiCol_SliderGrabActive] = accentHovered;
-		colors[ImGuiCol_DragDropTarget] = ImVec4{ accentHovered.x, accentHovered.y, accentHovered.z, 0.90f };
+		colors[ImGuiCol_DragDropTarget] = ImVec4{ accent.x, accent.y, accent.z, 0.90f };
 		colors[ImGuiCol_NavHighlight] = accent;
 		colors[ImGuiCol_NavWindowingHighlight] = ImVec4{ 1.0f, 1.0f, 1.0f, 0.7f };
 		colors[ImGuiCol_NavWindowingDimBg] = ImVec4{ 0.2f, 0.2f, 0.2f, 0.5f };
 
 		// ── Tabs ─────────────────────────────────────────────────────────
-		colors[ImGuiCol_Tab] = ImVec4{ 0.14f, 0.145f, 0.16f, 1.0f };
-		colors[ImGuiCol_TabHovered] = ImVec4{ 0.26f, 0.27f,  0.30f, 1.0f };
-		colors[ImGuiCol_TabActive] = ImVec4{ 0.20f, 0.21f,  0.23f, 1.0f };
-		colors[ImGuiCol_TabUnfocused] = ImVec4{ 0.14f, 0.145f, 0.16f, 1.0f };
-		colors[ImGuiCol_TabUnfocusedActive] = ImVec4{ 0.18f, 0.19f,  0.21f, 1.0f };
+		colors[ImGuiCol_Tab] = ImVec4{ 0.110f, 0.120f, 0.143f, 1.0f };
+		colors[ImGuiCol_TabHovered] = ImVec4{ 0.20f, 0.215f, 0.25f, 1.0f };
+		colors[ImGuiCol_TabActive] = ImVec4{ 0.165f, 0.178f, 0.207f, 1.0f };
+		colors[ImGuiCol_TabUnfocused] = ImVec4{ 0.110f, 0.120f, 0.143f, 1.0f };
+		colors[ImGuiCol_TabUnfocusedActive] = ImVec4{ 0.150f, 0.162f, 0.190f, 1.0f };
 
 		// ── Title bars ───────────────────────────────────────────────────
-		colors[ImGuiCol_TitleBg] = ImVec4{ 0.14f, 0.145f, 0.16f, 1.0f };
-		colors[ImGuiCol_TitleBgActive] = ImVec4{ 0.14f, 0.145f, 0.16f, 1.0f };
-		colors[ImGuiCol_TitleBgCollapsed] = ImVec4{ 0.14f, 0.145f, 0.16f, 1.0f };
+		colors[ImGuiCol_TitleBg] = ImVec4{ 0.070f, 0.076f, 0.092f, 1.0f };
+		colors[ImGuiCol_TitleBgActive] = ImVec4{ 0.078f, 0.085f, 0.102f, 1.0f };
+		colors[ImGuiCol_TitleBgCollapsed] = ImVec4{ 0.070f, 0.076f, 0.092f, 1.0f };
 
 		// ── Separators & resize grips ────────────────────────────────────
-		colors[ImGuiCol_Separator] = ImVec4{ 0.22f, 0.23f, 0.25f, 1.0f };
-		colors[ImGuiCol_SeparatorHovered] = ImVec4{ 0.35f, 0.37f, 0.42f, 1.0f };
+		colors[ImGuiCol_Separator] = ImVec4{ 0.21f, 0.23f, 0.27f, 0.8f };
+		colors[ImGuiCol_SeparatorHovered] = ImVec4{ 0.32f, 0.34f, 0.40f, 1.0f };
 		colors[ImGuiCol_SeparatorActive] = accentActive;
-		colors[ImGuiCol_ResizeGrip] = ImVec4{ 0.22f, 0.23f, 0.25f, 0.6f };
-		colors[ImGuiCol_ResizeGripHovered] = ImVec4{ 0.35f, 0.37f, 0.42f, 0.8f };
+		colors[ImGuiCol_ResizeGrip] = ImVec4{ 0.21f, 0.23f, 0.27f, 0.6f };
+		colors[ImGuiCol_ResizeGripHovered] = ImVec4{ 0.32f, 0.34f, 0.40f, 0.8f };
 		colors[ImGuiCol_ResizeGripActive] = accentActive;
 
 		// ── Scrollbars ───────────────────────────────────────────────────
-		colors[ImGuiCol_ScrollbarBg] = ImVec4{ 0.11f, 0.114f, 0.125f, 0.6f };
-		colors[ImGuiCol_ScrollbarGrab] = ImVec4{ 0.20f, 0.21f,  0.23f,  1.0f };
-		colors[ImGuiCol_ScrollbarGrabHovered] = ImVec4{ 0.28f, 0.29f,  0.32f,  1.0f };
-		colors[ImGuiCol_ScrollbarGrabActive] = ImVec4{ 0.35f, 0.37f,  0.40f,  1.0f };
+		colors[ImGuiCol_ScrollbarBg] = ImVec4{ 0.086f, 0.094f, 0.114f, 0.6f };
+		colors[ImGuiCol_ScrollbarGrab] = ImVec4{ 0.20f, 0.215f, 0.25f, 1.0f };
+		colors[ImGuiCol_ScrollbarGrabHovered] = ImVec4{ 0.28f, 0.30f, 0.35f, 1.0f };
+		colors[ImGuiCol_ScrollbarGrabActive] = accentActive;
 
 		// ── Docking ──────────────────────────────────────────────────────
-		colors[ImGuiCol_DockingPreview] = ImVec4{ accent.x, accent.y, accent.z, 0.55f };
-		colors[ImGuiCol_DockingEmptyBg] = ImVec4{ 0.09f, 0.09f, 0.10f, 1.0f };
+		colors[ImGuiCol_DockingPreview] = ImVec4{ accent.x, accent.y, accent.z, 0.45f };
+		colors[ImGuiCol_DockingEmptyBg] = ImVec4{ 0.065f, 0.070f, 0.085f, 1.0f };
 
 		// ── Tables & plots ───────────────────────────────────────────────
-		colors[ImGuiCol_TableHeaderBg] = ImVec4{ 0.16f, 0.17f, 0.19f, 1.0f };
-		colors[ImGuiCol_TableBorderStrong] = ImVec4{ 0.22f, 0.23f, 0.25f, 1.0f };
-		colors[ImGuiCol_TableBorderLight] = ImVec4{ 0.18f, 0.19f, 0.21f, 1.0f };
+		colors[ImGuiCol_TableHeaderBg] = ImVec4{ 0.13f, 0.14f, 0.165f, 1.0f };
+		colors[ImGuiCol_TableBorderStrong] = ImVec4{ 0.21f, 0.23f, 0.27f, 1.0f };
+		colors[ImGuiCol_TableBorderLight] = ImVec4{ 0.17f, 0.185f, 0.215f, 1.0f };
 		colors[ImGuiCol_TableRowBg] = ImVec4{ 0.0f, 0.0f, 0.0f, 0.0f };
-		colors[ImGuiCol_TableRowBgAlt] = ImVec4{ 1.0f, 1.0f, 1.0f, 0.03f };
+		colors[ImGuiCol_TableRowBgAlt] = ImVec4{ 1.0f, 1.0f, 1.0f, 0.025f };
 		colors[ImGuiCol_PlotLines] = accentHovered;
 		colors[ImGuiCol_PlotLinesHovered] = ImVec4{ 0.45f, 0.62f, 1.0f, 1.0f };
 		colors[ImGuiCol_PlotHistogram] = accent;
