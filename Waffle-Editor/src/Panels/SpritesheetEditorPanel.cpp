@@ -1,5 +1,6 @@
 #include "wfpch.h"
 #include "SpritesheetEditorPanel.h"
+#include "../EditorTheme.h"
 #include "Waffle/Utils/PlatformUtils.h"
 #include "Waffle/Core/Log.h"
 #include "Waffle/ImGUI/ImGuiLayer.h"
@@ -255,65 +256,101 @@ namespace Waffle {
         ImGui::Begin("Spritesheet Editor");
 
         // ── Top toolbar ───────────────────────────────────────────────────────
-        if (ImGui::Button("Browse..."))
         {
-            const std::string file = FileDialogs::OpenFile(
-                "Spritesheet Files (*.png *.jpg *.jpeg *.spritesheet)\0*.png;*.jpg;*.jpeg;*.spritesheet\0All Files (*.*)\0*.*\0");
-            if (!file.empty())
+            if (UI::GhostButton("Open...", ImVec2(92.0f, 31.0f)))
             {
-                std::string ext = std::filesystem::path(file).extension().string();
-                for (auto& c : ext) c = (char)tolower(c);
-                if (ext == ".spritesheet")
-                    LoadSpritesheetAsset(file);
-                else
-                    LoadTexture(file);
+                const std::string file = FileDialogs::OpenFile(
+                    "Spritesheet Files (*.png *.jpg *.jpeg *.spritesheet) *.png;*.jpg;*.jpeg;*.spritesheet All Files (*.*) *.* ");
+                if (!file.empty())
+                {
+                    std::string ext = std::filesystem::path(file).extension().string();
+                    for (auto& c : ext) c = (char)tolower(c);
+                    if (ext == ".spritesheet")
+                        LoadSpritesheetAsset(file);
+                    else
+                        LoadTexture(file);
+                }
+            }
+
+            if (m_Texture)
+            {
+                ImGui::SameLine(0.0f, 10.0f);
+                ImGui::TextColored(UI::Theme::Text, "%s", m_TexturePath.filename().string().c_str());
+                ImGui::SameLine(0.0f, 6.0f);
+                ImGui::TextColored(UI::Theme::TextFaint, "%dx%d", m_Texture->GetWidth(), m_Texture->GetHeight());
+            }
+            else
+            {
+                ImGui::SameLine(0.0f, 10.0f);
+                ImGui::TextColored(UI::Theme::TextFaint, "no texture loaded - drop a PNG here or use Open");
+            }
+
+            // Right-aligned actions.
+            ImGui::SameLine(ImGui::GetCursorPosX() + ImGui::GetContentRegionAvail().x - 200.0f);
+            if (UI::GhostButton("Clear", ImVec2(84.0f, 31.0f)))
+            {
+                m_Regions.clear();
+                m_Groups.clear();
+                m_SelectedRegionIndex = -1;
+                m_SelectedGroupIndex = -1;
+            }
+            ImGui::SameLine(0.0f, 8.0f);
+            ImGui::BeginDisabled(!m_Texture);
+            if (UI::AccentButton("Save Asset", ImVec2(106.0f, 31.0f)))
+                SaveSpritesheetAsset();
+            ImGui::EndDisabled();
+        }
+
+        ImGui::Spacing();
+
+        // ── Grid slicing row ───────────────────────────────────────────────────
+        {
+            ImGui::TextColored(UI::Theme::TextDim, "Grid");
+            ImGui::SameLine(0.0f, 10.0f);
+
+            ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(6.0f, 6.0f));
+            ImGui::SetNextItemWidth(64.0f);
+            ImGui::DragInt("Cols", &m_GridCols, 1, 1, 64); // re-slice via "Auto Slice" - dragging must not wipe manual regions
+            ImGui::SameLine();
+            ImGui::SetNextItemWidth(64.0f);
+            ImGui::DragInt("Rows", &m_GridRows, 1, 1, 64);
+            ImGui::SameLine();
+            ImGui::SetNextItemWidth(64.0f);
+            ImGui::DragInt("PadX", &m_PaddingX, 1, 0, 64);
+            ImGui::SameLine();
+            ImGui::SetNextItemWidth(64.0f);
+            ImGui::DragInt("PadY", &m_PaddingY, 1, 0, 64);
+            ImGui::SameLine(0.0f, 8.0f);
+            if (UI::AccentButton("Auto Slice", ImVec2(104.0f, 28.0f)))
+                AutoSliceGrid();
+            ImGui::PopStyleVar();
+
+            // Zoom cluster, right-aligned.
+            ImGui::SameLine(ImGui::GetCursorPosX() + ImGui::GetContentRegionAvail().x - 270.0f);
+            ImGui::TextColored(UI::Theme::TextDim, "Zoom");
+            ImGui::SameLine(0.0f, 8.0f);
+            if (UI::GhostButton("-", ImVec2(30.0f, 28.0f)))
+                m_CanvasZoom = std::max(0.1f, m_CanvasZoom / 1.25f);
+            ImGui::SameLine(0.0f, 4.0f);
+            char zoomLabel[32];
+            snprintf(zoomLabel, sizeof(zoomLabel), "%.2fx", m_CanvasZoom);
+            ImGui::SetNextItemWidth(64.0f);
+            if (ImGui::DragFloat("##Zoom", &m_CanvasZoom, 0.05f, 0.1f, 8.0f, "%.2fx"))
+                m_CanvasZoom = std::max(0.1f, std::min(m_CanvasZoom, 8.0f));
+            ImGui::SameLine(0.0f, 4.0f);
+            if (UI::GhostButton("+", ImVec2(30.0f, 28.0f)))
+                m_CanvasZoom = std::min(8.0f, m_CanvasZoom * 1.25f);
+            ImGui::SameLine(0.0f, 6.0f);
+            if (UI::GhostButton("Fit", ImVec2(46.0f, 28.0f)))
+            {
+                m_CanvasZoom = 1.0f;
+                m_CanvasOffset = { 0.0f, 0.0f };
             }
         }
 
-        ImGui::SameLine();
-        if (m_Texture)
-            ImGui::TextDisabled("%s  (%dx%d)",
-                m_TexturePath.filename().string().c_str(),
-                m_Texture->GetWidth(), m_Texture->GetHeight());
-        else
-            ImGui::TextDisabled("No texture loaded - drag a PNG here or use Browse");
-
-        ImGui::SameLine(ImGui::GetContentRegionAvail().x - 90.0f);
-        if (ImGui::Button("Save Asset") && m_Texture)
-            SaveSpritesheetAsset();
-
+        ImGui::Spacing();
         ImGui::Separator();
-
-        // ── Grid slice controls ───────────────────────────────────────────────
-        ImGui::SetNextItemWidth(60);
-        ImGui::DragInt("Cols", &m_GridCols, 1, 1, 64); // re-slice via "Auto Slice" - dragging must not wipe manual regions
-        ImGui::SameLine();
-        ImGui::SetNextItemWidth(60);
-        ImGui::DragInt("Rows", &m_GridRows, 1, 1, 64);
-        ImGui::SameLine();
-        ImGui::SetNextItemWidth(60);
-        ImGui::DragInt("PadX", &m_PaddingX, 1, 0, 64);
-        ImGui::SameLine();
-        ImGui::SetNextItemWidth(60);
-        ImGui::DragInt("PadY", &m_PaddingY, 1, 0, 64);
-        ImGui::SameLine();
-        if (ImGui::Button("Auto Slice")) AutoSliceGrid();
-        ImGui::SameLine();
-        if (ImGui::Button("Clear All"))
-        {
-            m_Regions.clear();
-            m_Groups.clear();
-            m_SelectedRegionIndex = -1;
-            m_SelectedGroupIndex = -1;
-        }
-        ImGui::SameLine();
-        ImGui::SetNextItemWidth(90);
-        if (ImGui::DragFloat("Zoom", &m_CanvasZoom, 0.05f, 0.1f, 8.0f, "%.2fx"))
-            m_CanvasZoom = std::max(0.1f, std::min(m_CanvasZoom, 8.0f));
-        ImGui::SameLine();
-        ImGui::TextDisabled("(Scroll=zoom  MMB=pan)");
-
-        ImGui::Separator();
+        ImGui::Spacing();
 
         // ── Layout sizes ──────────────────────────────────────────────────────
         const float availH = ImGui::GetContentRegionAvail().y;
@@ -604,13 +641,14 @@ namespace Waffle {
         ImGui::SameLine();
         ImGui::BeginChild("##Inspector", ImVec2(inspW, availH), true);
 
-        ImGui::TextDisabled("Regions  (%zu)", m_Regions.size());
-        ImGui::SameLine();
+        char regionsLabel[64];
+        snprintf(regionsLabel, sizeof(regionsLabel), "REGIONS   %zu", m_Regions.size());
+        UI::SectionLabel(regionsLabel);
 
         const float texWInsp = m_Texture ? (float)m_Texture->GetWidth() : 4096.0f;
         const float texHInsp = m_Texture ? (float)m_Texture->GetHeight() : 4096.0f;
 
-        if (ImGui::SmallButton("+ Manual"))
+        if (UI::GhostButton("+ Manual Region", ImVec2(-1.0f, 28.0f)))
         {
             SpriteRegion reg;
             reg.Name = "Region_" + std::to_string(m_Regions.size());
@@ -621,19 +659,30 @@ namespace Waffle {
         }
 
         // Region list
-        ImGui::BeginChild("##RegionList", ImVec2(0, 180.0f), true);
+        ImGui::BeginChild("##RegionList", ImVec2(0, 180.0f), ImGuiChildFlags_Borders);
+        ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(6.0f, 5.0f));
+        ImGui::PushStyleVar(ImGuiStyleVar_SelectableTextAlign, ImVec2(0.0f, 0.5f));
         for (int i = 0; i < (int)m_Regions.size(); i++)
         {
             ImGui::PushID(i);
             const bool sel = (m_SelectedRegionIndex == i);
+            if (sel)
+            {
+                ImGui::PushStyleColor(ImGuiCol_Header, UI::Theme::AccentWash);
+                ImGui::PushStyleColor(ImGuiCol_HeaderHovered, UI::Theme::AccentWash);
+                ImGui::PushStyleColor(ImGuiCol_HeaderActive, UI::Theme::AccentWash);
+            }
             const std::string lbl =
                 m_Regions[i].Name
                 + "  [" + std::to_string((int)m_Regions[i].Min.x)
                 + "," + std::to_string((int)m_Regions[i].Min.y) + "]";
             if (ImGui::Selectable(lbl.c_str(), sel))
                 m_SelectedRegionIndex = i;
+            if (sel)
+                ImGui::PopStyleColor(3);
             ImGui::PopID();
         }
+        ImGui::PopStyleVar(2);
         ImGui::EndChild();
 
         // Selected region details
@@ -642,8 +691,8 @@ namespace Waffle {
         {
             auto& reg = m_Regions[m_SelectedRegionIndex];
 
-            ImGui::Separator();
-            ImGui::Text("Region Properties");
+            ImGui::Spacing();
+            UI::SectionLabel("REGION PROPERTIES");
 
             char nameBuf[64];
             strncpy_s(nameBuf, sizeof(nameBuf), reg.Name.c_str(), _TRUNCATE);
@@ -687,17 +736,17 @@ namespace Waffle {
                 }
             }
 
-            if (ImGui::Button("Delete##reg", ImVec2(-1, 0)))
+            if (UI::DangerButton("Delete Region", ImVec2(-1.0f, 30.0f)))
             {
                 RemoveRegion(m_SelectedRegionIndex);
             }
         }
 
         // ── Groups ────────────────────────────────────────────────────────────
-        ImGui::Separator();
-        ImGui::TextDisabled("Groups  (%zu)", m_Groups.size());
-        ImGui::SameLine();
-        if (ImGui::SmallButton("+ Group"))
+        char groupsLabel[64];
+        snprintf(groupsLabel, sizeof(groupsLabel), "GROUPS   %zu", m_Groups.size());
+        UI::SectionLabel(groupsLabel);
+        if (UI::GhostButton("+ Group", ImVec2(-1.0f, 28.0f)))
         {
             SpriteGroup group;
             group.Name = "Group_" + std::to_string(m_Groups.size());
@@ -705,17 +754,27 @@ namespace Waffle {
             m_SelectedGroupIndex = (int)m_Groups.size() - 1;
         }
 
-        ImGui::BeginChild("##GroupList", ImVec2(0, 120.0f), true);
+        ImGui::BeginChild("##GroupList", ImVec2(0, 120.0f), ImGuiChildFlags_Borders);
+        ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(6.0f, 5.0f));
         for (int g = 0; g < (int)m_Groups.size(); g++)
         {
             ImGui::PushID(1000 + g);
             const bool sel = (m_SelectedGroupIndex == g);
+            if (sel)
+            {
+                ImGui::PushStyleColor(ImGuiCol_Header, UI::Theme::AccentWash);
+                ImGui::PushStyleColor(ImGuiCol_HeaderHovered, UI::Theme::AccentWash);
+                ImGui::PushStyleColor(ImGuiCol_HeaderActive, UI::Theme::AccentWash);
+            }
             const std::string lbl = m_Groups[g].Name
                 + "  (" + std::to_string(m_Groups[g].RegionIndices.size()) + ")";
             if (ImGui::Selectable(lbl.c_str(), sel))
                 m_SelectedGroupIndex = sel ? -1 : g; // click again to deselect
+            if (sel)
+                ImGui::PopStyleColor(3);
             ImGui::PopID();
         }
+        ImGui::PopStyleVar();
         ImGui::EndChild();
 
         // Selected group details
@@ -724,7 +783,7 @@ namespace Waffle {
         {
             auto& group = m_Groups[m_SelectedGroupIndex];
 
-            ImGui::Text("Group Properties");
+            UI::SectionLabel("GROUP PROPERTIES");
 
             char groupNameBuf[64];
             strncpy_s(groupNameBuf, sizeof(groupNameBuf), group.Name.c_str(), _TRUNCATE);
@@ -736,7 +795,7 @@ namespace Waffle {
                 std::find(group.RegionIndices.begin(), group.RegionIndices.end(),
                     m_SelectedRegionIndex) == group.RegionIndices.end();
             ImGui::BeginDisabled(!canAdd);
-            if (ImGui::Button("Add Selected Region", ImVec2(-1, 0)))
+            if (UI::GhostButton("Add Selected Region", ImVec2(-1.0f, 28.0f)))
                 group.RegionIndices.push_back(m_SelectedRegionIndex);
             ImGui::EndDisabled();
 
@@ -761,7 +820,7 @@ namespace Waffle {
                 group.RegionIndices.erase(group.RegionIndices.begin() + removeAt);
 
             ImGui::Spacing();
-            if (ImGui::Button("Delete Group", ImVec2(-1, 0)))
+            if (UI::DangerButton("Delete Group", ImVec2(-1.0f, 30.0f)))
             {
                 m_Groups.erase(m_Groups.begin() + m_SelectedGroupIndex);
                 m_SelectedGroupIndex = -1;
