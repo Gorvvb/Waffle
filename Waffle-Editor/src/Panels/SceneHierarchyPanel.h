@@ -31,5 +31,9 @@ namespace Waffle {
 
 		void DrawEntityNode(Entity entity);
 		void DrawComponents(Entity entity);
+
+		// Creates a UI element entity (RectTransform + mirrored transform),
+		// parented to the scene's UI canvas when one exists.
+		Entity CreateUIElement(const std::string& name);
 	};
 }

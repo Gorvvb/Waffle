@@ -35,22 +35,26 @@ namespace Waffle {
 		static float GetLineWidth();
 		static void SetLineWidth(float width);
 
-		static void DrawSprite(const glm::mat4& transform, SpriteRendererComponent& src, int entityID = -1);
-		static void DrawCircle(const glm::mat4& transform, const glm::vec4& color, float thickness = 1.0f, float fade = 0.005f, int entityID = -1);
+	static void DrawSprite(const glm::mat4& transform, SpriteRendererComponent& src, int entityID = -1);
+	static void DrawCircle(const glm::mat4& transform, const glm::vec4& color, float thickness = 1.0f, float fade = 0.005f, int entityID = -1);
 
-		static void DrawRect(const glm::vec3& position, const glm::vec2& size, const glm::vec4& color, int entityID = -1);
-		static void DrawRect(const glm::mat4& transform, const glm::vec4& color, int entityID = -1);
-		static void DrawRoundedRect(const glm::mat4& transform, const glm::vec4& color, float cornerRadius = 0.06f, int cornerSegments = 4, int entityID = -1);
+	static void DrawRect(const glm::vec3& position, const glm::vec2& size, const glm::vec4& color, int entityID = -1);
+	static void DrawRect(const glm::mat4& transform, const glm::vec4& color, int entityID = -1);
+	static void DrawRoundedRect(const glm::mat4& transform, const glm::vec4& color, float cornerRadius = 0.06f, int cornerSegments = 4, int entityID = -1);
 
-		static void DrawQuad(const glm::vec2& position, const glm::vec2& size, const glm::vec4& color);
-		static void DrawQuad(const glm::vec3& position, const glm::vec2& size, const glm::vec4& color);
-		static void DrawQuad(const glm::vec2& position, const glm::vec2& size, const Ref<Texture2D>& texture, const glm::vec2& tilingFactor = glm::vec2(1.0f), const glm::vec4& tintColor = glm::vec4(1.0f));
-		static void DrawQuad(const glm::vec3& position, const glm::vec2& size, const Ref<Texture2D>& texture, const glm::vec2& tilingFactor = glm::vec2(1.0f), const glm::vec4& tintColor = glm::vec4(1.0f));
+	static void DrawQuad(const glm::vec2& position, const glm::vec2& size, const glm::vec4& color);
+	static void DrawQuad(const glm::vec3& position, const glm::vec2& size, const glm::vec4& color);
+	static void DrawQuad(const glm::vec2& position, const glm::vec2& size, const Ref<Texture2D>& texture, const glm::vec2& tilingFactor = glm::vec2(1.0f), const glm::vec4& tintColor = glm::vec4(1.0f));
+	static void DrawQuad(const glm::vec3& position, const glm::vec2& size, const Ref<Texture2D>& texture, const glm::vec2& tilingFactor = glm::vec2(1.0f), const glm::vec4& tintColor = glm::vec4(1.0f));
 
-		static void DrawQuad(const glm::mat4& transform, const glm::vec4& color, int entityID = -1);
-		static void DrawRoundedQuad(const glm::mat4& transform, const glm::vec4& color, float cornerRadius = 0.04f, int cornerSegments = 4, int entityID = -1);
-		static void DrawQuad(const glm::mat4& transform, const Ref<Texture2D>& texture, const glm::vec2& tilingFactor = glm::vec2(1.0f), const glm::vec4& tintColor = glm::vec4(1.0f), int entityID = -1);
-		static void DrawQuad(const glm::mat4& transform, const Ref<SubTexture2D>& subTexture, const glm::vec2& tilingFactor = glm::vec2(1.0f), const glm::vec4& tintColor = glm::vec4(1.0f), int entityID = -1);
+	static void DrawQuad(const glm::mat4& transform, const glm::vec4& color, int entityID = -1);
+	static void DrawRoundedQuad(const glm::mat4& transform, const glm::vec4& color, float cornerRadius = 0.04f, int cornerSegments = 4, int entityID = -1);
+	static void DrawQuad(const glm::mat4& transform, const Ref<Texture2D>& texture, const glm::vec2& tilingFactor = glm::vec2(1.0f), const glm::vec4& tintColor = glm::vec4(1.0f), int entityID = -1, SpriteAspectMode aspectMode = SpriteAspectMode::Stretch);
+	static void DrawQuad(const glm::mat4& transform, const Ref<SubTexture2D>& subTexture, const glm::vec2& tilingFactor = glm::vec2(1.0f), const glm::vec4& tintColor = glm::vec4(1.0f), int entityID = -1, SpriteAspectMode aspectMode = SpriteAspectMode::Stretch, const glm::vec2& framePivot = glm::vec2(0.5f, 0.5f), const glm::vec2& referencePixelSize = glm::vec2(0.0f), const glm::vec4* contentFrac = nullptr);
+
+	// Bakes one textured quad per glyph into the sprite batch. penPosition is
+	// the start of the baseline in the current camera space (UI space: Y down).
+	static void DrawString(const std::string& text, const Ref<Font>& font, const glm::vec2& penPosition, float scale, const glm::vec4& color, int entityID = -1);
 
 		static void DrawRotatedQuad(const glm::vec2& position, const glm::vec2& size, float rotation, const glm::vec4& color);
 		static void DrawRotatedQuad(const glm::vec3& position, const glm::vec2& size, float rotation, const glm::vec4& color, int entityID = -1);

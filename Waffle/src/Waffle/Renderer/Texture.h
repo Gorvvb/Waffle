@@ -6,6 +6,8 @@
 #include <filesystem>
 #include <string>
 
+#include <glm/glm.hpp>
+
 #include "Waffle/Core/Ref.h"
 
 namespace Waffle {
@@ -14,6 +16,13 @@ namespace Waffle {
 	std::string GetNormalizedAssetPath(const std::string& fullPath);
 	void SetActiveAssetDirectory(const std::filesystem::path& path);
 	const std::filesystem::path& GetActiveAssetDirectory();
+
+	// Tight pixel bounds (x0, y0, x1, y1 - top-left origin, x1/y1 exclusive)
+	// of the pixels with alpha inside the given window (same coordinate
+	// system) of an image file. Falls back to the full window when the file
+	// cannot be decoded; results are cached per path + window. Used to align
+	// animation frames by their visible content instead of their crop rect.
+	glm::vec4 ComputeOpaqueBounds(const std::string& path, const glm::vec4& windowPx);
 
 	class Texture : public RefCounted
 	{

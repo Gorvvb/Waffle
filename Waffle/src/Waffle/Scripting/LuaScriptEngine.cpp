@@ -1190,6 +1190,78 @@ namespace Waffle {
 	}
 
 	// =========================================================================
+	// NEW BINDINGS - Game UI
+	// =========================================================================
+
+	static int Lua_SetUIText(lua_State* L)
+	{
+		uint32_t entityID = (uint32_t)lua_tonumber(L, 1);
+		const char* text = luaL_checkstring(L, 2);
+		Scene* scene = LuaScriptEngine::GetSceneContext();
+		if (!scene) return 0;
+		Entity entity{ (entt::entity)entityID, scene };
+		if (entity && entity.HasComponent<UITextComponent>())
+			entity.GetComponent<UITextComponent>().Text = text;
+		return 0;
+	}
+
+	static int Lua_GetUIText(lua_State* L)
+	{
+		uint32_t entityID = (uint32_t)lua_tonumber(L, 1);
+		Scene* scene = LuaScriptEngine::GetSceneContext();
+		if (!scene) return 0;
+		Entity entity{ (entt::entity)entityID, scene };
+		if (entity && entity.HasComponent<UITextComponent>())
+		{
+			lua_pushstring(L, entity.GetComponent<UITextComponent>().Text.c_str());
+			return 1;
+		}
+		lua_pushnil(L);
+		return 1;
+	}
+
+	static int Lua_SetUIProgress(lua_State* L)
+	{
+		uint32_t entityID = (uint32_t)lua_tonumber(L, 1);
+		float value = (float)luaL_checknumber(L, 2);
+		Scene* scene = LuaScriptEngine::GetSceneContext();
+		if (!scene) return 0;
+		Entity entity{ (entt::entity)entityID, scene };
+		if (entity && entity.HasComponent<UIProgressBarComponent>())
+			entity.GetComponent<UIProgressBarComponent>().Value = glm::clamp(value, 0.0f, 1.0f);
+		return 0;
+	}
+
+	static int Lua_SetUIImage(lua_State* L)
+	{
+		uint32_t entityID = (uint32_t)lua_tonumber(L, 1);
+		const char* pathStr = lua_tostring(L, 2);
+		if (!pathStr) return 0;
+		if (PathEscapesAssetRoot(pathStr))
+		{
+			WF_CORE_WARN("SetUIImage: rejected path with '..' segments: '{0}'", pathStr);
+		return 0;
+		}
+
+		Scene* scene = LuaScriptEngine::GetSceneContext();
+		if (!scene) return 0;
+		Entity entity{ (entt::entity)entityID, scene };
+		if (!entity || !entity.HasComponent<UIImageComponent>()) return 0;
+
+		std::filesystem::path fullPath = LuaScriptEngine::GetAssetPath() / pathStr;
+		if (!std::filesystem::exists(fullPath))
+			fullPath = pathStr;
+
+		if (std::filesystem::exists(fullPath))
+		{
+			auto& image = entity.GetComponent<UIImageComponent>();
+			image.Texture = Texture2D::Create(fullPath.string(), image.FilterMode);
+			image.TexturePath = fullPath.string();
+		}
+		return 0;
+	}
+
+	// =========================================================================
 	// NEW BINDINGS - Animator / Animation
 	// =========================================================================
 
@@ -2173,6 +2245,10 @@ namespace Waffle {
 		lua_pushcfunction(L, Lua_GetColor);             lua_setglobal(L, "GetColor");
 		lua_pushcfunction(L, Lua_SetAlpha);             lua_setglobal(L, "SetAlpha");
 		lua_pushcfunction(L, Lua_SetTexture);           lua_setglobal(L, "SetTexture");
+		lua_pushcfunction(L, Lua_SetUIText);             lua_setglobal(L, "SetUIText");
+		lua_pushcfunction(L, Lua_GetUIText);             lua_setglobal(L, "GetUIText");
+		lua_pushcfunction(L, Lua_SetUIProgress);          lua_setglobal(L, "SetUIProgress");
+		lua_pushcfunction(L, Lua_SetUIImage);            lua_setglobal(L, "SetUIImage");
 		lua_pushcfunction(L, Lua_PlayAnimation);        lua_setglobal(L, "PlayAnimation");
 		lua_pushcfunction(L, Lua_StopAnimation);        lua_setglobal(L, "StopAnimation");
 		lua_pushcfunction(L, Lua_PauseAnimation);       lua_setglobal(L, "PauseAnimation");
@@ -2424,6 +2500,46 @@ if Global == nil then Global = {} end
 
 		luaL_unref(L, LUA_REGISTRYINDEX, fnRef);
 	}
+
+	bool LuaScriptEngine::IsGameplayMouseBlocked()
+	{
+		return GameplayMouseBlocked();
+	}
+
+	void LuaScriptEngine::CallUIHandler(const std::string& handlerName, uint32_t buttonEntityID)
+	{
+		if (!s_LuaState || !s_SceneContext || handlerName.empty())
+			return;
+
+		// Every scripted entity's env gets a shot at the handler: env tables
+		// fall back to _G, so both global functions and per-script functions
+		// work. Keys are copied because a handler can spawn or destroy
+		// scripted entities mid-dispatch.
+		auto view = s_SceneContext->GetRegistry().view<ScriptComponent>(entt::exclude<DisabledComponent>);
+		for (auto entity : view)
+		{
+			auto keys = view.get<ScriptComponent>(entity).ScriptTableKeys;
+			for (const auto& tableKey : keys)
+			{
+				lua_getglobal(s_LuaState, tableKey.c_str());
+				if (!lua_istable(s_LuaState, -1)) { lua_pop(s_LuaState, 1); continue; }
+
+				lua_getfield(s_LuaState, -1, handlerName.c_str());
+				if (!lua_isfunction(s_LuaState, -1)) { lua_pop(s_LuaState, 2); continue; }
+
+				lua_pushnumber(s_LuaState, buttonEntityID);
+
+				if (lua_pcall(s_LuaState, 1, 0, 0) != LUA_OK)
+				{
+					const char* err = lua_tostring(s_LuaState, -1);
+					WF_CORE_ERROR("LuaScriptEngine: UI handler '{0}' error: {1}", handlerName, err ? err : "unknown");
+					lua_pop(s_LuaState, 1);
+				}
+				lua_pop(s_LuaState, 1); // env table
+			}
+		}
+	}
+
 
 	// -------------------------------------------------------------------------
 	// Public API

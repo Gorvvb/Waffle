@@ -64,6 +64,16 @@ namespace Waffle {
 		static glm::vec2 GetGameViewportSize() { return s_GameViewportSize; }
 		static bool HasGameViewport() { return s_HasGameViewport; }
 
+		// True when editor chrome (not the game viewport) owns the mouse.
+		// The UI renderer uses this to gate button interaction exactly like
+		// the Lua input bindings do.
+		static bool IsGameplayMouseBlocked();
+
+		// Calls functionName("OnClick" handler of a UIButtonComponent) in
+		// every scripted environment that defines it, passing the button's
+		// entity id. No-op outside runtime or with an empty name.
+		static void CallUIHandler(const std::string& handlerName, uint32_t buttonEntityID);
+
 		static Scene* GetSceneContext() { return s_SceneContext; }
 		static lua_State* GetLuaState() { return s_LuaState; }
 

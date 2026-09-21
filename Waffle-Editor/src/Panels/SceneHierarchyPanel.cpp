@@ -105,6 +105,36 @@ namespace Waffle {
 					Entity newEntity = m_Context->CreateEntity("Empty Entity");
 					m_SelectionContext = newEntity;
 				}
+
+				ImGui::Separator();
+				if (ImGui::MenuItem("Create UI Canvas"))
+				{
+					Entity canvasEntity = m_Context->CreateEntity("UI Canvas");
+					canvasEntity.AddComponent<UICanvasComponent>();
+					m_SelectionContext = canvasEntity;
+				}
+				if (ImGui::MenuItem("Create UI Text"))
+				{
+					m_SelectionContext = CreateUIElement("UI Text");
+					m_SelectionContext.AddComponent<UITextComponent>();
+				}
+				if (ImGui::MenuItem("Create UI Image"))
+				{
+					m_SelectionContext = CreateUIElement("UI Image");
+					m_SelectionContext.AddComponent<UIImageComponent>();
+				}
+				if (ImGui::MenuItem("Create UI Button"))
+				{
+					m_SelectionContext = CreateUIElement("UI Button");
+					m_SelectionContext.GetComponent<TransformComponent>().Scale = { 240.0f, 64.0f, 1.0f };
+					m_SelectionContext.AddComponent<UIButtonComponent>();
+				}
+				if (ImGui::MenuItem("Create UI Progress Bar"))
+				{
+					m_SelectionContext = CreateUIElement("UI Progress Bar");
+					m_SelectionContext.GetComponent<TransformComponent>().Scale = { 320.0f, 28.0f, 1.0f };
+					m_SelectionContext.AddComponent<UIProgressBarComponent>();
+				}
 				ImGui::EndPopup();
 			}
 
@@ -117,6 +147,31 @@ namespace Waffle {
 			}
 			ImGui::End();
 		}
+	}
+
+	// Creates a UI element entity: RectTransform + mirrored transform, parented
+	// to the scene's UI canvas when one exists.
+	Entity SceneHierarchyPanel::CreateUIElement(const std::string& name)
+	{
+		Entity element = m_Context->CreateEntity(name);
+		// CreateEntity already gives every entity a TransformComponent -
+		// adding another one here tripped the duplicate-component assert.
+		if (!element.HasComponent<TransformComponent>())
+			element.AddComponent<TransformComponent>();
+		element.AddComponent<RectTransformComponent>();
+		// Scale = element size in canvas pixels.
+		element.GetComponent<TransformComponent>().Scale = { 300.0f, 60.0f, 1.0f };
+
+		for (auto e : m_Context->GetAllEntitiesWith<UICanvasComponent>())
+		{
+			Entity canvas{ e, m_Context.Raw() };
+			if (canvas.HasComponent<DisabledComponent>())
+				continue;
+			m_Context->ParentEntity(element, canvas);
+			break;
+		}
+
+		return element;
 	}
 
 	void SceneHierarchyPanel::SetSelectedEntity(Entity entity)
@@ -392,6 +447,13 @@ namespace Waffle {
 			DisplayAddComponentEntry<CircleCollider2DComponent>("Circle Collider (2D)");
 			DisplayAddComponentEntry<PolygonCollider2DComponent>("Polygon Collider (2D)");
 			DisplayAddComponentEntry<AnimatorComponent>("Animator (2D)");
+		ImGui::Separator();
+		DisplayAddComponentEntry<UICanvasComponent>("UI Canvas");
+		DisplayAddComponentEntry<RectTransformComponent>("UI Rect Transform");
+		DisplayAddComponentEntry<UIImageComponent>("UI Image");
+		DisplayAddComponentEntry<UITextComponent>("UI Text");
+		DisplayAddComponentEntry<UIButtonComponent>("UI Button");
+		DisplayAddComponentEntry<UIProgressBarComponent>("UI Progress Bar");
 
 			ImGui::EndPopup();
 		}
@@ -807,6 +869,21 @@ namespace Waffle {
 			ImGui::DragFloat2("Tiling Factor", glm::value_ptr(component.TilingFactor), 0.1f, 0.0f, 100.0f);
 			ImGui::DragInt("Sorting Layer", &component.SortingLayer, 1.0f, -100, 100);
 			ImGui::DragInt("Order in Layer", &component.SortingOrder, 1.0f, -1000, 1000);
+
+			const char* aspectStrings[] = { "Stretch", "Fit (keep aspect)", "Fill (crop)" };
+			const char* currentAspect = aspectStrings[glm::clamp((int)component.AspectMode, 0, 2)];
+			if (ImGui::BeginCombo("Aspect Mode", currentAspect))
+			{
+				for (int i = 0; i < 3; i++)
+				{
+					bool isSelected = (currentAspect == aspectStrings[i]);
+					if (ImGui::Selectable(aspectStrings[i], isSelected))
+						component.AspectMode = (SpriteAspectMode)i;
+					if (isSelected)
+						ImGui::SetItemDefaultFocus();
+				}
+			ImGui::EndCombo();
+			}
 		});
 
 		DrawComponent<CircleRendererComponent>("Circle Renderer (2D)", entity, [](auto& component)
@@ -817,6 +894,172 @@ namespace Waffle {
 			UI::PropertyFloat("Fade", component.Fade, 0.00025f, 0.0f, 1.0f);
 			UI::PropertyInt("Sorting Layer", component.SortingLayer);
 			UI::PropertyInt("Order in Layer", component.SortingOrder);
+			UI::EndPropertyGrid();
+		});
+
+		DrawComponent<UICanvasComponent>("UI Canvas", entity, [](auto& component)
+		{
+			UI::BeginPropertyGrid();
+			ImGui::DragFloat2("Reference Resolution", glm::value_ptr(component.ReferenceResolution), 1.0f, 1.0f, 7680.0f);
+			ImGui::Checkbox("Scale With Screen", &component.ScaleWithScreen);
+			UI::EndPropertyGrid();
+		});
+
+		DrawComponent<RectTransformComponent>("UI Rect Transform", entity, [](auto& component)
+		{
+			const char* anchorStrings[] = { "Top Left", "Top Center", "Top Right", "Middle Left", "Middle Center", "Middle Right", "Bottom Left", "Bottom Center", "Bottom Right" };
+			UI::BeginPropertyGrid();
+			int anchor = (int)component.Anchor;
+			if (UI::PropertyDropdown("Anchor", anchorStrings, 9, &anchor))
+				component.Anchor = (UIAnchor)anchor;
+			ImGui::DragFloat2("Pivot", glm::value_ptr(component.Pivot), 0.01f, 0.0f, 1.0f);
+			UI::PropertyInt("Order", component.Order, 1.0f, -1000, 1000);
+			UI::EndPropertyGrid();
+			ImGui::TextDisabled("Position/size come from the Transform (canvas pixels)");
+		});
+
+		DrawComponent<UIImageComponent>("UI Image", entity, [](auto& component)
+		{
+			UI::BeginPropertyGrid();
+			UI::DrawColorEdit4("Color", component.Color);
+			UI::EndPropertyGrid();
+
+			if (component.Texture)
+				ImGui::ImageButton("##UIImageTexturePreview", (ImTextureID)(uintptr_t)component.Texture->GetRendererID(), { 64, 64 }, { 0, 1 }, { 1, 0 });
+			else
+				ImGui::Button("No Texture", { 64, 64 });
+
+			if (ImGui::BeginDragDropTarget())
+			{
+				if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("CONTENT_BROWSER_ITEM"))
+				{
+					const wchar_t* path = (const wchar_t*)payload->Data;
+					std::filesystem::path texturePath = std::filesystem::path(g_AssetPath) / path;
+					component.Texture = Texture2D::Create(texturePath.string(), component.FilterMode);
+					component.TexturePath = GetNormalizedAssetPath(texturePath.string());
+				}
+			}
+			if (ImGui::BeginDragDropTarget())
+				ImGui::EndDragDropTarget();
+
+			ImGui::SameLine();
+			if (ImGui::Button("Browse Texture"))
+			{
+				std::string filepath = FileDialogs::OpenFile("Texture Files (*.png *.jpg *.jpeg)\0*.png;*.jpg;*.jpeg\0All Files (*.*)\0*.*\0");
+				if (!filepath.empty())
+				{
+					component.Texture = Texture2D::Create(filepath, component.FilterMode);
+					component.TexturePath = GetNormalizedAssetPath(filepath);
+				}
+			}
+
+			if (component.Texture)
+			{
+				ImGui::SameLine();
+				if (ImGui::Button("Remove Texture"))
+					component.Texture = nullptr;
+			}
+
+			const char* uiFilterOptions[] = { "Nearest", "Linear" };
+			const char* uiCurrentFilter = uiFilterOptions[static_cast<int>(component.FilterMode)];
+			if (ImGui::BeginCombo("Filter Mode", uiCurrentFilter))
+			{
+				for (int i = 0; i < IM_ARRAYSIZE(uiFilterOptions); i++)
+				{
+					bool isSelected = (uiCurrentFilter == uiFilterOptions[i]);
+					if (ImGui::Selectable(uiFilterOptions[i], isSelected))
+					{
+						component.FilterMode = static_cast<TextureFilter>(i);
+						if (component.Texture)
+							component.Texture->SetFilter(component.FilterMode);
+					}
+					if (isSelected)
+						ImGui::SetItemDefaultFocus();
+				}
+			ImGui::EndCombo();
+			}
+		});
+
+		DrawComponent<UITextComponent>("UI Text", entity, [](auto& component)
+		{
+			UI::BeginPropertyGrid();
+			UI::PropertyString("Text", component.Text);
+			if (UI::PropertyString("Font Path", component.FontPath))
+				component.RuntimeFont = nullptr; // re-resolve next frame
+			UI::PropertyFloat("Font Size", component.FontSize, 0.5f, 4.0f, 200.0f);
+			UI::DrawColorEdit4("Color", component.Color);
+			const char* alignStrings[] = { "Left", "Center", "Right" };
+			int align = (int)component.Alignment;
+			if (UI::PropertyDropdown("Alignment", alignStrings, 3, &align))
+				component.Alignment = (UITextAlignment)align;
+			UI::EndPropertyGrid();
+		});
+
+		DrawComponent<UIButtonComponent>("UI Button", entity, [](auto& component)
+		{
+			UI::BeginPropertyGrid();
+			UI::DrawColorEdit4("Color", component.Color);
+			UI::DrawColorEdit4("Hover Color", component.HoverColor);
+			UI::DrawColorEdit4("Pressed Color", component.PressedColor);
+			UI::EndPropertyGrid();
+
+			auto texturePicker = [](const char* name, Ref<Texture2D>& texture, std::string& path)
+			{
+				ImGui::PushID(name);
+				ImGui::TextUnformatted(name);
+				if (texture)
+					ImGui::ImageButton("##UITex", (ImTextureID)(uintptr_t)texture->GetRendererID(), { 48, 48 }, { 0, 1 }, { 1, 0 });
+				else
+					ImGui::Button("No Texture", { 48, 48 });
+				if (ImGui::BeginDragDropTarget())
+				{
+					if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("CONTENT_BROWSER_ITEM"))
+					{
+						const wchar_t* wpath = (const wchar_t*)payload->Data;
+						std::filesystem::path p = std::filesystem::path(g_AssetPath) / wpath;
+						texture = Texture2D::Create(p.string(), TextureFilter::Linear);
+						path = GetNormalizedAssetPath(p.string());
+					}
+				}
+				if (ImGui::BeginDragDropTarget())
+					ImGui::EndDragDropTarget();
+				ImGui::SameLine();
+				if (ImGui::Button("Browse"))
+				{
+					std::string filepath = FileDialogs::OpenFile("Texture Files (*.png *.jpg *.jpeg)\0*.png;*.jpg;*.jpeg\0All Files (*.*)\0*.*\0");
+					if (!filepath.empty())
+					{
+						texture = Texture2D::Create(filepath, TextureFilter::Linear);
+						path = GetNormalizedAssetPath(filepath);
+					}
+				}
+				if (texture)
+				{
+					ImGui::SameLine();
+					if (ImGui::Button("Clear"))
+						texture = nullptr;
+				}
+				ImGui::PopID();
+			};
+			texturePicker("Normal Texture", component.NormalTexture, component.NormalTexturePath);
+			texturePicker("Hover Texture", component.HoverTexture, component.HoverTexturePath);
+			texturePicker("Pressed Texture", component.PressedTexture, component.PressedTexturePath);
+
+			UI::BeginPropertyGrid();
+			UI::PropertyString("Label", component.Label);
+			UI::PropertyFloat("Label Size", component.LabelSize, 0.5f, 4.0f, 200.0f);
+			UI::DrawColorEdit4("Label Color", component.LabelColor);
+			UI::PropertyString("On Click (Lua function)", component.OnClick);
+			UI::EndPropertyGrid();
+		});
+
+		DrawComponent<UIProgressBarComponent>("UI Progress Bar", entity, [](auto& component)
+		{
+			UI::BeginPropertyGrid();
+			ImGui::SliderFloat("Value", &component.Value, 0.0f, 1.0f);
+			UI::DrawColorEdit4("Background", component.BackgroundColor);
+			UI::DrawColorEdit4("Fill", component.FillColor);
+			UI::PropertyFloat("Padding", component.Padding, 0.1f, 0.0f, 64.0f);
 			UI::EndPropertyGrid();
 		});
 
@@ -885,6 +1128,8 @@ namespace Waffle {
 		{
 			ImGui::Text("Current Clip: %s", component.CurrentClip.c_str());
 			ImGui::Text("Frame: %d | Playing: %s", component.CurrentFrameIndex, component.IsPlaying ? "Yes" : "No");
+			ImGui::DragFloat2("Frame Pivot", glm::value_ptr(component.FramePivot), 0.01f, 0.0f, 1.0f);
+			ImGui::TextDisabled("Aspect = Fit: frames keep native scale, anchored by pivot");
 
 			if (ImGui::Button(component.IsPlaying ? "Pause" : "Play"))
 			{
@@ -986,6 +1231,16 @@ namespace Waffle {
 			if (ImGui::MenuItem(entryName.c_str()))
 			{
 				m_SelectionContext.AddComponent<T>();
+
+				// UI elements are placed by their RectTransform - add one
+				// automatically so a fresh element is immediately visible.
+				if constexpr (std::is_same_v<T, UIImageComponent> || std::is_same_v<T, UITextComponent> ||
+					std::is_same_v<T, UIButtonComponent> || std::is_same_v<T, UIProgressBarComponent>)
+				{
+					if (!m_SelectionContext.HasComponent<RectTransformComponent>())
+						m_SelectionContext.AddComponent<RectTransformComponent>();
+				}
+
 				ImGui::CloseCurrentPopup();
 			}
 		}
