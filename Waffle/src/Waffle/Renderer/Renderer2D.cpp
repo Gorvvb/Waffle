@@ -1,6 +1,7 @@
 #include "wfpch.h"
 #include "Renderer2D.h"
 
+#include "Waffle/Core/Log.h"
 #include "VertexArray.h"
 #include "Shader.h"
 #include "Waffle/Renderer/UniformBuffer.h"
@@ -10,6 +11,58 @@
 #include <glm/gtc/type_ptr.hpp>
 
 namespace Waffle {
+
+	namespace
+	{
+		// Width/height ratio of the quad described by a transform (lengths of
+		// its local X/Y axes).
+		float QuadAspectOf(const glm::mat4& transform)
+		{
+			glm::vec2 scale(glm::length(transform[0]), glm::length(transform[1]));
+			return (scale.y != 0.0f) ? (scale.x / scale.y) : 0.0f;
+		}
+
+		// Scales the quad's local X/Y axes so the drawn rectangle keeps the
+		// sprite's native aspect ratio, letterboxed (centered) inside the
+		// original quad.
+		glm::mat4 FitTransformToAspect(const glm::mat4& transform, float spriteAspect)
+		{
+			glm::vec2 scale(glm::length(transform[0]), glm::length(transform[1]));
+			if (scale.x <= 0.0f || scale.y <= 0.0f || spriteAspect <= 0.0f)
+				return transform;
+
+			float quadAspect = scale.x / scale.y;
+			float sx = 1.0f, sy = 1.0f;
+			if (spriteAspect > quadAspect)
+				sy = quadAspect / spriteAspect;   // sprite wider: shrink height
+			else
+				sx = spriteAspect / quadAspect;   // sprite taller: shrink width
+			return transform * glm::scale(glm::mat4(1.0f), glm::vec3(sx, sy, 1.0f));
+		}
+
+		// Crops the [uvMin, uvMax] window (centered) so the sampled region
+		// has the quad's aspect ratio - the "cover" behaviour.
+		void CropUVsToAspect(glm::vec2& uvMin, glm::vec2& uvMax, float spriteAspect, float quadAspect)
+		{
+			if (spriteAspect <= 0.0f || quadAspect <= 0.0f)
+				return;
+
+			if (spriteAspect > quadAspect)
+			{
+				float cut = (1.0f - quadAspect / spriteAspect) * 0.5f;
+				float w = uvMax.x - uvMin.x;
+				uvMin.x += w * cut;
+				uvMax.x -= w * cut;
+			}
+			else
+			{
+				float cut = (1.0f - spriteAspect / quadAspect) * 0.5f;
+				float h = uvMax.y - uvMin.y;
+				uvMin.y += h * cut;
+				uvMax.y -= h * cut;
+			}
+		}
+	}
 
 	struct QuadVertex
 	{
@@ -494,7 +547,7 @@ namespace Waffle {
 	{
 		if (src.Texture)
 		{
-			DrawQuad(transform, src.Texture, src.TilingFactor, src.Color, entityID);
+			DrawQuad(transform, src.Texture, src.TilingFactor, src.Color, entityID, src.AspectMode);
 		}
 		else
 			DrawQuad(transform, src.Color, entityID);
@@ -742,14 +795,39 @@ namespace Waffle {
 		s_Data.Stats.QuadCount++;
 	}
 
-	void Renderer2D::DrawQuad(const glm::mat4& transform, const Ref<Texture2D>& texture, const glm::vec2& tilingFactor, const glm::vec4& tintColor, int entityID)
+	void Renderer2D::DrawQuad(const glm::mat4& transformIn, const Ref<Texture2D>& texture, const glm::vec2& tilingFactor, const glm::vec4& tintColor, int entityID, SpriteAspectMode aspectMode)
 	{
 		WF_PROFILE_FUNCTION();
 
 		if (!texture)
 		{
-			DrawQuad(transform, tintColor, entityID);
+			DrawQuad(transformIn, tintColor, entityID);
 			return;
+		}
+
+		glm::mat4 transform = transformIn;
+		glm::vec2 texCoordsOverride[4];
+		const glm::vec2* texCoords = nullptr;
+
+		if (aspectMode != SpriteAspectMode::Stretch && texture->GetWidth() > 0 && texture->GetHeight() > 0)
+		{
+			float spriteAspect = (float)texture->GetWidth() / (float)texture->GetHeight();
+			float quadAspect = QuadAspectOf(transformIn);
+
+			if (aspectMode == SpriteAspectMode::Fit)
+			{
+				transform = FitTransformToAspect(transformIn, spriteAspect);
+			}
+			else // Fill: crop the UV window, keep the quad
+			{
+				glm::vec2 uvMin(0.0f, 0.0f), uvMax(1.0f, 1.0f);
+				CropUVsToAspect(uvMin, uvMax, spriteAspect, quadAspect);
+				texCoordsOverride[0] = { uvMin.x, uvMin.y };
+				texCoordsOverride[1] = { uvMax.x, uvMin.y };
+				texCoordsOverride[2] = { uvMax.x, uvMax.y };
+				texCoordsOverride[3] = { uvMin.x, uvMax.y };
+				texCoords = texCoordsOverride;
+			}
 		}
 
 		glm::vec2 minPt( 1e9f);
@@ -770,7 +848,9 @@ namespace Waffle {
 		}
 
 		constexpr size_t quadVertexCount = 4;
-		constexpr glm::vec2 textureCoords[] = { { 0.0f, 0.0f }, { 1.0f, 0.0f }, { 1.0f, 1.0f }, { 0.0f, 1.0f } };
+		constexpr glm::vec2 defaultTextureCoords[] = { { 0.0f, 0.0f }, { 1.0f, 0.0f }, { 1.0f, 1.0f }, { 0.0f, 1.0f } };
+		if (!texCoords)
+			texCoords = defaultTextureCoords;
 
 		if (s_Data.QuadIndexCount >= s_Data.MaxIndices)
 			NextBatch();
@@ -800,7 +880,7 @@ namespace Waffle {
 		{
 			s_Data.QuadVertexBufferPtr->Position = transform * s_Data.QuadVertexPositions[i];
 			s_Data.QuadVertexBufferPtr->Color = tintColor;
-			s_Data.QuadVertexBufferPtr->TexCoord = textureCoords[i];
+			s_Data.QuadVertexBufferPtr->TexCoord = texCoords[i];
 			s_Data.QuadVertexBufferPtr->textureIndex = textureIndex;
 			s_Data.QuadVertexBufferPtr->TilingFactor = tilingFactor;
 			s_Data.QuadVertexBufferPtr->EntityID = entityID;
@@ -934,7 +1014,7 @@ namespace Waffle {
 		s_Data.Stats.QuadCount++;
 	}
 
-	void Renderer2D::DrawQuad(const glm::mat4& transform, const Ref<SubTexture2D>& subTexture, const glm::vec2& tilingFactor, const glm::vec4& tintColor, int entityID)
+	void Renderer2D::DrawQuad(const glm::mat4& transformIn, const Ref<SubTexture2D>& subTexture, const glm::vec2& tilingFactor, const glm::vec4& tintColor, int entityID, SpriteAspectMode aspectMode, const glm::vec2& framePivot, const glm::vec2& referencePixelSize, const glm::vec4* contentFrac)
 	{
 		WF_PROFILE_FUNCTION();
 
@@ -943,6 +1023,78 @@ namespace Waffle {
 		constexpr size_t quadVertexCount = 4;
 		const glm::vec2* textureCoords = subTexture->GetTexCoords();
 		const Ref<Texture2D>& texture = subTexture->GetTexture();
+
+		glm::mat4 transform = transformIn;
+		glm::vec2 texCoordsOverride[4];
+
+		// Frame-native aspect from the sub-texture's UV window - this is what
+		// keeps animation frames with different sizes from distorting.
+		if (aspectMode != SpriteAspectMode::Stretch && texture->GetWidth() > 0 && texture->GetHeight() > 0)
+		{
+			glm::vec2 uvMin = textureCoords[0];
+			glm::vec2 uvMax = textureCoords[2];
+			float spriteW = (float)texture->GetWidth() * (uvMax.x - uvMin.x);
+			float spriteH = (float)texture->GetHeight() * (uvMax.y - uvMin.y);
+			if (spriteW > 0.0f && spriteH > 0.0f)
+			{
+				float spriteAspect = spriteW / spriteH;
+				float quadAspect = QuadAspectOf(transformIn);
+
+				if (aspectMode == SpriteAspectMode::Fit)
+				{
+					// Normalized content fit: every frame shares the
+					// pixels-per-unit of the animator's LARGEST visible
+					// content (referencePixelSize; falls back to this frame
+					// when unknown), so differently sized frames keep one
+					// consistent scale instead of each filling the quad.
+					// Frames are anchored by their opaque CONTENT, not their
+					// crop rect: the pivot point within the content box
+					// lands on the matching pivot point of the quad, so
+					// tighter/looser crops don't make the art glide.
+					glm::vec2 quadSize(glm::length(transformIn[0]), glm::length(transformIn[1]));
+					glm::vec2 refSize = (referencePixelSize.x > 0.0f && referencePixelSize.y > 0.0f)
+						? referencePixelSize
+						: glm::vec2(spriteW, spriteH);
+
+					// Anchor fraction within the frame: the pivot point of
+					// the content box, or just framePivot when no content
+					// rect is known (content == whole frame). Clamped so a
+					// stray fraction degrades gracefully instead of
+					// switching the frame to a different alignment mode.
+					glm::vec2 anchorFrac = framePivot;
+					if (contentFrac)
+					{
+						glm::vec2 cMin(glm::clamp(contentFrac->x, 0.0f, 1.0f),
+							glm::clamp(contentFrac->y, 0.0f, 1.0f));
+						glm::vec2 cMax(glm::clamp(contentFrac->z, 0.0f, 1.0f),
+							glm::clamp(contentFrac->w, 0.0f, 1.0f));
+						glm::vec2 cSize = cMax - cMin;
+						if (cSize.x > 1e-4f && cSize.y > 1e-4f)
+							anchorFrac = cMin + framePivot * cSize;
+					}
+
+					if (quadSize.x > 0.0f && quadSize.y > 0.0f)
+					{
+						float pxPerUnit = std::min(quadSize.x / refSize.x, quadSize.y / refSize.y);
+						glm::vec2 s(spriteW * pxPerUnit / quadSize.x, spriteH * pxPerUnit / quadSize.y);
+						glm::vec2 c = (framePivot - glm::vec2(0.5f)) + s * (glm::vec2(0.5f) - anchorFrac);
+						transform = transformIn
+							* glm::translate(glm::mat4(1.0f), glm::vec3(c, 0.0f))
+							* glm::scale(glm::mat4(1.0f), glm::vec3(s, 1.0f));
+					}
+				}
+				else // Fill
+				{
+					glm::vec2 croppedMin = uvMin, croppedMax = uvMax;
+					CropUVsToAspect(croppedMin, croppedMax, spriteAspect, quadAspect);
+					texCoordsOverride[0] = { croppedMin.x, croppedMin.y };
+					texCoordsOverride[1] = { croppedMax.x, croppedMin.y };
+					texCoordsOverride[2] = { croppedMax.x, croppedMax.y };
+					texCoordsOverride[3] = { croppedMin.x, croppedMax.y };
+					textureCoords = texCoordsOverride;
+				}
+			}
+		}
 
 		glm::vec2 minPt( 1e9f);
 		glm::vec2 maxPt(-1e9f);
@@ -999,6 +1151,77 @@ namespace Waffle {
 		s_Data.QuadIndexCount += 6;
 		RecordQuadCommand(6);
 		s_Data.Stats.QuadCount++;
+	}
+
+	void Renderer2D::DrawString(const std::string& text, const Ref<Font>& font, const glm::vec2& penPosition, float scale, const glm::vec4& color, int entityID)
+	{
+		if (!font || !font->GetAtlas())
+			return;
+
+		const Ref<Texture2D>& atlas = font->GetAtlas();
+		const glm::vec2 tiling(1.0f, 1.0f);
+		float penX = penPosition.x;
+		const float baseline = penPosition.y;
+
+		// Resolved lazily per glyph: a NextBatch() inside the loop clears the
+		// texture slots, so the atlas index must be looked up again after it.
+		auto findOrAddAtlasSlot = [&atlas]() -> float
+		{
+			for (uint32_t i = 1; i < s_Data.TextureSlotIndex; i++)
+			{
+				if (*s_Data.TextureSlots[i].get() == *atlas.get())
+					return (float)i;
+			}
+
+			if (s_Data.TextureSlotIndex >= s_Data.MaxTextureSlots)
+				NextBatch();
+
+			float index = (float)s_Data.TextureSlotIndex;
+			s_Data.TextureSlots[s_Data.TextureSlotIndex] = atlas;
+			s_Data.TextureSlotIndex++;
+			return index;
+		};
+
+		for (char c : text)
+		{
+			const Font::Glyph* g = font->GetGlyph(c);
+			if (!g)
+				continue;
+
+			bool visible = (c != ' ') && (g->X1 > g->X0) && (g->Y1 > g->Y0);
+			if (visible)
+			{
+				if (s_Data.QuadIndexCount >= s_Data.MaxIndices)
+					NextBatch();
+
+				float textureIndex = findOrAddAtlasSlot();
+
+				const float x0 = penX + g->X0 * scale;
+				const float x1 = penX + g->X1 * scale;
+				const float y0 = baseline + g->Y0 * scale;
+				const float y1 = baseline + g->Y1 * scale;
+
+				const glm::vec2 corners[4] = { { x0, y0 }, { x1, y0 }, { x1, y1 }, { x0, y1 } };
+				const glm::vec2 uvs[4] = { { g->U0, g->V0 }, { g->U1, g->V0 }, { g->U1, g->V1 }, { g->U0, g->V1 } };
+
+				for (int i = 0; i < 4; i++)
+				{
+					s_Data.QuadVertexBufferPtr->Position = glm::vec3(corners[i].x, corners[i].y, 0.0f);
+					s_Data.QuadVertexBufferPtr->Color = color;
+					s_Data.QuadVertexBufferPtr->TexCoord = uvs[i];
+					s_Data.QuadVertexBufferPtr->textureIndex = textureIndex;
+					s_Data.QuadVertexBufferPtr->TilingFactor = tiling;
+					s_Data.QuadVertexBufferPtr->EntityID = entityID;
+					s_Data.QuadVertexBufferPtr++;
+				}
+
+				s_Data.QuadIndexCount += 6;
+				RecordQuadCommand(6);
+				s_Data.Stats.QuadCount++;
+			}
+
+			penX += g->Advance * scale;
+		}
 	}
 
 	void Renderer2D::ResetStats()

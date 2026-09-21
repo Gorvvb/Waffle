@@ -6,6 +6,7 @@
 #include "Waffle/Scripting/LuaScriptEngine.h"
 #include "Waffle/Audio/AudioEngine.h"
 #include "Waffle/Renderer/Renderer2D.h"
+#include "Waffle/Renderer/UIRenderer.h"
 #include "Waffle/Math/Math.h"
 
 #include <glm/glm.hpp>
@@ -115,6 +116,12 @@ namespace Waffle {
 		CopyComponent<CircleCollider2DComponent>(dstSceneRegistry, srcSceneRegistry, enttMap);
 		CopyComponent<PolygonCollider2DComponent>(dstSceneRegistry, srcSceneRegistry, enttMap);
 		CopyComponent<AnimatorComponent>(dstSceneRegistry, srcSceneRegistry, enttMap);
+		CopyComponent<UICanvasComponent>(dstSceneRegistry, srcSceneRegistry, enttMap);
+		CopyComponent<RectTransformComponent>(dstSceneRegistry, srcSceneRegistry, enttMap);
+		CopyComponent<UIImageComponent>(dstSceneRegistry, srcSceneRegistry, enttMap);
+		CopyComponent<UITextComponent>(dstSceneRegistry, srcSceneRegistry, enttMap);
+		CopyComponent<UIButtonComponent>(dstSceneRegistry, srcSceneRegistry, enttMap);
+		CopyComponent<UIProgressBarComponent>(dstSceneRegistry, srcSceneRegistry, enttMap);
 
 		// Preserve disabled state in the play-mode copy (Lua SetActive) -
 		// dropping it re-enabled entities mid-play. Tag component: copied
@@ -617,6 +624,10 @@ namespace Waffle {
 				for (auto e : animatorView)
 					animatorView.get<AnimatorComponent>(e).Update(ts);
 			}
+
+			// Button hover/click bookkeeping runs with gameplay, not while
+			// paused; the render section below still runs when paused.
+			UIRenderer::UpdateUIInteraction(this);
 		}
 
 		// Render 2D - always runs regardless of pause state
@@ -726,7 +737,10 @@ namespace Waffle {
 						Ref<SubTexture2D> subTexture = animator->GetCurrentSubTexture();
 						if (subTexture)
 						{
-							Renderer2D::DrawQuad(item.WorldTransform, subTexture, sprite.TilingFactor, sprite.Color, (int)item.EntityID);
+							glm::vec4 contentFrac = animator->GetCurrentFrameContentFrac();
+							Renderer2D::DrawQuad(item.WorldTransform, subTexture, sprite.TilingFactor, sprite.Color, (int)item.EntityID, sprite.AspectMode,
+								animator->FramePivot, animator->GetMaxContentPixelSize(),
+								(contentFrac.x >= 0.0f) ? &contentFrac : nullptr);
 							continue;
 						}
 					}
@@ -741,6 +755,9 @@ namespace Waffle {
 
 			Renderer2D::EndScene();
 		}
+
+		// Screen-space game UI draws on top of the world pass.
+		UIRenderer::RenderUI(this);
 
 		if (isStepFrame && m_StepFrames == 0 && m_IsPaused)
 		{
@@ -876,7 +893,10 @@ namespace Waffle {
 					Ref<SubTexture2D> subTexture = animator->GetCurrentSubTexture();
 					if (subTexture)
 					{
-						Renderer2D::DrawQuad(item.WorldTransform, subTexture, sprite.TilingFactor, sprite.Color, (int)item.EntityID);
+						glm::vec4 contentFrac = animator->GetCurrentFrameContentFrac();
+						Renderer2D::DrawQuad(item.WorldTransform, subTexture, sprite.TilingFactor, sprite.Color, (int)item.EntityID, sprite.AspectMode,
+							animator->FramePivot, animator->GetMaxContentPixelSize(),
+							(contentFrac.x >= 0.0f) ? &contentFrac : nullptr);
 						continue;
 					}
 				}
@@ -890,6 +910,9 @@ namespace Waffle {
 		}
 
 		Renderer2D::EndScene();
+
+		// Editor preview of the screen-space game UI.
+		UIRenderer::RenderUI(this);
 	}
 
 	void Scene::OnViewportResize(uint32_t width, uint32_t height)
@@ -933,6 +956,12 @@ namespace Waffle {
 		CopyComponentIfExists<CircleCollider2DComponent>(newEntity, entity);
 		CopyComponentIfExists<PolygonCollider2DComponent>(newEntity, entity);
 		CopyComponentIfExists<AnimatorComponent>(newEntity, entity);
+		CopyComponentIfExists<UICanvasComponent>(newEntity, entity);
+		CopyComponentIfExists<RectTransformComponent>(newEntity, entity);
+		CopyComponentIfExists<UIImageComponent>(newEntity, entity);
+		CopyComponentIfExists<UITextComponent>(newEntity, entity);
+		CopyComponentIfExists<UIButtonComponent>(newEntity, entity);
+		CopyComponentIfExists<UIProgressBarComponent>(newEntity, entity);
 
 		// Preserve Lua-disabled state in duplicates too (tag component -
 		// direct registry emplace, see CopyComponentIfExists note).
@@ -1056,4 +1085,22 @@ namespace Waffle {
 
 	template<>
 	void Scene::OnComponentAdded<PolygonCollider2DComponent>(Entity entity, PolygonCollider2DComponent& component) {}
+
+	template<>
+	void Scene::OnComponentAdded<UICanvasComponent>(Entity entity, UICanvasComponent& component) {}
+
+	template<>
+	void Scene::OnComponentAdded<RectTransformComponent>(Entity entity, RectTransformComponent& component) {}
+
+	template<>
+	void Scene::OnComponentAdded<UIImageComponent>(Entity entity, UIImageComponent& component) {}
+
+	template<>
+	void Scene::OnComponentAdded<UITextComponent>(Entity entity, UITextComponent& component) {}
+
+	template<>
+	void Scene::OnComponentAdded<UIButtonComponent>(Entity entity, UIButtonComponent& component) {}
+
+	template<>
+	void Scene::OnComponentAdded<UIProgressBarComponent>(Entity entity, UIProgressBarComponent& component) {}
 }

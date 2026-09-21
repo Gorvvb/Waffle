@@ -253,6 +253,7 @@ namespace Waffle {
 			out << YAML::Key << "TilingFactor" << YAML::Value << spriteRendererComponent.TilingFactor;
 			out << YAML::Key << "SortingLayer" << YAML::Value << spriteRendererComponent.SortingLayer;
 			out << YAML::Key << "SortingOrder" << YAML::Value << spriteRendererComponent.SortingOrder;
+			out << YAML::Key << "AspectMode" << YAML::Value << static_cast<int>(spriteRendererComponent.AspectMode);
 
 			out << YAML::EndMap; // SpriteRendererComponent
 		}
@@ -270,6 +271,81 @@ namespace Waffle {
 			out << YAML::Key << "SortingOrder" << YAML::Value << circleRendererComponent.SortingOrder;
 
 			out << YAML::EndMap; // CircleRendererComponent
+		}
+
+		if (entity.HasComponent<UICanvasComponent>())
+		{
+			out << YAML::Key << "UICanvasComponent";
+			out << YAML::BeginMap;
+			auto& canvas = entity.GetComponent<UICanvasComponent>();
+			out << YAML::Key << "ReferenceResolution" << YAML::Value << canvas.ReferenceResolution;
+			out << YAML::Key << "ScaleWithScreen" << YAML::Value << canvas.ScaleWithScreen;
+			out << YAML::EndMap;
+		}
+
+		if (entity.HasComponent<RectTransformComponent>())
+		{
+			out << YAML::Key << "RectTransformComponent";
+			out << YAML::BeginMap;
+			auto& rt = entity.GetComponent<RectTransformComponent>();
+			out << YAML::Key << "Anchor" << YAML::Value << (int)rt.Anchor;
+			out << YAML::Key << "Pivot" << YAML::Value << rt.Pivot;
+			out << YAML::Key << "Order" << YAML::Value << rt.Order;
+			out << YAML::EndMap;
+		}
+
+		if (entity.HasComponent<UIImageComponent>())
+		{
+			out << YAML::Key << "UIImageComponent";
+			out << YAML::BeginMap;
+			auto& image = entity.GetComponent<UIImageComponent>();
+			out << YAML::Key << "Color" << YAML::Value << image.Color;
+			out << YAML::Key << "TexturePath" << YAML::Value << image.TexturePath;
+			out << YAML::Key << "FilterMode" << YAML::Value << static_cast<int>(image.FilterMode);
+			out << YAML::EndMap;
+		}
+
+		if (entity.HasComponent<UITextComponent>())
+		{
+			out << YAML::Key << "UITextComponent";
+			out << YAML::BeginMap;
+			auto& text = entity.GetComponent<UITextComponent>();
+			out << YAML::Key << "Text" << YAML::Value << text.Text;
+			out << YAML::Key << "FontPath" << YAML::Value << text.FontPath;
+			out << YAML::Key << "FontSize" << YAML::Value << text.FontSize;
+			out << YAML::Key << "Color" << YAML::Value << text.Color;
+			out << YAML::Key << "Alignment" << YAML::Value << (int)text.Alignment;
+			out << YAML::EndMap;
+		}
+
+		if (entity.HasComponent<UIButtonComponent>())
+		{
+			out << YAML::Key << "UIButtonComponent";
+			out << YAML::BeginMap;
+			auto& button = entity.GetComponent<UIButtonComponent>();
+			out << YAML::Key << "Color" << YAML::Value << button.Color;
+			out << YAML::Key << "HoverColor" << YAML::Value << button.HoverColor;
+			out << YAML::Key << "PressedColor" << YAML::Value << button.PressedColor;
+			out << YAML::Key << "NormalTexturePath" << YAML::Value << button.NormalTexturePath;
+			out << YAML::Key << "HoverTexturePath" << YAML::Value << button.HoverTexturePath;
+			out << YAML::Key << "PressedTexturePath" << YAML::Value << button.PressedTexturePath;
+			out << YAML::Key << "Label" << YAML::Value << button.Label;
+			out << YAML::Key << "LabelSize" << YAML::Value << button.LabelSize;
+			out << YAML::Key << "LabelColor" << YAML::Value << button.LabelColor;
+			out << YAML::Key << "OnClick" << YAML::Value << button.OnClick;
+			out << YAML::EndMap;
+		}
+
+		if (entity.HasComponent<UIProgressBarComponent>())
+		{
+			out << YAML::Key << "UIProgressBarComponent";
+			out << YAML::BeginMap;
+			auto& bar = entity.GetComponent<UIProgressBarComponent>();
+			out << YAML::Key << "Value" << YAML::Value << bar.Value;
+			out << YAML::Key << "BackgroundColor" << YAML::Value << bar.BackgroundColor;
+			out << YAML::Key << "FillColor" << YAML::Value << bar.FillColor;
+			out << YAML::Key << "Padding" << YAML::Value << bar.Padding;
+			out << YAML::EndMap;
 		}
 
 		if (entity.HasComponent<RelationshipComponent>())
@@ -396,6 +472,7 @@ namespace Waffle {
 
 			auto& animator = entity.GetComponent<AnimatorComponent>();
 			out << YAML::Key << "CurrentClip" << YAML::Value << animator.CurrentClip;
+			out << YAML::Key << "FramePivot" << YAML::Value << animator.FramePivot;
 
 			// animator.Clips is an unordered_map - emit sorted for
 			// deterministic output.
@@ -760,6 +837,8 @@ namespace Waffle {
 						src.SortingLayer = spriteRendererComponent["SortingLayer"].as<int>(0);
 					if (spriteRendererComponent["SortingOrder"])
 						src.SortingOrder = spriteRendererComponent["SortingOrder"].as<int>(0);
+					if (spriteRendererComponent["AspectMode"])
+						src.AspectMode = static_cast<SpriteAspectMode>(spriteRendererComponent["AspectMode"].as<int>(0));
 				}
 
 				auto circleRendererComponent = entity["CircleRendererComponent"];
@@ -774,6 +853,101 @@ namespace Waffle {
 					if (circleRendererComponent["SortingOrder"])
 						crc.SortingOrder = circleRendererComponent["SortingOrder"].as<int>(0);
 				}
+
+				auto canvasNode = entity["UICanvasComponent"];
+				if (canvasNode)
+				{
+					auto& canvas = deserializedEntity.AddComponent<UICanvasComponent>();
+					canvas.ReferenceResolution = canvasNode["ReferenceResolution"].as<glm::vec2>(glm::vec2(1920.0f, 1080.0f));
+					canvas.ScaleWithScreen = canvasNode["ScaleWithScreen"].as<bool>(true);
+				}
+
+				auto rtNode = entity["RectTransformComponent"];
+				if (rtNode)
+				{
+					auto& rt = deserializedEntity.AddComponent<RectTransformComponent>();
+					rt.Pivot = rtNode["Pivot"].as<glm::vec2>(glm::vec2(0.5f, 0.5f));
+					rt.Anchor = (UIAnchor)rtNode["Anchor"].as<int>((int)UIAnchor::MiddleCenter);
+					rt.Order = rtNode["Order"].as<int>(0);
+				}
+
+				auto uiImageNode = entity["UIImageComponent"];
+				if (uiImageNode)
+				{
+					auto& uiImage = deserializedEntity.AddComponent<UIImageComponent>();
+					uiImage.Color = uiImageNode["Color"].as<glm::vec4>(glm::vec4(1.0f));
+					if (uiImageNode["TexturePath"])
+					{
+						std::string p = uiImageNode["TexturePath"].as<std::string>();
+						std::filesystem::path r = ResolveTexturePath(p);
+						if (!r.empty() && (std::filesystem::exists(r) || VFS::Exists(r)))
+							uiImage.Texture = Texture2D::Create(r.string(), TextureFilter::Linear);
+						uiImage.TexturePath = p;
+					}
+					if (uiImageNode["FilterMode"])
+						uiImage.FilterMode = (TextureFilter)uiImageNode["FilterMode"].as<int>(0);
+				}
+
+				auto uiTextNode = entity["UITextComponent"];
+				if (uiTextNode)
+				{
+					auto& uiText = deserializedEntity.AddComponent<UITextComponent>();
+					uiText.Text = uiTextNode["Text"].as<std::string>("Text");
+					if (uiTextNode["FontPath"])
+						uiText.FontPath = uiTextNode["FontPath"].as<std::string>("");
+					uiText.FontSize = uiTextNode["FontSize"].as<float>(28.0f);
+					uiText.Color = uiTextNode["Color"].as<glm::vec4>(glm::vec4(1.0f));
+					uiText.Alignment = (UITextAlignment)uiTextNode["Alignment"].as<int>(0);
+				}
+
+				auto uiButtonNode = entity["UIButtonComponent"];
+				if (uiButtonNode)
+				{
+					auto& uiButton = deserializedEntity.AddComponent<UIButtonComponent>();
+					uiButton.Color = uiButtonNode["Color"].as<glm::vec4>(glm::vec4(0.16f, 0.17f, 0.20f, 1.0f));
+					uiButton.HoverColor = uiButtonNode["HoverColor"].as<glm::vec4>(glm::vec4(0.22f, 0.23f, 0.27f, 1.0f));
+					uiButton.PressedColor = uiButtonNode["PressedColor"].as<glm::vec4>(glm::vec4(0.11f, 0.12f, 0.14f, 1.0f));
+					if (uiButtonNode["NormalTexturePath"])
+					{
+						std::string p = uiButtonNode["NormalTexturePath"].as<std::string>();
+						std::filesystem::path r = ResolveTexturePath(p);
+						if (!r.empty() && (std::filesystem::exists(r) || VFS::Exists(r)))
+							uiButton.NormalTexture = Texture2D::Create(r.string(), TextureFilter::Linear);
+						uiButton.NormalTexturePath = p;
+					}
+					if (uiButtonNode["HoverTexturePath"])
+					{
+						std::string p = uiButtonNode["HoverTexturePath"].as<std::string>();
+						std::filesystem::path r = ResolveTexturePath(p);
+						if (!r.empty() && (std::filesystem::exists(r) || VFS::Exists(r)))
+							uiButton.HoverTexture = Texture2D::Create(r.string(), TextureFilter::Linear);
+						uiButton.HoverTexturePath = p;
+					}
+					if (uiButtonNode["PressedTexturePath"])
+					{
+						std::string p = uiButtonNode["PressedTexturePath"].as<std::string>();
+						std::filesystem::path r = ResolveTexturePath(p);
+						if (!r.empty() && (std::filesystem::exists(r) || VFS::Exists(r)))
+							uiButton.PressedTexture = Texture2D::Create(r.string(), TextureFilter::Linear);
+						uiButton.PressedTexturePath = p;
+					}
+					uiButton.Label = uiButtonNode["Label"].as<std::string>("Button");
+					uiButton.LabelSize = uiButtonNode["LabelSize"].as<float>(22.0f);
+					uiButton.LabelColor = uiButtonNode["LabelColor"].as<glm::vec4>(glm::vec4(1.0f));
+					if (uiButtonNode["OnClick"])
+						uiButton.OnClick = uiButtonNode["OnClick"].as<std::string>("");
+				}
+
+				auto uiBarNode = entity["UIProgressBarComponent"];
+				if (uiBarNode)
+				{
+					auto& uiBar = deserializedEntity.AddComponent<UIProgressBarComponent>();
+					uiBar.Value = uiBarNode["Value"].as<float>(1.0f);
+					uiBar.BackgroundColor = uiBarNode["BackgroundColor"].as<glm::vec4>(glm::vec4(0.08f, 0.09f, 0.11f, 0.85f));
+					uiBar.FillColor = uiBarNode["FillColor"].as<glm::vec4>(glm::vec4(0.914f, 0.608f, 0.176f, 1.0f));
+					uiBar.Padding = uiBarNode["Padding"].as<float>(2.0f);
+				}
+
 
 				auto rigidbody2DComponent = entity["Rigidbody2DComponent"];
 				if (rigidbody2DComponent)
@@ -838,6 +1012,8 @@ namespace Waffle {
 				{
 					auto& animator = deserializedEntity.AddComponent<AnimatorComponent>();
 					animator.CurrentClip = animatorComponent["CurrentClip"].as<std::string>("");
+					if (animatorComponent["FramePivot"])
+						animator.FramePivot = animatorComponent["FramePivot"].as<glm::vec2>(glm::vec2(0.5f, 0.0f));
 
 					auto clips = animatorComponent["Clips"];
 					if (clips)
@@ -1054,6 +1230,8 @@ namespace Waffle {
 				src.SortingLayer = spriteRendererComponent["SortingLayer"].as<int>(0);
 			if (spriteRendererComponent["SortingOrder"])
 				src.SortingOrder = spriteRendererComponent["SortingOrder"].as<int>(0);
+			if (spriteRendererComponent["AspectMode"])
+				src.AspectMode = static_cast<SpriteAspectMode>(spriteRendererComponent["AspectMode"].as<int>(0));
 		}
 
 		auto circleRendererComponent = entityNode["CircleRendererComponent"];
@@ -1068,6 +1246,101 @@ namespace Waffle {
 			if (circleRendererComponent["SortingOrder"])
 				crc.SortingOrder = circleRendererComponent["SortingOrder"].as<int>(0);
 		}
+
+		auto canvasNode = entityNode["UICanvasComponent"];
+		if (canvasNode)
+		{
+			auto& canvas = deserializedEntity.AddComponent<UICanvasComponent>();
+			canvas.ReferenceResolution = canvasNode["ReferenceResolution"].as<glm::vec2>(glm::vec2(1920.0f, 1080.0f));
+			canvas.ScaleWithScreen = canvasNode["ScaleWithScreen"].as<bool>(true);
+		}
+
+		auto rtNode = entityNode["RectTransformComponent"];
+		if (rtNode)
+		{
+			auto& rt = deserializedEntity.AddComponent<RectTransformComponent>();
+			rt.Pivot = rtNode["Pivot"].as<glm::vec2>(glm::vec2(0.5f, 0.5f));
+			rt.Anchor = (UIAnchor)rtNode["Anchor"].as<int>((int)UIAnchor::MiddleCenter);
+			rt.Order = rtNode["Order"].as<int>(0);
+		}
+
+		auto uiImageNode = entityNode["UIImageComponent"];
+		if (uiImageNode)
+		{
+			auto& uiImage = deserializedEntity.AddComponent<UIImageComponent>();
+			uiImage.Color = uiImageNode["Color"].as<glm::vec4>(glm::vec4(1.0f));
+			if (uiImageNode["TexturePath"])
+			{
+				std::string p = uiImageNode["TexturePath"].as<std::string>();
+				std::filesystem::path r = ResolveTexturePath(p);
+				if (!r.empty() && (std::filesystem::exists(r) || VFS::Exists(r)))
+					uiImage.Texture = Texture2D::Create(r.string(), TextureFilter::Linear);
+				uiImage.TexturePath = p;
+			}
+			if (uiImageNode["FilterMode"])
+				uiImage.FilterMode = (TextureFilter)uiImageNode["FilterMode"].as<int>(0);
+		}
+
+		auto uiTextNode = entityNode["UITextComponent"];
+		if (uiTextNode)
+		{
+			auto& uiText = deserializedEntity.AddComponent<UITextComponent>();
+			uiText.Text = uiTextNode["Text"].as<std::string>("Text");
+			if (uiTextNode["FontPath"])
+				uiText.FontPath = uiTextNode["FontPath"].as<std::string>("");
+			uiText.FontSize = uiTextNode["FontSize"].as<float>(28.0f);
+			uiText.Color = uiTextNode["Color"].as<glm::vec4>(glm::vec4(1.0f));
+			uiText.Alignment = (UITextAlignment)uiTextNode["Alignment"].as<int>(0);
+		}
+
+		auto uiButtonNode = entityNode["UIButtonComponent"];
+		if (uiButtonNode)
+		{
+			auto& uiButton = deserializedEntity.AddComponent<UIButtonComponent>();
+			uiButton.Color = uiButtonNode["Color"].as<glm::vec4>(glm::vec4(0.16f, 0.17f, 0.20f, 1.0f));
+			uiButton.HoverColor = uiButtonNode["HoverColor"].as<glm::vec4>(glm::vec4(0.22f, 0.23f, 0.27f, 1.0f));
+			uiButton.PressedColor = uiButtonNode["PressedColor"].as<glm::vec4>(glm::vec4(0.11f, 0.12f, 0.14f, 1.0f));
+			if (uiButtonNode["NormalTexturePath"])
+			{
+				std::string p = uiButtonNode["NormalTexturePath"].as<std::string>();
+				std::filesystem::path r = ResolveTexturePath(p);
+				if (!r.empty() && (std::filesystem::exists(r) || VFS::Exists(r)))
+					uiButton.NormalTexture = Texture2D::Create(r.string(), TextureFilter::Linear);
+				uiButton.NormalTexturePath = p;
+			}
+			if (uiButtonNode["HoverTexturePath"])
+			{
+				std::string p = uiButtonNode["HoverTexturePath"].as<std::string>();
+				std::filesystem::path r = ResolveTexturePath(p);
+				if (!r.empty() && (std::filesystem::exists(r) || VFS::Exists(r)))
+					uiButton.HoverTexture = Texture2D::Create(r.string(), TextureFilter::Linear);
+				uiButton.HoverTexturePath = p;
+			}
+			if (uiButtonNode["PressedTexturePath"])
+			{
+				std::string p = uiButtonNode["PressedTexturePath"].as<std::string>();
+				std::filesystem::path r = ResolveTexturePath(p);
+				if (!r.empty() && (std::filesystem::exists(r) || VFS::Exists(r)))
+					uiButton.PressedTexture = Texture2D::Create(r.string(), TextureFilter::Linear);
+				uiButton.PressedTexturePath = p;
+			}
+			uiButton.Label = uiButtonNode["Label"].as<std::string>("Button");
+			uiButton.LabelSize = uiButtonNode["LabelSize"].as<float>(22.0f);
+			uiButton.LabelColor = uiButtonNode["LabelColor"].as<glm::vec4>(glm::vec4(1.0f));
+			if (uiButtonNode["OnClick"])
+				uiButton.OnClick = uiButtonNode["OnClick"].as<std::string>("");
+		}
+
+		auto uiBarNode = entityNode["UIProgressBarComponent"];
+		if (uiBarNode)
+		{
+			auto& uiBar = deserializedEntity.AddComponent<UIProgressBarComponent>();
+			uiBar.Value = uiBarNode["Value"].as<float>(1.0f);
+			uiBar.BackgroundColor = uiBarNode["BackgroundColor"].as<glm::vec4>(glm::vec4(0.08f, 0.09f, 0.11f, 0.85f));
+			uiBar.FillColor = uiBarNode["FillColor"].as<glm::vec4>(glm::vec4(0.914f, 0.608f, 0.176f, 1.0f));
+			uiBar.Padding = uiBarNode["Padding"].as<float>(2.0f);
+		}
+
 
 		auto rigidbody2DComponent = entityNode["Rigidbody2DComponent"];
 		if (rigidbody2DComponent)

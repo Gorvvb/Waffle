@@ -587,7 +587,7 @@ namespace Waffle {
 
 			// Transform gizmos
 			Entity selectedEntity = m_SceneHierarchyPanel.GetSelectedEntity();
-			if (selectedEntity && m_GizmoType != -1)
+			if (selectedEntity && m_GizmoType != -1 && selectedEntity.HasComponent<TransformComponent>())
 			{
 				const glm::mat4& cameraProjection = m_EditorCamera.GetProjection();
 				glm::mat4        cameraView = m_EditorCamera.GetViewMatrix();
