@@ -37,7 +37,16 @@ namespace Waffle {
 		inline const glm::vec3& GetFocalPoint() const { return m_FocalPoint; }
 		inline void SetFocalPoint(const glm::vec3& focalPoint) { m_FocalPoint = focalPoint; }
 
-		inline void SetViewportSize(float width, float height) { m_ViewportWidth = width; m_ViewportHeight = height; UpdateProjection(); }
+		inline void SetViewportSize(float width, float height)
+		{
+			// A zero viewport (collapsed panel, startup layout, minimized window)
+			// would divide by zero in glm::perspective.
+			if (width <= 0.0f || height <= 0.0f)
+				return;
+			m_ViewportWidth = width;
+			m_ViewportHeight = height;
+			UpdateProjection();
+		}
 
 		const glm::mat4& GetViewMatrix() const { return m_ViewMatrix; }
 		glm::mat4 GetViewProjection() const { return m_Projection * m_ViewMatrix; }

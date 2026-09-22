@@ -105,6 +105,10 @@ namespace Waffle {
 	private:
 		Entity DuplicateEntityRecursive(Entity entity, Entity parent);
 
+		// Draws one tilemap's tiles (called inside the sorted render pass
+		// at the tilemap's own sort slot).
+		void DrawTilemapTiles(Entity entity, const glm::mat4& worldTransform);
+
 		template<typename T>
 		void OnComponentAdded(Entity entity, T& component);
 	};

@@ -105,6 +105,20 @@ namespace Waffle {
 		m_ContentBrowserPanel.SetOpenSceneCallback(
 			[this](const std::filesystem::path& path) { OpenScene(path); });
 
+		// Lua Quit() during play stops the game, never the editor.
+		LuaScriptEngine::SetQuitHandler([this]
+		{
+			if (m_SceneState == SceneState::Play)
+				OnSceneStop();
+		});
+
+		m_ContentBrowserPanel.SetOpenSpritesheetEditorCallback(
+			[this](const std::filesystem::path& path)
+			{
+				m_ShowSpritesheetEditor = true;
+				m_SpritesheetEditorPanel.Open(path);
+			});
+
 		m_ContentBrowserPanel.SetSceneRenamedCallback(
 			[this](const std::filesystem::path& oldPath, const std::filesystem::path& newPath)
 			{
@@ -232,8 +246,48 @@ namespace Waffle {
 		}
 		}
 
+		// Deferred Lua Quit(): stop play AFTER the frame completed
+		// (never from inside the click callback - registry corruption).
+		if (m_SceneState == SceneState::Play && LuaScriptEngine::IsQuitRequested())
+		{
+			LuaScriptEngine::ClearQuitRequest();
+			OnSceneStop();
+		}
+
 		OnOverlayRender();
 		m_Framebuffer->Unbind();
+	}
+
+	// Unprojects an ImGui-space mouse position to the world point on the
+	// z=0 plane through the editor camera, by casting a ray (near->far
+	// points) and intersecting the plane. Correct for both orthographic
+	// and perspective projections - a plain inverse-projection at a fixed
+	// NDC depth lands on a near-clip sliver with a perspective camera,
+	// which clamped all painting to a tiny box around the focal point.
+	static bool ScreenToWorldEditor(const EditorCamera& camera,
+		const ImVec2& vpMin, const ImVec2& vpMax, const ImVec2& mouse, glm::vec2& out, float planeZ = 0.0f)
+	{
+		if (vpMax.x <= vpMin.x || vpMax.y <= vpMin.y)
+			return false;
+		float nx = ((mouse.x - vpMin.x) / (vpMax.x - vpMin.x)) * 2.0f - 1.0f;
+		float ny = 1.0f - ((mouse.y - vpMin.y) / (vpMax.y - vpMin.y)) * 2.0f;
+
+		glm::mat4 inv = glm::inverse(camera.GetProjection() * camera.GetViewMatrix());
+
+		glm::vec4 nearH = inv * glm::vec4(nx, ny, -1.0f, 1.0f);
+		glm::vec4 farH = inv * glm::vec4(nx, ny, 1.0f, 1.0f);
+		if (nearH.w == 0.0f || farH.w == 0.0f)
+			return false;
+		glm::vec3 nearP = glm::vec3(nearH) / nearH.w;
+		glm::vec3 farP = glm::vec3(farH) / farH.w;
+		glm::vec3 dir = farP - nearP;
+		if (std::abs(dir.z) < 1e-6f)
+			return false; // ray parallel to the z=0 plane
+
+		float t = (planeZ - nearP.z) / dir.z;
+		glm::vec3 hit = nearP + dir * t;
+		out = { hit.x, hit.y };
+		return true;
 	}
 
 	// -------------------------------------------------------------------------
@@ -353,6 +407,7 @@ namespace Waffle {
 			if (ImGui::BeginMenu("View"))
 			{
 				ImGui::MenuItem("Settings", nullptr, &m_ShowSettingsPanel);
+				ImGui::MenuItem("Tile Palette", nullptr, &m_ShowTilePalette);
 				ImGui::Separator();
 				ImGui::MenuItem("Show Physics Colliders", nullptr, &m_ShowPhysicsColliders);
 				ImGui::MenuItem("Show Selection Outline", nullptr, &m_ShowSelectionOutline);
@@ -409,6 +464,9 @@ namespace Waffle {
 
 		if (m_ShowSpritesheetEditor)
 			m_SpritesheetEditorPanel.OnImGuiRender();
+
+		if (m_ShowTilePalette)
+			UI_TilePalette();
 
 		// -- Export modal -----------------------------------------------------
 		UI_ExportModal();
@@ -556,10 +614,24 @@ namespace Waffle {
 							: m_SceneHierarchyPanel.GetSelectedEntity();
 						if (target)
 						{
-							if (!target.HasComponent<SpriteRendererComponent>())
-								target.AddComponent<SpriteRendererComponent>();
-							auto& src = target.GetComponent<SpriteRendererComponent>();
-							src.Texture = Texture2D::Create(path.string(), src.FilterMode);
+							if (target.HasComponent<TilemapComponent>())
+							{
+								// Dropping a texture on a tilemap sets its
+								// tilesheet - never a full-sheet sprite
+								// renderer (that would give the map a
+								// fixed, scaled size).
+								auto& tm = target.GetComponent<TilemapComponent>();
+								tm.TilesetTexture = Texture2D::Create(path.string(), tm.FilterMode);
+								tm.TexturePath = GetNormalizedAssetPath(path.string());
+								tm.TileCache.clear();
+							}
+							else
+							{
+								if (!target.HasComponent<SpriteRendererComponent>())
+									target.AddComponent<SpriteRendererComponent>();
+								auto& src = target.GetComponent<SpriteRendererComponent>();
+								src.Texture = Texture2D::Create(path.string(), src.FilterMode);
+							}
 						}
 					}
 					else if (ext == ".lua")
@@ -655,6 +727,64 @@ namespace Waffle {
 				}
 			}
 
+			// -- Tile painting -------------------------------------------------
+			if (m_SceneState == SceneState::Edit && m_TilePaintMode != 0)
+			{
+				Entity tileEnt = m_SceneHierarchyPanel.GetSelectedEntity();
+				if (tileEnt && tileEnt.HasComponent<TilemapComponent>())
+				{
+					auto& tm = tileEnt.GetComponent<TilemapComponent>();
+					glm::vec2 world(0.0f);
+					const ImVec2 mouse = ImGui::GetMousePos();
+					// Tile size = entity scale (per axis).
+					glm::mat4 tileXf = m_ActiveScene->GetWorldTransform(tileEnt);
+					glm::vec2 entPos(tileXf[3].x, tileXf[3].y);
+					glm::vec2 tileScale(glm::length(tileXf[0]), glm::length(tileXf[1]));
+					bool unprojected = false;
+					if (m_ViewportHovered && tileScale.x > 0.0f && tileScale.y > 0.0f)
+					{
+						unprojected = ScreenToWorldEditor(m_EditorCamera,
+							ImVec2(m_ViewportBounds[0].x, m_ViewportBounds[0].y),
+							ImVec2(m_ViewportBounds[1].x, m_ViewportBounds[1].y),
+							mouse, world, tileXf[3].z);
+					}
+
+					static int s_TilePaintLog = 0;
+					if ((Input::IsMouseButtonPressed(Mouse::ButtonLeft) ||
+						Input::IsMouseButtonHeld(Mouse::ButtonLeft)) &&
+						s_TilePaintLog < 40 && unprojected && !ImGuizmo::IsOver() && !ImGuizmo::IsUsing())
+					{
+						s_TilePaintLog++;
+						glm::vec2 dbgLocal = (world - entPos) / tileScale;
+						WF_CORE_INFO("[TilePaint] mouse=({0:.0f},{1:.0f}) bounds=[({2:.0f},{3:.0f}),({4:.0f},{5:.0f})] world=({6:.2f},{7:.2f}) entPos=({8:.2f},{9:.2f}) tileScale=({10:.2f},{11:.2f}) cell=({12},{13}) mode={14} hovered={15}",
+							mouse.x, mouse.y,
+							m_ViewportBounds[0].x, m_ViewportBounds[0].y,
+							m_ViewportBounds[1].x, m_ViewportBounds[1].y,
+							world.x, world.y, entPos.x, entPos.y,
+							tileScale.x, tileScale.y,
+							(int)std::floor(dbgLocal.x), (int)std::floor(dbgLocal.y),
+							m_TilePaintMode, m_ViewportHovered ? 1 : 0);
+					}
+
+					if (unprojected && !ImGuizmo::IsOver() && !ImGuizmo::IsUsing())
+					{
+						// Grid-relative coords: scale IS the tile size.
+						glm::vec2 local = (world - entPos) / tileScale;
+						int tx = (int)std::floor(local.x);
+						int ty = (int)std::floor(local.y);
+
+						if (Input::IsMouseButtonPressed(Mouse::ButtonLeft) ||
+							Input::IsMouseButtonHeld(Mouse::ButtonLeft))
+						{
+							if (m_TilePaintMode == 2)
+								tm.Tiles.erase({ tx, ty });
+							else if (m_TilePaletteIndex >= 0)
+								tm.Tiles[{ tx, ty }] = m_TilePaletteIndex;
+						}
+					}
+				}
+			}
+
 			UI_Toolbar();
 		}
 		ImGui::End();
@@ -708,6 +838,146 @@ namespace Waffle {
 			ImGuizmo::OPERATION::SCALE);
 
 		ImGui::EndGroup();
+	}
+
+	void EditorLayer::UI_TilePalette()
+	{
+		ImGui::Begin("Tile Palette");
+
+		Entity selected = m_SceneHierarchyPanel.GetSelectedEntity();
+		if (!selected || !selected.HasComponent<TilemapComponent>() || m_SceneState != SceneState::Edit)
+		{
+			m_TilePaintMode = 0;
+			ImGui::TextDisabled("Select a Tilemap entity to paint tiles");
+			ImGui::End();
+			return;
+		}
+
+		auto& tm = selected.GetComponent<TilemapComponent>();
+		if (!tm.TilesetTexture || tm.TileSize <= 0)
+		{
+			m_TilePaintMode = 0;
+			ImGui::TextDisabled("Assign a tilesheet in the Tilemap inspector");
+			ImGui::End();
+			return;
+		}
+
+		// Mode row
+		{
+			ImGui::PushStyleColor(ImGuiCol_Text,
+				m_TilePaintMode == 1 ? UI::Theme::Accent : UI::Theme::Text);
+			if (ImGui::Button("Paint", ImVec2(64.0f, 26.0f)) && m_TilePaletteIndex >= 0)
+				m_TilePaintMode = 1;
+			ImGui::PopStyleColor();
+
+			ImGui::SameLine();
+			ImGui::PushStyleColor(ImGuiCol_Text,
+				m_TilePaintMode == 2 ? UI::Theme::Danger : UI::Theme::Text);
+			if (ImGui::Button("Erase", ImVec2(64.0f, 26.0f)))
+				m_TilePaintMode = 2;
+			ImGui::PopStyleColor();
+
+			ImGui::SameLine();
+			if (ImGui::Button("Off", ImVec2(52.0f, 26.0f)))
+				m_TilePaintMode = 0;
+
+			ImGui::TextDisabled("%s",
+				m_TilePaintMode == 0 ? "Left-drag in the viewport after picking a tile"
+				: m_TilePaintMode == 2 ? "Left-drag in the viewport to erase"
+				: "Left-drag in the viewport to paint");
+		}
+
+		// Sheet with tile grid, solid markers and selection highlight.
+		const float texW = (float)tm.TilesetTexture->GetWidth();
+		const float texH = (float)tm.TilesetTexture->GetHeight();
+		const float scale = ImGui::GetContentRegionAvail().x / texW;
+		const ImVec2 disp = { texW * scale, texH * scale };
+		const ImVec2 tl = ImGui::GetCursorScreenPos();
+		ImDrawList* dl = ImGui::GetWindowDrawList();
+
+		ImGuiLayer::BeginTextureSamplerPassthrough(dl);
+		dl->AddImage((ImTextureID)tm.TilesetTexture->GetRendererID(),
+			tl, { tl.x + disp.x, tl.y + disp.y }, ImVec2(0, 1), ImVec2(1, 0));
+		ImGuiLayer::EndTextureSamplerPassthrough(dl);
+
+		ImGui::InvisibleButton("##PaletteImage", disp);
+		const bool imageHovered = ImGui::IsItemHovered();
+
+		// Solid tile set from the collider component (if present).
+		TilemapColliderComponent* tmc = nullptr;
+		if (selected.HasComponent<TilemapColliderComponent>())
+			tmc = &selected.GetComponent<TilemapColliderComponent>();
+		auto isSolidTile = [tmc](int idx)
+		{
+			return tmc && std::find(tmc->SolidTileIndices.begin(), tmc->SolidTileIndices.end(), idx)
+				!= tmc->SolidTileIndices.end();
+		};
+
+		const int cols = tm.TileColumns();
+		const int rows = tm.TileRows();
+		const float cell = (float)tm.TileSize * scale;
+
+		for (int r = 0; r < rows; r++)
+		{
+			for (int c = 0; c < cols; c++)
+			{
+				const int idx = r * cols + c;
+				const ImVec2 cMin = { tl.x + c * cell, tl.y + r * cell };
+				const ImVec2 cMax = { cMin.x + cell, cMin.y + cell };
+
+				if (isSolidTile(idx))
+					dl->AddRectFilled(cMin, cMax, IM_COL32(60, 220, 120, 60));
+
+				if (idx == m_TilePaletteIndex)
+				{
+					dl->AddRectFilled(cMin, cMax, IM_COL32(255, 200, 40, 45));
+					dl->AddRect(cMin, cMax, IM_COL32(255, 200, 40, 255), 0.0f, 0, 2.0f);
+				}
+				else
+				{
+					dl->AddRect(cMin, cMax, IM_COL32(255, 255, 255, 28));
+				}
+			}
+		}
+
+		if (imageHovered && ImGui::IsMouseClicked(ImGuiMouseButton_Left))
+		{
+			const ImVec2 m = ImGui::GetMousePos();
+			const int c = (int)((m.x - tl.x) / cell);
+			const int r = (int)((m.y - tl.y) / cell);
+			if (c >= 0 && c < cols && r >= 0 && r < rows)
+			{
+				m_TilePaletteIndex = r * cols + c;
+				m_TilePaintMode = 1;
+			}
+		}
+
+		// Solid marking for the selected tile.
+		if (m_TilePaletteIndex >= 0)
+		{
+			ImGui::Spacing();
+			ImGui::TextDisabled("Tile %d selected", m_TilePaletteIndex);
+			if (tmc)
+			{
+				bool solid = isSolidTile(m_TilePaletteIndex);
+				if (ImGui::Checkbox("Solid (collides)", &solid))
+				{
+					auto& v = tmc->SolidTileIndices;
+					auto it = std::find(v.begin(), v.end(), m_TilePaletteIndex);
+					if (solid && it == v.end())
+						v.push_back(m_TilePaletteIndex);
+					else if (!solid && it != v.end())
+						v.erase(it);
+				}
+			}
+			else
+			{
+				ImGui::TextDisabled("Add a Tilemap Collider component to");
+				ImGui::TextDisabled("mark tiles as solid");
+			}
+		}
+
+		ImGui::End();
 	}
 
 	void EditorLayer::UI_Toolbar()
@@ -1313,6 +1583,15 @@ namespace Waffle {
 
 	bool EditorLayer::OnMouseButtonPressed(MouseButtonPressedEvent& e)
 	{
+		// Tile painting owns the click - clicking must not reselect (and
+		// thereby steal) the tilemap mid-brush.
+		if (m_TilePaintMode != 0 && m_ViewportHovered && !ImGuizmo::IsOver())
+		{
+			Entity tileEnt = m_SceneHierarchyPanel.GetSelectedEntity();
+			if (tileEnt && tileEnt.HasComponent<TilemapComponent>())
+				return false;
+		}
+
 		if (e.GetMouseButton() == Mouse::ButtonLeft &&
 			m_ViewportHovered &&
 			!ImGuizmo::IsOver() &&
@@ -1341,6 +1620,37 @@ namespace Waffle {
 		else
 		{
 			Renderer2D::BeginScene(m_EditorCamera);
+		}
+
+		// Tile brush preview: the cell under the mouse, tinted by mode.
+		if (m_SceneState == SceneState::Edit && m_TilePaintMode != 0 && m_ViewportHovered)
+		{
+			Entity tileEnt = m_SceneHierarchyPanel.GetSelectedEntity();
+			if (tileEnt && tileEnt.HasComponent<TilemapComponent>())
+			{
+				auto& tm = tileEnt.GetComponent<TilemapComponent>();
+				glm::vec2 world;
+				const ImVec2 mouse = ImGui::GetMousePos();
+				glm::mat4 tileXf = m_ActiveScene->GetWorldTransform(tileEnt);
+				glm::vec2 entPos(tileXf[3].x, tileXf[3].y);
+				glm::vec2 T(glm::length(tileXf[0]), glm::length(tileXf[1]));
+				if (T.x > 0.0f && T.y > 0.0f &&
+					ScreenToWorldEditor(m_EditorCamera,
+						ImVec2(m_ViewportBounds[0].x, m_ViewportBounds[0].y),
+						ImVec2(m_ViewportBounds[1].x, m_ViewportBounds[1].y),
+						mouse, world, tileXf[3].z))
+				{
+					glm::vec2 local = (world - entPos) / T;
+					int tx = (int)std::floor(local.x);
+					int ty = (int)std::floor(local.y);
+
+					Renderer2D::DrawRect(
+						glm::vec3(entPos.x + (tx + 0.5f) * T.x, entPos.y + (ty + 0.5f) * T.y, tileXf[3].z),
+						glm::vec2(T.x, T.y),
+						m_TilePaintMode == 2 ? glm::vec4(1.0f, 0.4f, 0.4f, 0.9f)
+						: glm::vec4(1.0f, 0.8f, 0.2f, 0.9f));
+				}
+			}
 		}
 
 		if (m_ShowPhysicsColliders)
@@ -1406,8 +1716,10 @@ namespace Waffle {
 		{
 			if (Entity sel = m_SceneHierarchyPanel.GetSelectedEntity())
 			{
-				// Do not render selection box on Camera entities
-				if (sel && !sel.HasComponent<CameraComponent>())
+				// No selection box on Camera entities or Tilemaps - a
+				// tilemap is an infinite grid, not a sized object; it is
+				// selected by clicking one of its tiles or via hierarchy.
+				if (sel && !sel.HasComponent<CameraComponent>() && !sel.HasComponent<TilemapComponent>())
 				{
 					glm::vec4 outlineColor = m_SelectionOutlineColor;
 

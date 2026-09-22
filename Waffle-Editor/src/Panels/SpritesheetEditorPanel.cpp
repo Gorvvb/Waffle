@@ -19,8 +19,28 @@ namespace Waffle {
 
     //  Private helpers
 
+    void SpritesheetEditorPanel::Open(const std::filesystem::path& path)
+    {
+        std::string ext = path.extension().string();
+        for (auto& c : ext) c = (char)tolower(c);
+        if (ext == ".spritesheet")
+            LoadSpritesheetAsset(path);
+        else
+            LoadTexture(path);
+    }
+
     void SpritesheetEditorPanel::LoadTexture(const std::filesystem::path& path)
     {
+        // A texture with sibling sprite metadata edits THAT sheet instead
+        // of starting from a fresh default grid.
+        std::filesystem::path sibling = path;
+        sibling.replace_extension(".spritesheet");
+        if (std::filesystem::exists(sibling))
+        {
+            LoadSpritesheetAsset(sibling);
+            return;
+        }
+
         m_TexturePath = path;
         m_Texture = Texture2D::Create(path.string(), TextureFilter::Nearest);
         m_CanvasZoom = 1.0f;
@@ -80,6 +100,11 @@ namespace Waffle {
                     {
                         region.Min = { regNode["Min"][0].as<float>(0.0f), regNode["Min"][1].as<float>(0.0f) };
                         region.Max = { regNode["Max"][0].as<float>(0.0f), regNode["Max"][1].as<float>(0.0f) };
+                    }
+                    if (regNode["Pivot"] && regNode["Pivot"].IsSequence())
+                    {
+                        region.Pivot = { regNode["Pivot"][0].as<float>(-1.0f),
+                                         regNode["Pivot"][1].as<float>(-1.0f) };
                     }
                     m_Regions.push_back(region);
                 }
@@ -221,6 +246,12 @@ namespace Waffle {
                 << YAML::BeginSeq << (int)region.Min.x << (int)region.Min.y << YAML::EndSeq;
             out << YAML::Key << "Max" << YAML::Value << YAML::Flow
                 << YAML::BeginSeq << (int)region.Max.x << (int)region.Max.y << YAML::EndSeq;
+            if (region.Pivot.x >= 0.0f && region.Pivot.y >= 0.0f)
+                out << YAML::Key << "Pivot" << YAML::Value << YAML::Flow
+                << YAML::BeginSeq
+                << std::round(region.Pivot.x * 1000.0f) / 1000.0f
+                << std::round(region.Pivot.y * 1000.0f) / 1000.0f
+                << YAML::EndSeq;
             out << YAML::EndMap;
         }
         out << YAML::EndSeq;
@@ -260,7 +291,7 @@ namespace Waffle {
             if (UI::GhostButton("Open...", ImVec2(92.0f, 31.0f)))
             {
                 const std::string file = FileDialogs::OpenFile(
-                    "Spritesheet Files (*.png *.jpg *.jpeg *.spritesheet) *.png;*.jpg;*.jpeg;*.spritesheet All Files (*.*) *.* ");
+                    "Spritesheet Files (*.png *.jpg *.jpeg *.spritesheet)\0*.png;*.jpg;*.jpeg;*.spritesheet\0All Files (*.*)\0*.*\0");
                 if (!file.empty())
                 {
                     std::string ext = std::filesystem::path(file).extension().string();
@@ -508,6 +539,43 @@ namespace Waffle {
                         col, reg.Name.c_str());
             }
 
+            // Selected-region affordances: resize handles + pivot marker.
+            if (m_SelectedRegionIndex >= 0 &&
+                m_SelectedRegionIndex < (int)m_Regions.size())
+            {
+                const auto& reg = m_Regions[m_SelectedRegionIndex];
+                const ImVec2 pMin = PixelToScreen(reg.Min);
+                const ImVec2 pMax = PixelToScreen(reg.Max);
+                const float  midX = (pMin.x + pMax.x) * 0.5f;
+                const float  midY = (pMin.y + pMax.y) * 0.5f;
+
+                const ImVec2 handles[8] = {
+                    { pMin.x, midY }, { pMax.x, midY },   // left, right edges
+                    { midX, pMin.y }, { midX, pMax.y },   // top, bottom edges
+                    { pMin.x, pMin.y }, { pMax.x, pMin.y }, // corners
+                    { pMin.x, pMax.y }, { pMax.x, pMax.y }
+                };
+                for (const ImVec2& h : handles)
+                    dl->AddRectFilled({ h.x - 3.5f, h.y - 3.5f },
+                        { h.x + 3.5f, h.y + 3.5f },
+                        IM_COL32(0, 230, 120, 255), 1.0f);
+
+                // Pivot circle: bright when custom, dim when inherited.
+                const glm::vec2 piv = {
+                    reg.Pivot.x < 0.0f ? 0.5f : reg.Pivot.x,
+                    reg.Pivot.y < 0.0f ? 0.5f : reg.Pivot.y
+                };
+                const ImVec2 pc = PixelToScreen(reg.Min + piv * (reg.Max - reg.Min));
+                const bool   pivotSet = reg.Pivot.x >= 0.0f && reg.Pivot.y >= 0.0f;
+                dl->AddLine({ pc.x - 9.0f, pc.y }, { pc.x + 9.0f, pc.y },
+                    IM_COL32(255, 200, 40, 150), 1.0f);
+                dl->AddLine({ pc.x, pc.y - 9.0f }, { pc.x, pc.y + 9.0f },
+                    IM_COL32(255, 200, 40, 150), 1.0f);
+                dl->AddCircleFilled(pc, 5.0f,
+                    pivotSet ? IM_COL32(255, 200, 40, 255) : IM_COL32(255, 200, 40, 110), 12);
+                dl->AddCircle(pc, 7.5f, IM_COL32(20, 20, 20, 220), 12, 2.0f);
+            }
+
             // Invisible interaction button over the whole canvas area
             ImGui::SetCursorScreenPos(childTL);
             ImGui::InvisibleButton("##Canvas",
@@ -546,7 +614,8 @@ namespace Waffle {
                 }
             }
 
-            // Left-click: select existing region or start drag-draw
+            // Left-click: resize handles / pivot of the selected region
+            // first, then select existing region, then start drag-draw.
             const bool insideImage =
                 mousePos.x >= canvasPos.x &&
                 mousePos.x <= canvasPos.x + displayW &&
@@ -557,29 +626,137 @@ namespace Waffle {
                 ImGui::IsMouseClicked(ImGuiMouseButton_Left))
             {
                 const glm::vec2 clickPx = ScreenToPixel(mousePos);
-                int hit = -1;
-                for (int i = (int)m_Regions.size() - 1; i >= 0; i--)
+
+                // 1. Edge/corner handles of the selected region.
+                int resizeEdges = 0;
+                if (m_SelectedRegionIndex >= 0 &&
+                    m_SelectedRegionIndex < (int)m_Regions.size())
                 {
-                    if (clickPx.x >= m_Regions[i].Min.x &&
-                        clickPx.x <= m_Regions[i].Max.x &&
-                        clickPx.y >= m_Regions[i].Min.y &&
-                        clickPx.y <= m_Regions[i].Max.y)
+                    const auto& reg = m_Regions[m_SelectedRegionIndex];
+                    const ImVec2 hMin = PixelToScreen(reg.Min);
+                    const ImVec2 hMax = PixelToScreen(reg.Max);
+                    constexpr float thresh = 7.0f;
+                    const bool nearY = mousePos.y >= hMin.y - thresh && mousePos.y <= hMax.y + thresh;
+                    const bool nearX = mousePos.x >= hMin.x - thresh && mousePos.x <= hMax.x + thresh;
+                    if (nearY && std::abs(mousePos.x - hMin.x) <= thresh) resizeEdges |= 1; // left
+                    if (nearY && std::abs(mousePos.x - hMax.x) <= thresh) resizeEdges |= 2; // right
+                    if (nearX && std::abs(mousePos.y - hMin.y) <= thresh) resizeEdges |= 4; // top
+                    if (nearX && std::abs(mousePos.y - hMax.y) <= thresh) resizeEdges |= 8; // bottom
+                }
+
+                if (resizeEdges != 0)
+                {
+                    m_ResizeRegionIndex = m_SelectedRegionIndex;
+                    m_ResizeEdges = resizeEdges;
+                }
+                else if (m_SelectedRegionIndex >= 0 &&
+                    m_SelectedRegionIndex < (int)m_Regions.size())
+                {
+                    // 2. Pivot handle of the selected region.
+                    const auto& reg = m_Regions[m_SelectedRegionIndex];
+                    const glm::vec2 piv = {
+                        reg.Pivot.x < 0.0f ? 0.5f : reg.Pivot.x,
+                        reg.Pivot.y < 0.0f ? 0.5f : reg.Pivot.y
+                    };
+                    const ImVec2 pc = PixelToScreen(reg.Min + piv * (reg.Max - reg.Min));
+                    if (std::abs(mousePos.x - pc.x) <= 9.0f &&
+                        std::abs(mousePos.y - pc.y) <= 9.0f)
                     {
-                        hit = i;
-                        break;
+                        m_PivotDragRegionIndex = m_SelectedRegionIndex;
                     }
                 }
 
-                if (hit >= 0)
+                if (m_ResizeRegionIndex < 0 && m_PivotDragRegionIndex < 0)
                 {
-                    m_SelectedRegionIndex = hit;
+                    int hit = -1;
+                    for (int i = (int)m_Regions.size() - 1; i >= 0; i--)
+                    {
+                        if (clickPx.x >= m_Regions[i].Min.x &&
+                            clickPx.x <= m_Regions[i].Max.x &&
+                            clickPx.y >= m_Regions[i].Min.y &&
+                            clickPx.y <= m_Regions[i].Max.y)
+                        {
+                            hit = i;
+                            break;
+                        }
+                    }
+
+                    if (hit >= 0)
+                    {
+                        m_SelectedRegionIndex = hit;
+                    }
+                    else
+                    {
+                        m_IsDraggingBox = true;
+                        m_DragStartPixel = { std::round(clickPx.x), std::round(clickPx.y) };
+                        m_DragCurrentPixel = m_DragStartPixel;
+                        m_SelectedRegionIndex = -1;
+                    }
+                }
+            }
+
+            // Delete key removes the selected region.
+            if (hovered && m_SelectedRegionIndex >= 0 &&
+                m_SelectedRegionIndex < (int)m_Regions.size() &&
+                ImGui::IsKeyPressed(ImGuiKey_Delete, false))
+            {
+                RemoveRegion(m_SelectedRegionIndex);
+                m_SelectedRegionIndex = -1;
+                m_ResizeRegionIndex = -1;
+                m_PivotDragRegionIndex = -1;
+            }
+
+            // Active edge resize: each flagged edge follows the mouse,
+            // clamped to the image and to a 1px minimum size.
+            if (m_ResizeRegionIndex >= 0 &&
+                m_ResizeRegionIndex < (int)m_Regions.size())
+            {
+                if (ImGui::IsMouseDown(ImGuiMouseButton_Left))
+                {
+                    auto& reg = m_Regions[m_ResizeRegionIndex];
+                    const glm::vec2 px = ScreenToPixel(mousePos);
+                    if (m_ResizeEdges & 1)
+                        reg.Min.x = std::round(std::max(0.0f, std::min(px.x, reg.Max.x - 1.0f)));
+                    if (m_ResizeEdges & 2)
+                        reg.Max.x = std::round(std::min(texW, std::max(px.x, reg.Min.x + 1.0f)));
+                    if (m_ResizeEdges & 4)
+                        reg.Min.y = std::round(std::max(0.0f, std::min(px.y, reg.Max.y - 1.0f)));
+                    if (m_ResizeEdges & 8)
+                        reg.Max.y = std::round(std::min(texH, std::max(px.y, reg.Min.y + 1.0f)));
+
+                    const ImVec2 p0 = PixelToScreen(reg.Min);
+                    const ImVec2 p1 = PixelToScreen(reg.Max);
+                    char tip[64];
+                    snprintf(tip, sizeof(tip), "%dx%d px",
+                        (int)(reg.Max.x - reg.Min.x), (int)(reg.Max.y - reg.Min.y));
+                    dl->AddText({ p1.x + 6.0f, p1.y + 6.0f },
+                        IM_COL32(255, 240, 0, 255), tip);
                 }
                 else
                 {
-                    m_IsDraggingBox = true;
-                    m_DragStartPixel = { std::round(clickPx.x), std::round(clickPx.y) };
-                    m_DragCurrentPixel = m_DragStartPixel;
-                    m_SelectedRegionIndex = -1;
+                    m_ResizeRegionIndex = -1;
+                    m_ResizeEdges = 0;
+                }
+            }
+
+            // Active pivot drag: normalized position within the region.
+            if (m_PivotDragRegionIndex >= 0 &&
+                m_PivotDragRegionIndex < (int)m_Regions.size())
+            {
+                if (ImGui::IsMouseDown(ImGuiMouseButton_Left))
+                {
+                    auto& reg = m_Regions[m_PivotDragRegionIndex];
+                    const glm::vec2 px = ScreenToPixel(mousePos);
+                    const glm::vec2 size = reg.Max - reg.Min;
+                    if (size.x > 0.0f && size.y > 0.0f)
+                    {
+                        reg.Pivot.x = std::max(0.0f, std::min((px.x - reg.Min.x) / size.x, 1.0f));
+                        reg.Pivot.y = std::max(0.0f, std::min((px.y - reg.Min.y) / size.y, 1.0f));
+                    }
+                }
+                else
+                {
+                    m_PivotDragRegionIndex = -1;
                 }
             }
 
@@ -712,6 +889,16 @@ namespace Waffle {
 
             const glm::vec2 sz = reg.Max - reg.Min;
             ImGui::TextDisabled("Size: %d x %d px", (int)sz.x, (int)sz.y);
+
+            const bool pivotSet = reg.Pivot.x >= 0.0f && reg.Pivot.y >= 0.0f;
+            if (pivotSet)
+                ImGui::TextDisabled("Pivot: (%.2f, %.2f) - top-left origin", reg.Pivot.x, reg.Pivot.y);
+            else
+                ImGui::TextDisabled("Pivot: center (inherited)");
+            ImGui::BeginDisabled(!pivotSet);
+            if (UI::GhostButton("Reset Pivot", ImVec2(-1.0f, 24.0f)))
+                reg.Pivot = { -1.0f, -1.0f };
+            ImGui::EndDisabled();
 
             ImGui::Spacing();
 

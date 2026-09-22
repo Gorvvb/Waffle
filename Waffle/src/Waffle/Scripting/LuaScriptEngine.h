@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Waffle/Scene/Scene.h"
+#include <functional>
 #include "Waffle/Scene/Entity.h"
 #include "Waffle/Scene/Components.h"
 
@@ -82,6 +83,15 @@ namespace Waffle {
 		static void ClearPendingSceneChange() { s_PendingSceneChange = -1; }
 
 		static void SetCurrentSceneIndex(int index) { s_CurrentSceneIndex = index; }
+		// Quit is DEFERRED: handlers run after the frame (tearing the scene
+		// down from inside a click callback corrupts the registry).
+		static void RequestQuit() { s_QuitRequested = true; }
+		static bool IsQuitRequested() { return s_QuitRequested; }
+		static void ClearQuitRequest() { s_QuitRequested = false; }
+
+		// Context-aware Quit(): the editor installs a handler that stops
+		// play mode; a standalone game has none and terminates the app.
+		static void SetQuitHandler(const std::function<void()>& callback) { s_QuitHandler = callback; }
 		static int  GetCurrentSceneIndex() { return s_CurrentSceneIndex; }
 
 		static void ScrapeFieldsFromScript(const std::filesystem::path& fullPath, const std::string& scriptPath, ScriptComponent& sc);
@@ -110,6 +120,8 @@ namespace Waffle {
 		static bool                          s_HasGameViewport;
 		static int                           s_PendingSceneChange;
 		static int                           s_CurrentSceneIndex;
+		static std::function<void()>         s_QuitHandler;
+		static bool                          s_QuitRequested;
 
 		// Per-frame input tracking for IsKeyJustPressed / IsKeyJustReleased
 		static std::unordered_map<int, bool> s_PrevKeyStates;

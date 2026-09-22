@@ -72,4 +72,10 @@ namespace Waffle {
 		return IsVisible(glm::vec3(position - halfSize, -1.0f), glm::vec3(position + halfSize, 1.0f));
 	}
 
+bool Frustum2D::IsVisible(const glm::vec2& position, const glm::vec2& size, float z) const
+{
+	glm::vec2 halfSize = size * 0.5f;
+	return IsVisible(glm::vec3(position - halfSize, z), glm::vec3(position + halfSize, z));
+}
+
 }

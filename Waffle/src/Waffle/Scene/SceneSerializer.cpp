@@ -348,6 +348,41 @@ namespace Waffle {
 			out << YAML::EndMap;
 		}
 
+		if (entity.HasComponent<TilemapComponent>())
+		{
+			out << YAML::Key << "TilemapComponent";
+			out << YAML::BeginMap;
+			auto& tm = entity.GetComponent<TilemapComponent>();
+			out << YAML::Key << "TexturePath" << YAML::Value << tm.TexturePath;
+			out << YAML::Key << "FilterMode" << YAML::Value << static_cast<int>(tm.FilterMode);
+			out << YAML::Key << "TileSize" << YAML::Value << tm.TileSize;
+				out << YAML::Key << "Tint" << YAML::Value << tm.Tint;
+			out << YAML::Key << "SortingLayer" << YAML::Value << tm.SortingLayer;
+			out << YAML::Key << "SortingOrder" << YAML::Value << tm.SortingOrder;
+			out << YAML::Key << "Tiles" << YAML::Value << YAML::BeginSeq;
+			for (const auto& [cell, idx] : tm.Tiles)
+			{
+				out << YAML::Flow << YAML::BeginSeq
+					<< cell.first << cell.second << idx << YAML::EndSeq;
+			}
+			out << YAML::EndSeq;
+			out << YAML::EndMap;
+		}
+
+		if (entity.HasComponent<TilemapColliderComponent>())
+		{
+			out << YAML::Key << "TilemapColliderComponent";
+			out << YAML::BeginMap;
+			auto& tmc = entity.GetComponent<TilemapColliderComponent>();
+			out << YAML::Key << "SolidTiles" << YAML::Value << YAML::Flow << YAML::BeginSeq;
+			for (int idx : tmc.SolidTileIndices)
+				out << idx;
+			out << YAML::EndSeq;
+			out << YAML::Key << "Friction" << YAML::Value << tmc.Friction;
+			out << YAML::Key << "Restitution" << YAML::Value << tmc.Restitution;
+			out << YAML::EndMap;
+		}
+
 		if (entity.HasComponent<RelationshipComponent>())
 		{
 			out << YAML::Key << "RelationshipComponent";
@@ -538,14 +573,28 @@ namespace Waffle {
 		out << YAML::Key << "Entities" << YAML::Value << YAML::BeginSeq;
 
 		auto view = m_Scene->m_Registry.view<TagComponent>();
-		view.each([&](auto entityID, TagComponent& tagComponent)
+
+		// Emit in UUID order so the file is deterministic and the
+		// deserialized registry order matches what was saved.
+		std::vector<entt::entity> sortedEntities;
+		sortedEntities.reserve(view.size());
+		for (auto entityID : view)
+			sortedEntities.push_back(entityID);
+		std::sort(sortedEntities.begin(), sortedEntities.end(),
+			[this](entt::entity a, entt::entity b)
+			{
+				return (uint64_t)m_Scene->m_Registry.get<IDComponent>(a).ID
+					< (uint64_t)m_Scene->m_Registry.get<IDComponent>(b).ID;
+			});
+
+		for (auto entityID : sortedEntities)
 		{
 			Entity entity = { entityID, m_Scene.get() };
 			if (!entity)
-				return;
+				continue;
 
 			SerializeEntity(out, entity);
-		});
+		}
 		out << YAML::EndSeq;
 		out << YAML::EndMap; // Scene
 
@@ -946,6 +995,58 @@ namespace Waffle {
 					uiBar.BackgroundColor = uiBarNode["BackgroundColor"].as<glm::vec4>(glm::vec4(0.08f, 0.09f, 0.11f, 0.85f));
 					uiBar.FillColor = uiBarNode["FillColor"].as<glm::vec4>(glm::vec4(0.914f, 0.608f, 0.176f, 1.0f));
 					uiBar.Padding = uiBarNode["Padding"].as<float>(2.0f);
+				}
+
+				auto tmNode = entity["TilemapComponent"];
+				if (tmNode)
+				{
+					auto& tm = deserializedEntity.AddComponent<TilemapComponent>();
+					tm.TexturePath = tmNode["TexturePath"].as<std::string>("");
+					tm.TileSize = tmNode["TileSize"].as<int>(16);
+						tm.Tint = tmNode["Tint"].as<glm::vec4>(glm::vec4(1.0f));
+					if (tmNode["SortingLayer"])
+						tm.SortingLayer = tmNode["SortingLayer"].as<int>(0);
+					if (tmNode["SortingOrder"])
+						tm.SortingOrder = tmNode["SortingOrder"].as<int>(0);
+					if (tmNode["FilterMode"])
+						tm.FilterMode = (TextureFilter)tmNode["FilterMode"].as<int>(0);
+
+					if (!tm.TexturePath.empty())
+					{
+						std::filesystem::path resolved = ResolveTexturePath(tm.TexturePath);
+						if (!resolved.empty() && (std::filesystem::exists(resolved) || VFS::Exists(resolved)))
+						{
+							tm.TilesetTexture = Texture2D::Create(resolved.string(), tm.FilterMode);
+							tm.TexturePath = GetNormalizedAssetPath(resolved.string());
+						}
+					}
+
+					if (tmNode["Tiles"])
+					{
+						for (auto cellNode : tmNode["Tiles"])
+						{
+							if (cellNode.IsSequence() && cellNode.size() == 3)
+							{
+								int x = cellNode[0].as<int>(0);
+								int y = cellNode[1].as<int>(0);
+								int idx = cellNode[2].as<int>(0);
+								tm.Tiles[{ x, y }] = idx;
+							}
+						}
+					}
+				}
+
+				auto tmcNode = entity["TilemapColliderComponent"];
+				if (tmcNode)
+				{
+					auto& tmc = deserializedEntity.AddComponent<TilemapColliderComponent>();
+					if (tmcNode["SolidTiles"])
+						for (auto idxNode : tmcNode["SolidTiles"])
+							tmc.SolidTileIndices.push_back(idxNode.as<int>(0));
+					if (tmcNode["Friction"])
+						tmc.Friction = tmcNode["Friction"].as<float>(0.6f);
+					if (tmcNode["Restitution"])
+						tmc.Restitution = tmcNode["Restitution"].as<float>(0.0f);
 				}
 
 

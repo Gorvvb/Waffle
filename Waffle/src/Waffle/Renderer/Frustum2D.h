@@ -39,6 +39,9 @@ namespace Waffle {
 		bool IsVisible(const glm::vec2& position, const glm::vec2& size) const;
 		bool IsVisible(const glm::vec3& min, const glm::vec3& max) const;
 
+		// Flat box at a specific depth (sprites/tiles live in an XY plane).
+		bool IsVisible(const glm::vec2& position, const glm::vec2& size, float z) const;
+
 	private:
 		glm::vec4 m_Planes[6];
 	};
