@@ -2,6 +2,7 @@
 #include "Waffle/Scene/SceneSerializer.h"
 #include "Waffle/Core/VFS.h"
 #include "Waffle/Renderer/PostProcessing.h"
+#include "Waffle/Scripting/LuaScriptEngine.h"
 
 #include <yaml-cpp/yaml.h>
 #include <glad/glad.h>
@@ -158,6 +159,9 @@ namespace Waffle {
 		m_Scene->OnRuntimeStart();
 
 		m_CurrentSceneIndex = index;
+		// Scripts read this via GetCurrentSceneIndex - without it every
+		// ChangeScene computed from a stale index (stuck at 0).
+		LuaScriptEngine::SetCurrentSceneIndex(index);
 	}
 
 	void RuntimeLayer::OnDetach()
@@ -203,6 +207,15 @@ namespace Waffle {
 
 			int pendingScene = m_Scene->OnUpdateRuntime(ts);
 			m_Framebuffer->Unbind();
+			// Deferred Quit: tearing the scene down inside a click callback
+			// corrupts the registry, so it runs after the frame.
+			if (LuaScriptEngine::IsQuitRequested())
+			{
+				LuaScriptEngine::ClearQuitRequest();
+				m_Scene->OnRuntimeStop();
+				Application::Get().Close();
+				return;
+			}
 
 			uint32_t processedTex = PostProcessing::Process((uint32_t)m_Framebuffer->GetColorAttachmentRendererID(0), width, height);
 
@@ -227,6 +240,13 @@ namespace Waffle {
 			}
 
 			int pendingScene = m_Scene->OnUpdateRuntime(ts);
+			if (LuaScriptEngine::IsQuitRequested())
+			{
+				LuaScriptEngine::ClearQuitRequest();
+				m_Scene->OnRuntimeStop();
+				Application::Get().Close();
+				return;
+			}
 			if (pendingScene != -1)
 				LoadScene(pendingScene);
 		}

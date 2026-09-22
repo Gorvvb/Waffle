@@ -379,6 +379,22 @@ namespace Waffle {
 		return s_Data.ActiveFrustum.IsVisible(position, size);
 	}
 
+
+	// Z-aware culling: with a perspective camera the visible XY region
+	// tapers with depth, so the object's actual Z must be tested.
+	bool Renderer2D::IsVisibleInFrustum(const glm::vec3& min, const glm::vec3& max)
+	{
+		return s_Data.ActiveFrustum.IsVisible(min, max);
+	}
+
+	bool Renderer2D::IsVisibleInFrustum(const glm::vec3& center, const glm::vec2& size)
+	{
+		glm::vec2 halfSize = size * 0.5f;
+		return s_Data.ActiveFrustum.IsVisible(
+			glm::vec3(center.x - halfSize.x, center.y - halfSize.y, center.z),
+			glm::vec3(center.x + halfSize.x, center.y + halfSize.y, center.z));
+	}
+
 	void Renderer2D::EndScene()
 	{
 		WF_PROFILE_FUNCTION();
@@ -557,18 +573,18 @@ namespace Waffle {
 	{
 		WF_PROFILE_FUNCTION();
 
-		glm::vec2 minPt( 1e9f);
-		glm::vec2 maxPt(-1e9f);
+		glm::vec3 minPt( 1e9f);
+		glm::vec3 maxPt(-1e9f);
 		for (size_t i = 0; i < 4; i++)
 		{
 			glm::vec4 worldPos = transform * s_Data.QuadVertexPositions[i];
 			minPt.x = glm::min(minPt.x, worldPos.x);
-			minPt.y = glm::min(minPt.y, worldPos.y);
+			minPt.y = glm::min(minPt.y, worldPos.y);			minPt.z = glm::min(minPt.z, worldPos.z);
 			maxPt.x = glm::max(maxPt.x, worldPos.x);
-			maxPt.y = glm::max(maxPt.y, worldPos.y);
+			maxPt.y = glm::max(maxPt.y, worldPos.y);			maxPt.z = glm::max(maxPt.z, worldPos.z);
 		}
 
-		if (!IsVisibleInFrustum(AABB2D(minPt, maxPt)))
+		if (!IsVisibleInFrustum(minPt, maxPt))
 		{
 			s_Data.Stats.CulledQuadCount++;
 			return;
@@ -655,18 +671,18 @@ namespace Waffle {
 	{
 		WF_PROFILE_FUNCTION();
 
-		glm::vec2 minPt( 1e9f);
-		glm::vec2 maxPt(-1e9f);
+		glm::vec3 minPt( 1e9f);
+		glm::vec3 maxPt(-1e9f);
 		for (size_t i = 0; i < 4; i++)
 		{
 			glm::vec4 worldPos = transform * s_Data.QuadVertexPositions[i];
 			minPt.x = glm::min(minPt.x, worldPos.x);
-			minPt.y = glm::min(minPt.y, worldPos.y);
+			minPt.y = glm::min(minPt.y, worldPos.y);			minPt.z = glm::min(minPt.z, worldPos.z);
 			maxPt.x = glm::max(maxPt.x, worldPos.x);
-			maxPt.y = glm::max(maxPt.y, worldPos.y);
+			maxPt.y = glm::max(maxPt.y, worldPos.y);			maxPt.z = glm::max(maxPt.z, worldPos.z);
 		}
 
-		if (!IsVisibleInFrustum(AABB2D(minPt, maxPt)))
+		if (!IsVisibleInFrustum(minPt, maxPt))
 		{
 			s_Data.Stats.CulledQuadCount++;
 			return;
@@ -830,18 +846,18 @@ namespace Waffle {
 			}
 		}
 
-		glm::vec2 minPt( 1e9f);
-		glm::vec2 maxPt(-1e9f);
+		glm::vec3 minPt( 1e9f);
+		glm::vec3 maxPt(-1e9f);
 		for (size_t i = 0; i < 4; i++)
 		{
 			glm::vec4 worldPos = transform * s_Data.QuadVertexPositions[i];
 			minPt.x = glm::min(minPt.x, worldPos.x);
-			minPt.y = glm::min(minPt.y, worldPos.y);
+			minPt.y = glm::min(minPt.y, worldPos.y);			minPt.z = glm::min(minPt.z, worldPos.z);
 			maxPt.x = glm::max(maxPt.x, worldPos.x);
-			maxPt.y = glm::max(maxPt.y, worldPos.y);
+			maxPt.y = glm::max(maxPt.y, worldPos.y);			maxPt.z = glm::max(maxPt.z, worldPos.z);
 		}
 
-		if (!IsVisibleInFrustum(AABB2D(minPt, maxPt)))
+		if (!IsVisibleInFrustum(minPt, maxPt))
 		{
 			s_Data.Stats.CulledQuadCount++;
 			return;
@@ -957,16 +973,16 @@ namespace Waffle {
 		// Same conservative-AABB culling as every other transform-based
 		// draw - rotated quads previously always entered the batch.
 		{
-			glm::vec2 minPt(1e9f), maxPt(-1e9f);
+			glm::vec3 minPt(1e9f), maxPt(-1e9f);
 			for (size_t i = 0; i < 4; i++)
 			{
 				glm::vec4 worldPos = transform * s_Data.QuadVertexPositions[i];
 				minPt.x = glm::min(minPt.x, worldPos.x);
-				minPt.y = glm::min(minPt.y, worldPos.y);
+				minPt.y = glm::min(minPt.y, worldPos.y);				minPt.z = glm::min(minPt.z, worldPos.z);
 				maxPt.x = glm::max(maxPt.x, worldPos.x);
-				maxPt.y = glm::max(maxPt.y, worldPos.y);
+				maxPt.y = glm::max(maxPt.y, worldPos.y);				maxPt.z = glm::max(maxPt.z, worldPos.z);
 			}
-			if (!IsVisibleInFrustum(AABB2D(minPt, maxPt)))
+			if (!IsVisibleInFrustum(minPt, maxPt))
 			{
 				s_Data.Stats.CulledQuadCount++;
 				return;
@@ -1096,18 +1112,18 @@ namespace Waffle {
 			}
 		}
 
-		glm::vec2 minPt( 1e9f);
-		glm::vec2 maxPt(-1e9f);
+		glm::vec3 minPt( 1e9f);
+		glm::vec3 maxPt(-1e9f);
 		for (size_t i = 0; i < 4; i++)
 		{
 			glm::vec4 worldPos = transform * s_Data.QuadVertexPositions[i];
 			minPt.x = glm::min(minPt.x, worldPos.x);
-			minPt.y = glm::min(minPt.y, worldPos.y);
+			minPt.y = glm::min(minPt.y, worldPos.y);			minPt.z = glm::min(minPt.z, worldPos.z);
 			maxPt.x = glm::max(maxPt.x, worldPos.x);
-			maxPt.y = glm::max(maxPt.y, worldPos.y);
+			maxPt.y = glm::max(maxPt.y, worldPos.y);			maxPt.z = glm::max(maxPt.z, worldPos.z);
 		}
 
-		if (!IsVisibleInFrustum(AABB2D(minPt, maxPt)))
+		if (!IsVisibleInFrustum(minPt, maxPt))
 		{
 			s_Data.Stats.CulledQuadCount++;
 			return;

@@ -428,18 +428,20 @@ static std::filesystem::path FindRuntimeExecutable()
 	std::filesystem::path exeDir = std::filesystem::current_path();
 #endif
 
+	// Order matters: prefer windowed (Dist/Release) runtimes so exports
+	// never ship the Debug console build by accident.
 	candidates = {
 		exeDir / "Waffle-Runtime.exe",
 		exeDir / "../Waffle-Runtime/Waffle-Runtime.exe",
-		exeDir / "../../bin/Debug-windows-x86_64/Waffle-Runtime/Waffle-Runtime.exe",
-		exeDir / "../../bin/Release-windows-x86_64/Waffle-Runtime/Waffle-Runtime.exe",
 		exeDir / "../../bin/Dist-windows-x86_64/Waffle-Runtime/Waffle-Runtime.exe",
-		"bin/Debug-windows-x86_64/Waffle-Runtime/Waffle-Runtime.exe",
-		"bin/Release-windows-x86_64/Waffle-Runtime/Waffle-Runtime.exe",
+		exeDir / "../../bin/Release-windows-x86_64/Waffle-Runtime/Waffle-Runtime.exe",
+		exeDir / "../../bin/Debug-windows-x86_64/Waffle-Runtime/Waffle-Runtime.exe",
 		"bin/Dist-windows-x86_64/Waffle-Runtime/Waffle-Runtime.exe",
-		"../bin/Debug-windows-x86_64/Waffle-Runtime/Waffle-Runtime.exe",
-		"../bin/Release-windows-x86_64/Waffle-Runtime/Waffle-Runtime.exe",
+		"bin/Release-windows-x86_64/Waffle-Runtime/Waffle-Runtime.exe",
+		"bin/Debug-windows-x86_64/Waffle-Runtime/Waffle-Runtime.exe",
 		"../bin/Dist-windows-x86_64/Waffle-Runtime/Waffle-Runtime.exe",
+		"../bin/Release-windows-x86_64/Waffle-Runtime/Waffle-Runtime.exe",
+		"../bin/Debug-windows-x86_64/Waffle-Runtime/Waffle-Runtime.exe",
 		"Waffle-Runtime.exe"
 	};
 
@@ -537,6 +539,38 @@ static std::filesystem::path FindRuntimeExecutable()
 		{
 			outErrorMessage = "Failed to copy game executable: " + ec.message();
 			return false;
+		}
+
+		// 2b. Ship runtime DLLs the exe links against. shaderc_shared.dll
+		// resolves from the Vulkan SDK on dev machines via PATH - a player
+		// has neither, so the export must carry it to run out of the box.
+		{
+			const char* requiredDlls[] = { "shaderc_shared.dll" };
+			std::filesystem::path sdkBin;
+			if (const char* sdk = getenv("VULKAN_SDK"))
+				sdkBin = std::filesystem::path(sdk) / "Bin";
+
+			for (const char* dll : requiredDlls)
+			{
+				std::vector<std::filesystem::path> dllCandidates = {
+					runtimeExe.parent_path() / dll,
+					sdkBin / dll
+				};
+				for (const auto& dllPath : dllCandidates)
+				{
+					if (std::filesystem::exists(dllPath, ec))
+					{
+						std::filesystem::copy_file(dllPath, exportsDir / dll,
+							std::filesystem::copy_options::overwrite_existing, ec);
+						if (ec)
+						{
+							outErrorMessage = std::string("Failed to copy runtime DLL ") + dll + ": " + ec.message();
+							return false;
+						}
+						break;
+					}
+				}
+			}
 		}
 
 		// 3. Bundle Assets

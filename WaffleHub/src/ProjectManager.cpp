@@ -333,11 +333,28 @@ namespace Waffle {
 
 	std::filesystem::path ProjectManager::GetEditorExecutablePath()
 	{
+		// Resolve relative to the Hub executable FIRST - the working
+		// directory depends on how the Hub was started, which previously
+		// broke launch when only one build config existed.
+		std::filesystem::path hubDir;
+		{
+			char buffer[MAX_PATH] = {};
+			if (GetModuleFileNameA(NULL, buffer, MAX_PATH) > 0)
+				hubDir = std::filesystem::path(buffer).parent_path();
+		}
+
 		std::vector<std::filesystem::path> candidates = {
+			// Same-config sibling (Dist Hub -> Dist Editor).
+			hubDir / "../Waffle-Editor/Waffle-Editor.exe",
+			hubDir / "Waffle-Editor.exe",
+			hubDir / "../../bin/Dist-windows-x86_64/Waffle-Editor/Waffle-Editor.exe",
+			hubDir / "../../bin/Release-windows-x86_64/Waffle-Editor/Waffle-Editor.exe",
+			hubDir / "../../bin/Debug-windows-x86_64/Waffle-Editor/Waffle-Editor.exe",
+			// Working-directory relatives (kept for compatibility).
 			"../Waffle-Editor/Waffle-Editor.exe",
 			"Waffle-Editor/Waffle-Editor.exe",
-			"bin/Release-windows-x86_64/Waffle-Editor/Waffle-Editor.exe",
 			"bin/Dist-windows-x86_64/Waffle-Editor/Waffle-Editor.exe",
+			"bin/Release-windows-x86_64/Waffle-Editor/Waffle-Editor.exe",
 			"bin/Debug-windows-x86_64/Waffle-Editor/Waffle-Editor.exe",
 			"../bin/Debug-windows-x86_64/Waffle-Editor/Waffle-Editor.exe",
 			"Waffle-Editor.exe"

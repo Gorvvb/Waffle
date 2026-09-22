@@ -55,14 +55,27 @@ namespace Waffle {
 			std::string Name;
 			glm::vec2   Min = { 0.0f, 0.0f };
 			glm::vec2   Max = { 0.0f, 0.0f };
+			glm::vec2   Pivot = { -1.0f, -1.0f }; // normalized, -1 = unset
 		};
 		std::vector<SpritesheetRegionInfo> m_SpritesheetRegions; // filled when Regions key present
+
+		struct SpritesheetGroupInfo
+		{
+			std::string Name;
+			std::vector<int> RegionIndices;
+		};
+		std::vector<SpritesheetGroupInfo> m_SpritesheetGroups;
+		bool m_SpritesheetShowSheet = false; // sheet view (overlay) vs grouped grid
 		std::string m_SpritesheetTexAbsPath; // cached absolute texture path for drag payloads
 		bool m_ShowSpritesheetViewer = false;
+
+		// Loads a .spritesheet (regions, groups, texture) into the viewer.
+		void OpenSpritesheetViewer(const std::filesystem::path& sheetPath);
 
 
 		std::function<void(const std::filesystem::path&)> m_OpenSceneCallback;
 		std::function<void(const std::filesystem::path&, const std::filesystem::path&)> m_SceneRenamedCallback;
+		std::function<void(const std::filesystem::path&)> m_OpenSpritesheetEditorCallback;
 
 	public:
 		ContentBrowserPanel();
@@ -73,5 +86,6 @@ namespace Waffle {
 		void SetAssetDirectory(const std::filesystem::path& path);
 		void SetOpenSceneCallback(const std::function<void(const std::filesystem::path&)>& callback) { m_OpenSceneCallback = callback; }
 		void SetSceneRenamedCallback(const std::function<void(const std::filesystem::path&, const std::filesystem::path&)>& callback) { m_SceneRenamedCallback = callback; }
+		void SetOpenSpritesheetEditorCallback(const std::function<void(const std::filesystem::path&)>& callback) { m_OpenSpritesheetEditorCallback = callback; }
 	};
 }

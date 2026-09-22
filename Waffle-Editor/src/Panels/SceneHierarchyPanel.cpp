@@ -6,6 +6,8 @@
 
 #include "Waffle/Scripting/LuaScriptEngine.h"
 
+#include "../EditorTheme.h"
+
 #include <imgui/imgui.h>
 #include <imgui/imgui_internal.h>
 #include "Waffle/ImGui/ImGuiUtilities.h"
@@ -41,17 +43,29 @@ namespace Waffle {
 			if (sceneName.empty())
 				sceneName = "Untitled";
 			ImGui::Text("Active Scene: %s", sceneName.c_str());
+			ImGui::TextDisabled("Right-click to create objects");
 			ImGui::Separator();
 
 			auto view = m_Context->m_Registry.view<TagComponent>();
 
+			// Sort by UUID so the list doesn't reverse after every
+			// save/load (registry iteration order flips on deserialize).
+			std::vector<entt::entity> roots;
 			for (auto entityID : view)
 			{
 				Entity entity{ entityID, m_Context.get() };
 				if (!entity.HasComponent<RelationshipComponent>() || entity.GetComponent<RelationshipComponent>().Parent == 0)
+					roots.push_back(entityID);
+			}
+			std::sort(roots.begin(), roots.end(), [this](entt::entity a, entt::entity b)
 				{
-					DrawEntityNode(entity);
-				}
+					return (uint64_t)m_Context->m_Registry.get<IDComponent>(a).ID
+						< (uint64_t)m_Context->m_Registry.get<IDComponent>(b).ID;
+				});
+
+			for (auto entityID : roots)
+			{
+				DrawEntityNode(Entity{ entityID, m_Context.get() });
 			}
 
 			// Don't delete while a rename/text edit is in progress - Delete is a text-editing key there
@@ -97,44 +111,59 @@ namespace Waffle {
 				ImGui::EndDragDropTarget();
 			}
 
-			// Right-click on a blank space
+			// Right-click on a blank space: the Create menu.
 			if (ImGui::BeginPopupContextWindow(0, 1 | ImGuiPopupFlags_NoOpenOverItems))
 			{
-				if (ImGui::MenuItem("Create Empty Entity"))
+				if (ImGui::MenuItem("Empty Object"))
 				{
-					Entity newEntity = m_Context->CreateEntity("Empty Entity");
-					m_SelectionContext = newEntity;
+					m_SelectionContext = m_Context->CreateEntity("Empty Entity");
 				}
 
 				ImGui::Separator();
-				if (ImGui::MenuItem("Create UI Canvas"))
+
+				if (ImGui::BeginMenu("UI"))
 				{
-					Entity canvasEntity = m_Context->CreateEntity("UI Canvas");
-					canvasEntity.AddComponent<UICanvasComponent>();
-					m_SelectionContext = canvasEntity;
+					if (ImGui::MenuItem("Button"))
+					{
+						m_SelectionContext = CreateUIElement("UI Button");
+						m_SelectionContext.GetComponent<TransformComponent>().Scale = { 240.0f, 64.0f, 1.0f };
+						m_SelectionContext.AddComponent<UIButtonComponent>();
+					}
+					if (ImGui::MenuItem("Text"))
+					{
+						m_SelectionContext = CreateUIElement("UI Text");
+						m_SelectionContext.AddComponent<UITextComponent>();
+					}
+					if (ImGui::MenuItem("Image"))
+					{
+						m_SelectionContext = CreateUIElement("UI Image");
+						m_SelectionContext.AddComponent<UIImageComponent>();
+					}
+					if (ImGui::MenuItem("Progress Bar"))
+					{
+						m_SelectionContext = CreateUIElement("UI Progress Bar");
+						m_SelectionContext.GetComponent<TransformComponent>().Scale = { 320.0f, 28.0f, 1.0f };
+						m_SelectionContext.AddComponent<UIProgressBarComponent>();
+					}
+					ImGui::Separator();
+					if (ImGui::MenuItem("Canvas"))
+					{
+						Entity canvas = m_Context->CreateEntity("UI Canvas");
+						canvas.AddComponent<UICanvasComponent>();
+						m_SelectionContext = canvas;
+					}
+					ImGui::EndMenu();
 				}
-				if (ImGui::MenuItem("Create UI Text"))
+
+				ImGui::Separator();
+
+				if (ImGui::MenuItem("Tilemap"))
 				{
-					m_SelectionContext = CreateUIElement("UI Text");
-					m_SelectionContext.AddComponent<UITextComponent>();
+					Entity tilemap = m_Context->CreateEntity("Tilemap");
+					tilemap.AddComponent<TilemapComponent>();
+					m_SelectionContext = tilemap;
 				}
-				if (ImGui::MenuItem("Create UI Image"))
-				{
-					m_SelectionContext = CreateUIElement("UI Image");
-					m_SelectionContext.AddComponent<UIImageComponent>();
-				}
-				if (ImGui::MenuItem("Create UI Button"))
-				{
-					m_SelectionContext = CreateUIElement("UI Button");
-					m_SelectionContext.GetComponent<TransformComponent>().Scale = { 240.0f, 64.0f, 1.0f };
-					m_SelectionContext.AddComponent<UIButtonComponent>();
-				}
-				if (ImGui::MenuItem("Create UI Progress Bar"))
-				{
-					m_SelectionContext = CreateUIElement("UI Progress Bar");
-					m_SelectionContext.GetComponent<TransformComponent>().Scale = { 320.0f, 28.0f, 1.0f };
-					m_SelectionContext.AddComponent<UIProgressBarComponent>();
-				}
+
 				ImGui::EndPopup();
 			}
 
@@ -162,14 +191,23 @@ namespace Waffle {
 		// Scale = element size in canvas pixels.
 		element.GetComponent<TransformComponent>().Scale = { 300.0f, 60.0f, 1.0f };
 
+		// Parent to the scene's UI canvas; the first UI element creates
+		// the canvas on its own.
+		Entity canvas;
 		for (auto e : m_Context->GetAllEntitiesWith<UICanvasComponent>())
 		{
-			Entity canvas{ e, m_Context.Raw() };
-			if (canvas.HasComponent<DisabledComponent>())
+			Entity candidate{ e, m_Context.Raw() };
+			if (candidate.HasComponent<DisabledComponent>())
 				continue;
-			m_Context->ParentEntity(element, canvas);
+			canvas = candidate;
 			break;
 		}
+		if (!canvas)
+		{
+			canvas = m_Context->CreateEntity("UI Canvas");
+			canvas.AddComponent<UICanvasComponent>();
+		}
+		m_Context->ParentEntity(element, canvas);
 
 		return element;
 	}
@@ -454,6 +492,9 @@ namespace Waffle {
 		DisplayAddComponentEntry<UITextComponent>("UI Text");
 		DisplayAddComponentEntry<UIButtonComponent>("UI Button");
 		DisplayAddComponentEntry<UIProgressBarComponent>("UI Progress Bar");
+		ImGui::Separator();
+		DisplayAddComponentEntry<TilemapComponent>("Tilemap");
+		DisplayAddComponentEntry<TilemapColliderComponent>("Tilemap Collider");
 
 			ImGui::EndPopup();
 		}
@@ -1061,6 +1102,102 @@ namespace Waffle {
 			UI::DrawColorEdit4("Fill", component.FillColor);
 			UI::PropertyFloat("Padding", component.Padding, 0.1f, 0.0f, 64.0f);
 			UI::EndPropertyGrid();
+		});
+
+		DrawComponent<TilemapComponent>("Tilemap", entity, [](auto& component)
+		{
+			UI::BeginPropertyGrid();
+			UI::PropertyInt("Tile Size (px)", component.TileSize, 1.0f, 4, 1024);
+			ImGui::TextDisabled("Tile size = transform scale (per axis)");
+			UI::DrawColorEdit4("Tint", component.Tint);
+			UI::PropertyInt("Sorting Layer", component.SortingLayer);
+			UI::PropertyInt("Order in Layer", component.SortingOrder);
+			UI::EndPropertyGrid();
+
+			if (component.TilesetTexture)
+				ImGui::Image((ImTextureID)(uintptr_t)component.TilesetTexture->GetRendererID(),
+					{ 64, 64 }, { 0, 1 }, { 1, 0 });
+			else
+				ImGui::Button("No Tilesheet", { 64, 64 });
+
+			if (ImGui::BeginDragDropTarget())
+			{
+				if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("CONTENT_BROWSER_ITEM"))
+				{
+					const wchar_t* path = (const wchar_t*)payload->Data;
+					std::filesystem::path texturePath = std::filesystem::path(g_AssetPath) / path;
+					component.TilesetTexture = Texture2D::Create(texturePath.string(), component.FilterMode);
+					component.TexturePath = GetNormalizedAssetPath(texturePath.string());
+					component.TileCache.clear();
+				}
+				ImGui::EndDragDropTarget();
+			}
+
+			ImGui::SameLine();
+			if (ImGui::Button("Browse Tilesheet"))
+			{
+				std::string filepath = FileDialogs::OpenFile("Texture Files (*.png *.jpg *.jpeg)\0*.png;*.jpg;*.jpeg\0All Files (*.*)\0*.*\0");
+				if (!filepath.empty())
+				{
+					component.TilesetTexture = Texture2D::Create(filepath, component.FilterMode);
+					component.TexturePath = GetNormalizedAssetPath(filepath);
+					component.TileCache.clear();
+				}
+			}
+
+			if (component.TilesetTexture)
+			{
+				ImGui::SameLine();
+				if (ImGui::Button("Clear Tiles"))
+					component.Tiles.clear();
+			}
+
+			const char* tmFilterOptions[] = { "Nearest", "Linear" };
+			const char* tmCurrentFilter = tmFilterOptions[glm::clamp((int)component.FilterMode, 0, 1)];
+			if (ImGui::BeginCombo("Filter Mode", tmCurrentFilter))
+			{
+				for (int i = 0; i < 2; i++)
+				{
+					bool isSelected = (tmCurrentFilter == tmFilterOptions[i]);
+					if (ImGui::Selectable(tmFilterOptions[i], isSelected))
+					{
+						component.FilterMode = static_cast<TextureFilter>(i);
+						if (component.TilesetTexture)
+							component.TilesetTexture->SetFilter(component.FilterMode);
+					}
+					if (isSelected)
+						ImGui::SetItemDefaultFocus();
+				}
+				ImGui::EndCombo();
+			}
+
+			ImGui::TextDisabled("%zu tiles placed (%dx%d tile sheet)",
+				component.Tiles.size(), component.TileColumns(), component.TileRows());
+			ImGui::TextDisabled("Paint in the viewport with the Tile Palette");
+		});
+
+		DrawComponent<TilemapColliderComponent>("Tilemap Collider", entity, [this](auto& component)
+		{
+			Entity selected = m_SelectionContext;
+			int solidCount = (int)component.SolidTileIndices.size();
+			ImGui::TextDisabled("%d solid tile type(s) - merged into box", solidCount);
+			ImGui::TextDisabled("colliders (greedy) when the game starts");
+
+			UI::BeginPropertyGrid();
+			UI::PropertyFloat("Friction", component.Friction, 0.01f, 0.0f, 2.0f);
+			UI::PropertyFloat("Restitution", component.Restitution, 0.01f, 0.0f, 1.0f);
+			UI::EndPropertyGrid();
+
+			ImGui::TextDisabled("Walls/obstacles: Friction 0 so falling");
+			ImGui::TextDisabled("bodies slide instead of sticking");
+
+			if (selected && selected.HasComponent<TilemapComponent>())
+			{
+				ImGui::Spacing();
+				if (UI::GhostButton("Clear Solid Set", ImVec2(-1.0f, 24.0f)))
+					component.SolidTileIndices.clear();
+				ImGui::TextDisabled("Mark tiles as solid in the Tile Palette");
+			}
 		});
 
 		DrawComponent<Rigidbody2DComponent>("Rigidbody (2D)", entity, [](auto& component)

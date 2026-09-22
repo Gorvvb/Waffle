@@ -18,6 +18,8 @@
 #include "box2d/b2_body.h"
 #include "box2d/b2_fixture.h"
 #include "box2d/b2_polygon_shape.h"
+
+#include <set>
 #include "box2d/b2_circle_shape.h"
 
 namespace Waffle {
@@ -122,6 +124,8 @@ namespace Waffle {
 		CopyComponent<UITextComponent>(dstSceneRegistry, srcSceneRegistry, enttMap);
 		CopyComponent<UIButtonComponent>(dstSceneRegistry, srcSceneRegistry, enttMap);
 		CopyComponent<UIProgressBarComponent>(dstSceneRegistry, srcSceneRegistry, enttMap);
+		CopyComponent<TilemapComponent>(dstSceneRegistry, srcSceneRegistry, enttMap);
+		CopyComponent<TilemapColliderComponent>(dstSceneRegistry, srcSceneRegistry, enttMap);
 
 		// Preserve disabled state in the play-mode copy (Lua SetActive) -
 		// dropping it re-enabled entities mid-play. Tag component: copied
@@ -341,6 +345,81 @@ namespace Waffle {
 			CreateRuntimePhysicsBody(Entity{ e, this });
 		}
 
+		// Tilemap colliders: merge the solid tiles of each Tilemap with a
+		// TilemapColliderComponent into a few large static fixtures
+		// (greedy rectangle merge) instead of one fixture per tile.
+		{
+			auto tmView = m_Registry.view<TilemapComponent, TilemapColliderComponent>(entt::exclude<DisabledComponent>);
+			for (auto e : tmView)
+			{
+				auto [tm, col] = tmView.get<TilemapComponent, TilemapColliderComponent>(e);
+
+				std::set<int> solidTiles(col.SolidTileIndices.begin(), col.SolidTileIndices.end());
+
+				// Tile size = entity scale (per axis).
+				glm::vec2 origin(0.0f);
+				glm::vec2 T(1.0f, 1.0f);
+				{
+					glm::mat4 xf = GetWorldTransform(Entity{ e, this });
+					origin = { xf[3].x, xf[3].y };
+					T = { glm::length(xf[0]), glm::length(xf[1]) };
+				}
+				if (solidTiles.empty() || !tm.TilesetTexture || T.x <= 0.0f || T.y <= 0.0f) continue;
+				auto isSolid = [&](int x, int y) -> bool
+				{
+					auto it = tm.Tiles.find({ x, y });
+					return it != tm.Tiles.end() && solidTiles.count(it->second) > 0;
+				};
+
+				b2BodyDef bodyDef;
+				bodyDef.type = b2_staticBody;
+				bodyDef.position.Set(origin.x, origin.y);
+				b2Body* body = m_PhysicsWorld->CreateBody(&bodyDef);
+
+				// Register the body so Lua raycasts and collision events
+				// resolve hits on tilemap fixtures back to this entity.
+				m_BodyEntityMap[body] = (uint32_t)e;
+
+				std::set<std::pair<int, int>> consumed;
+				for (auto& [cell, tileIdx] : tm.Tiles)
+				{
+					const int x = cell.first, y = cell.second;
+					if (consumed.count({ x, y }) || !isSolid(x, y)) continue;
+
+					// Grow right, then up, while the whole strip stays solid.
+					int w = 1;
+					while (isSolid(x + w, y) && !consumed.count({ x + w, y })) w++;
+					int h = 1;
+					bool grow = true;
+					while (grow)
+					{
+						for (int i = 0; i < w; i++)
+							if (!isSolid(x + i, y + h) || consumed.count({ x + i, y + h }))
+							{
+								grow = false; break;
+							}
+						if (grow) h++;
+					}
+
+					for (int yy = 0; yy < h; yy++)
+						for (int xx = 0; xx < w; xx++)
+							consumed.insert({ x + xx, y + yy });
+
+					b2PolygonShape shape;
+					shape.SetAsBox(w * T.x * 0.5f, h * T.y * 0.5f,
+						b2Vec2((x + w * 0.5f) * T.x, (y + h * 0.5f) * T.y), 0.0f);
+					b2FixtureDef fixtureDef;
+					fixtureDef.shape = &shape;
+					fixtureDef.density = 0.0f;
+					fixtureDef.friction = col.Friction;
+					fixtureDef.restitution = col.Restitution;
+					body->CreateFixture(&fixtureDef);
+				}
+
+				col.RuntimeBody = body;
+			}
+		}
+
 		LuaScriptEngine::OnRuntimeStart(this);
 	}
 
@@ -478,6 +557,20 @@ namespace Waffle {
 		LuaScriptEngine::OnRuntimeStop(this);
 		AudioEngine::StopAllSounds();
 
+		// Tilemap collider bodies are scene-owned static bodies.
+		{
+			auto tmView = m_Registry.view<TilemapColliderComponent>();
+			for (auto e : tmView)
+			{
+				auto& col = tmView.get<TilemapColliderComponent>(e);
+				if (col.RuntimeBody && m_PhysicsWorld)
+				{
+					m_PhysicsWorld->DestroyBody((b2Body*)col.RuntimeBody);
+					col.RuntimeBody = nullptr;
+				}
+			}
+		}
+
 		delete m_PhysicsWorld;
 		m_PhysicsWorld = nullptr;
 	}
@@ -555,6 +648,23 @@ namespace Waffle {
 
 					while (m_PhysicsAccumulator >= m_PhysicsFixedStep)
 					{
+						// Snapshot the pre-step body state for render
+						// interpolation (see the transform sync below).
+						{
+							auto rbView = m_Registry.view<Rigidbody2DComponent>();
+							for (auto pe : rbView)
+							{
+								auto& prb = rbView.get<Rigidbody2DComponent>(pe);
+								b2Body* pb = (b2Body*)prb.RuntimeBody;
+								if (pb)
+								{
+									prb.RuntimePrevPosition = { pb->GetPosition().x, pb->GetPosition().y };
+									prb.RuntimePrevAngle = pb->GetAngle();
+									prb.RuntimePrevValid = true;
+								}
+							}
+						}
+
 						m_PhysicsWorld->Step(m_PhysicsFixedStep, velocityIterations, positionIterations);
 						m_PhysicsAccumulator -= m_PhysicsFixedStep;
 
@@ -590,6 +700,21 @@ namespace Waffle {
 
 					const auto& position = body->GetPosition();
 
+					// Interpolate between the previous and current physics
+					// states by the leftover accumulator fraction, so
+					// rendering lands BETWEEN fixed steps. Without this,
+					// bodies stair-step at the physics rate and cameras
+					// following them wobble for a few frames.
+					b2Vec2 renderPos = position;
+					float renderAngle = body->GetAngle();
+					if (rb2d.RuntimePrevValid && m_PhysicsFixedStep > 0.0f)
+					{
+						float alpha = glm::clamp(m_PhysicsAccumulator / m_PhysicsFixedStep, 0.0f, 1.0f);
+						renderPos.x = rb2d.RuntimePrevPosition.x + (position.x - rb2d.RuntimePrevPosition.x) * alpha;
+						renderPos.y = rb2d.RuntimePrevPosition.y + (position.y - rb2d.RuntimePrevPosition.y) * alpha;
+						renderAngle = rb2d.RuntimePrevAngle + (body->GetAngle() - rb2d.RuntimePrevAngle) * alpha;
+					}
+
 					// Physics reports world-space transforms; convert back to
 					// parent-relative (local) space for parented entities.
 					Entity parent = GetParent(entity);
@@ -597,7 +722,7 @@ namespace Waffle {
 					{
 						glm::mat4 parentWorld = GetWorldTransform(parent);
 						glm::mat4 world = GetWorldTransform(entity);
-						glm::vec3 worldPos = { position.x, position.y, world[3].z };
+						glm::vec3 worldPos = { renderPos.x, renderPos.y, world[3].z };
 						glm::vec3 localPos = glm::vec3(glm::inverse(parentWorld) * glm::vec4(worldPos, 1.0f));
 
 						glm::vec3 pTrans, pRot, pScale;
@@ -606,13 +731,13 @@ namespace Waffle {
 
 						transform.Translation.x = localPos.x;
 						transform.Translation.y = localPos.y;
-						transform.Rotation.z = body->GetAngle() - pRot.z;
+						transform.Rotation.z = renderAngle - pRot.z;
 					}
 					else
 					{
-						transform.Translation.x = position.x;
-						transform.Translation.y = position.y;
-						transform.Rotation.z = body->GetAngle();
+						transform.Translation.x = renderPos.x;
+						transform.Translation.y = renderPos.y;
+						transform.Rotation.z = renderAngle;
 					}
 				}
 
@@ -667,13 +792,18 @@ namespace Waffle {
 
 			struct RenderItem
 			{
-				enum class ItemType { Sprite, Circle };
+				enum class ItemType { Sprite, Circle, Tilemap };
 				ItemType Type;
 				entt::entity EntityID;
 				int SortingLayer = 0;
 				int SortingOrder = 0;
 				float Z = 0.0f;
 				glm::mat4 WorldTransform;
+				// Persistent tie-breaker: registry iteration order differs
+				// between a live editing session and a deserialized scene
+				// (entt iterates in reverse creation order), which made
+				// same-layer/order draws flip after every save/load.
+				uint64_t UUID = 0;
 			};
 
 			std::vector<RenderItem> renderItems;
@@ -685,7 +815,7 @@ namespace Waffle {
 				auto [transform, sprite] = spriteGroup.get<TransformComponent, SpriteRendererComponent>(entity);
 				glm::mat4 worldTransform = GetWorldTransform(Entity{ entity, this });
 
-				glm::vec2 pos = glm::vec2(worldTransform[3]);
+				glm::vec3 pos = glm::vec3(worldTransform[3]);
 				glm::vec2 scale = glm::vec2(glm::length(worldTransform[0]), glm::length(worldTransform[1]));
 				if (!Renderer2D::IsVisibleInFrustum(pos, scale))
 				{
@@ -694,6 +824,7 @@ namespace Waffle {
 				}
 
 				renderItems.push_back({ RenderItem::ItemType::Sprite, entity, sprite.SortingLayer, sprite.SortingOrder, worldTransform[3].z, worldTransform });
+				renderItems.back().UUID = (uint64_t)m_Registry.get<IDComponent>(entity).ID;
 			}
 
 			// Gather circles - skip disabled or off-screen entities
@@ -703,7 +834,7 @@ namespace Waffle {
 				auto [transform, circle] = circleView.get<TransformComponent, CircleRendererComponent>(entity);
 				glm::mat4 worldTransform = GetWorldTransform(Entity{ entity, this });
 
-				glm::vec2 pos = glm::vec2(worldTransform[3]);
+				glm::vec3 pos = glm::vec3(worldTransform[3]);
 				glm::vec2 scale = glm::vec2(glm::length(worldTransform[0]), glm::length(worldTransform[1]));
 				if (!Renderer2D::IsVisibleInFrustum(pos, scale))
 				{
@@ -712,15 +843,31 @@ namespace Waffle {
 				}
 
 				renderItems.push_back({ RenderItem::ItemType::Circle, entity, circle.SortingLayer, circle.SortingOrder, worldTransform[3].z, worldTransform });
+				renderItems.back().UUID = (uint64_t)m_Registry.get<IDComponent>(entity).ID;
 			}
 
-			// Back-to-front sorting by Layer -> Order -> Z
+			// Gather tilemaps - each renders all its tiles at its sort slot
+			// (SortingLayer / Order / Z mix with sprites).
+			{
+				auto tmView = m_Registry.view<TilemapComponent>(entt::exclude<DisabledComponent>);
+				for (auto e : tmView)
+				{
+					auto& tm = tmView.get<TilemapComponent>(e);
+					glm::mat4 worldTransform = GetWorldTransform(Entity{ e, this });
+					renderItems.push_back({ RenderItem::ItemType::Tilemap, e, tm.SortingLayer, tm.SortingOrder, worldTransform[3].z, worldTransform });
+					renderItems.back().UUID = (uint64_t)m_Registry.get<IDComponent>(e).ID;
+				}
+			}
+
+			// Back-to-front sorting by Layer -> Order -> Z -> UUID
 			std::stable_sort(renderItems.begin(), renderItems.end(), [](const RenderItem& a, const RenderItem& b) {
 				if (a.SortingLayer != b.SortingLayer)
 					return a.SortingLayer < b.SortingLayer;
 				if (a.SortingOrder != b.SortingOrder)
 					return a.SortingOrder < b.SortingOrder;
-				return a.Z < b.Z;
+				if (a.Z != b.Z)
+					return a.Z < b.Z;
+				return a.UUID < b.UUID;
 			});
 
 			// Draw all sorted items. Animators were advanced in a pre-pass
@@ -737,15 +884,20 @@ namespace Waffle {
 						Ref<SubTexture2D> subTexture = animator->GetCurrentSubTexture();
 						if (subTexture)
 						{
-							glm::vec4 contentFrac = animator->GetCurrentFrameContentFrac();
-							Renderer2D::DrawQuad(item.WorldTransform, subTexture, sprite.TilingFactor, sprite.Color, (int)item.EntityID, sprite.AspectMode,
-								animator->FramePivot, animator->GetMaxContentPixelSize(),
-								(contentFrac.x >= 0.0f) ? &contentFrac : nullptr);
-							continue;
+						glm::vec4 contentFrac = animator->GetCurrentFrameContentFrac();
+						Renderer2D::DrawQuad(item.WorldTransform, subTexture, sprite.TilingFactor, sprite.Color, (int)item.EntityID, sprite.AspectMode,
+							animator->GetCurrentFramePivot(), animator->GetMaxContentPixelSize(),
+							(contentFrac.x >= 0.0f) ? &contentFrac : nullptr);
+						continue;
 						}
 					}
 					Renderer2D::DrawSprite(item.WorldTransform, sprite, (int)item.EntityID);
 				}
+				else if (item.Type == RenderItem::ItemType::Tilemap)
+				{
+					DrawTilemapTiles(Entity{ item.EntityID, this }, item.WorldTransform);
+				}
+
 				else if (item.Type == RenderItem::ItemType::Circle)
 				{
 					auto& circle = m_Registry.get<CircleRendererComponent>(item.EntityID);
@@ -770,6 +922,30 @@ namespace Waffle {
 		if (pending != -1)
 			LuaScriptEngine::ClearPendingSceneChange();
 		return pending;
+	}
+
+	void Scene::DrawTilemapTiles(Entity entity, const glm::mat4& worldTransform)
+	{
+		auto& tm = entity.GetComponent<TilemapComponent>();
+		if (!tm.TilesetTexture || tm.Tiles.empty()) return;
+
+		glm::vec2 origin(worldTransform[3].x, worldTransform[3].y);
+		// Tile size = entity scale (per axis); Z comes from the transform so
+		// tilemaps layer against sprites in the sorted pass.
+		glm::vec2 T(glm::length(worldTransform[0]), glm::length(worldTransform[1]));
+		if (T.x <= 0.0f || T.y <= 0.0f) return;
+		const float z = worldTransform[3].z;
+		const int id = (int)(uint32_t)(entt::entity)entity;
+
+		for (auto& [cell, idx] : tm.Tiles)
+		{
+			Ref<SubTexture2D> sub = tm.GetTileSubTexture(idx);
+			if (!sub) continue;
+			glm::vec2 center((cell.first + 0.5f) * T.x, (cell.second + 0.5f) * T.y);
+			glm::mat4 tileXf = glm::translate(glm::mat4(1.0f), glm::vec3(origin + center, z))
+				* glm::scale(glm::mat4(1.0f), glm::vec3(T, 1.0f));
+			Renderer2D::DrawQuad(tileXf, sub, glm::vec2(1.0f), tm.Tint, id);
+		}
 	}
 
 	void Scene::SetPaused(bool paused)
@@ -824,13 +1000,18 @@ namespace Waffle {
 
 		struct RenderItem
 		{
-			enum class ItemType { Sprite, Circle };
+			enum class ItemType { Sprite, Circle, Tilemap };
 			ItemType Type;
 			entt::entity EntityID;
 			int SortingLayer = 0;
 			int SortingOrder = 0;
 			float Z = 0.0f;
 			glm::mat4 WorldTransform;
+			// Persistent tie-breaker: registry iteration order differs
+			// between a live editing session and a deserialized scene
+			// (entt iterates in reverse creation order), which made
+			// same-layer/order draws flip after every save/load.
+			uint64_t UUID = 0;
 		};
 
 		std::vector<RenderItem> renderItems;
@@ -842,7 +1023,7 @@ namespace Waffle {
 			auto [transform, sprite] = spriteGroup.get<TransformComponent, SpriteRendererComponent>(entity);
 			glm::mat4 worldTransform = GetWorldTransform(Entity{ entity, this });
 
-			glm::vec2 pos = glm::vec2(worldTransform[3]);
+			glm::vec3 pos = glm::vec3(worldTransform[3]);
 			glm::vec2 scale = glm::vec2(glm::length(worldTransform[0]), glm::length(worldTransform[1]));
 			if (!Renderer2D::IsVisibleInFrustum(pos, scale))
 			{
@@ -860,7 +1041,7 @@ namespace Waffle {
 			auto [transform, circle] = circleView.get<TransformComponent, CircleRendererComponent>(entity);
 			glm::mat4 worldTransform = GetWorldTransform(Entity{ entity, this });
 
-			glm::vec2 pos = glm::vec2(worldTransform[3]);
+			glm::vec3 pos = glm::vec3(worldTransform[3]);
 			glm::vec2 scale = glm::vec2(glm::length(worldTransform[0]), glm::length(worldTransform[1]));
 			if (!Renderer2D::IsVisibleInFrustum(pos, scale))
 			{
@@ -869,6 +1050,20 @@ namespace Waffle {
 			}
 
 			renderItems.push_back({ RenderItem::ItemType::Circle, entity, circle.SortingLayer, circle.SortingOrder, worldTransform[3].z, worldTransform });
+			renderItems.back().UUID = (uint64_t)m_Registry.get<IDComponent>(entity).ID;
+		}
+
+		// Gather tilemaps - each renders all its tiles at its sort slot
+		// (SortingLayer / Order / Z mix with sprites).
+		{
+			auto tmView = m_Registry.view<TilemapComponent>(entt::exclude<DisabledComponent>);
+			for (auto e : tmView)
+			{
+				auto& tm = tmView.get<TilemapComponent>(e);
+				glm::mat4 worldTransform = GetWorldTransform(Entity{ e, this });
+				renderItems.push_back({ RenderItem::ItemType::Tilemap, e, tm.SortingLayer, tm.SortingOrder, worldTransform[3].z, worldTransform });
+				renderItems.back().UUID = (uint64_t)m_Registry.get<IDComponent>(e).ID;
+			}
 		}
 
 		// Back-to-front sorting by Layer -> Order -> Z
@@ -877,7 +1072,9 @@ namespace Waffle {
 				return a.SortingLayer < b.SortingLayer;
 			if (a.SortingOrder != b.SortingOrder)
 				return a.SortingOrder < b.SortingOrder;
-			return a.Z < b.Z;
+			if (a.Z != b.Z)
+				return a.Z < b.Z;
+			return a.UUID < b.UUID;
 		});
 
 		// Draw all sorted items. Animator pre-pass above keeps off-screen
@@ -895,13 +1092,18 @@ namespace Waffle {
 					{
 						glm::vec4 contentFrac = animator->GetCurrentFrameContentFrac();
 						Renderer2D::DrawQuad(item.WorldTransform, subTexture, sprite.TilingFactor, sprite.Color, (int)item.EntityID, sprite.AspectMode,
-							animator->FramePivot, animator->GetMaxContentPixelSize(),
+							animator->GetCurrentFramePivot(), animator->GetMaxContentPixelSize(),
 							(contentFrac.x >= 0.0f) ? &contentFrac : nullptr);
 						continue;
 					}
 				}
 				Renderer2D::DrawSprite(item.WorldTransform, sprite, (int)item.EntityID);
 			}
+			else if (item.Type == RenderItem::ItemType::Tilemap)
+			{
+				DrawTilemapTiles(Entity{ item.EntityID, this }, item.WorldTransform);
+			}
+
 			else if (item.Type == RenderItem::ItemType::Circle)
 			{
 				auto& circle = m_Registry.get<CircleRendererComponent>(item.EntityID);
@@ -917,6 +1119,11 @@ namespace Waffle {
 
 	void Scene::OnViewportResize(uint32_t width, uint32_t height)
 	{
+		// Zero viewports occur during editor layout/minimize - keep the
+		// last good size instead of feeding GLM an aspect of zero.
+		if (width == 0 || height == 0)
+			return;
+
 		m_ViewportWidth = width;
 		m_ViewportHeight = height;
 
@@ -962,6 +1169,8 @@ namespace Waffle {
 		CopyComponentIfExists<UITextComponent>(newEntity, entity);
 		CopyComponentIfExists<UIButtonComponent>(newEntity, entity);
 		CopyComponentIfExists<UIProgressBarComponent>(newEntity, entity);
+		CopyComponentIfExists<TilemapComponent>(newEntity, entity);
+		CopyComponentIfExists<TilemapColliderComponent>(newEntity, entity);
 
 		// Preserve Lua-disabled state in duplicates too (tag component -
 		// direct registry emplace, see CopyComponentIfExists note).
@@ -1103,4 +1312,13 @@ namespace Waffle {
 
 	template<>
 	void Scene::OnComponentAdded<UIProgressBarComponent>(Entity entity, UIProgressBarComponent& component) {}
+
+	template<>
+	void Scene::OnComponentAdded<TilemapComponent>(Entity entity, TilemapComponent& component)
+	{
+		component.TileCache.clear();
+	}
+
+	template<>
+	void Scene::OnComponentAdded<TilemapColliderComponent>(Entity entity, TilemapColliderComponent& component) {}
 }

@@ -3,6 +3,7 @@
 
 #include "Waffle/Core/Log.h"
 #include "Waffle/Core/VFS.h"
+#include "Waffle/Core/Application.h"
 #include "Waffle/Core/Input.h"
 #include "Waffle/Core/KeyCodes.h"
 #include "Waffle/Core/MouseCodes.h"
@@ -27,6 +28,8 @@ namespace Waffle {
 	lua_State* LuaScriptEngine::s_LuaState = nullptr;
 	Scene* LuaScriptEngine::s_SceneContext = nullptr;
 	int LuaScriptEngine::s_PendingSceneChange = -1;
+	std::function<void()> LuaScriptEngine::s_QuitHandler;
+	bool LuaScriptEngine::s_QuitRequested = false;
 	int LuaScriptEngine::s_CurrentSceneIndex = 0;
 
 	// -------------------------------------------------------------------------
@@ -300,18 +303,22 @@ namespace Waffle {
 		if (entity.HasComponent<Rigidbody2DComponent>())
 		{
 			auto& rb2d = entity.GetComponent<Rigidbody2DComponent>();
-			b2Body* body = (b2Body*)rb2d.RuntimeBody;
-			if (body)
-			{
-				switch (rb2d.Type)
+				b2Body* body = (b2Body*)rb2d.RuntimeBody;
+				if (body)
 				{
-				case Rigidbody2DComponent::BodyType::Kinematic:
-					// Kinematic: drive position directly, Box2D interpolates
-					body->SetTransform(
-						b2Vec2(tc.Translation.x, tc.Translation.y),
-						tc.Rotation.z);
-					body->SetAwake(true);
-					break;
+					// Teleports jump instantly - render interpolation must
+					// not smear them across a step.
+					rb2d.RuntimePrevValid = false;
+
+					switch (rb2d.Type)
+					{
+					case Rigidbody2DComponent::BodyType::Kinematic:
+						// Kinematic: drive position directly, Box2D interpolates
+						body->SetTransform(
+							b2Vec2(tc.Translation.x, tc.Translation.y),
+							tc.Rotation.z);
+						body->SetAwake(true);
+						break;
 
 				case Rigidbody2DComponent::BodyType::Dynamic:
 					// Dynamic: never stomp position - the solver owns it.
@@ -361,6 +368,8 @@ namespace Waffle {
 				b2Body* body = (b2Body*)rb2d.RuntimeBody;
 				if (body)
 				{
+					// Snap, don't interpolate through the teleport.
+					rb2d.RuntimePrevValid = false;
 					body->SetTransform(b2Vec2(tc.Translation.x, tc.Translation.y), tc.Rotation.z);
 					body->SetAwake(true);
 				}
@@ -537,7 +546,11 @@ namespace Waffle {
 				auto& rb2d = entity.GetComponent<Rigidbody2DComponent>();
 				b2Body* body = (b2Body*)rb2d.RuntimeBody;
 				if (body)
+				{
+					// Snap, don't interpolate through the rotation change.
+					rb2d.RuntimePrevValid = false;
 					body->SetTransform(body->GetPosition(), tc.Rotation.z);
+				}
 			}
 		}
 		return 0;
@@ -1434,6 +1447,17 @@ namespace Waffle {
 		return 1;
 	}
 
+	// Quits the game contextually: inside the editor this stops play mode
+	// (the editor itself must stay open); in an exported game it exits.
+	// DEFERRED to the end of the frame - the host (editor or runtime)
+	// polls the flag after update, because destroying the scene from
+	// inside a button callback corrupts the registry mid-iteration.
+	static int Lua_Quit(lua_State* L)
+	{
+		LuaScriptEngine::RequestQuit();
+		return 0;
+	}
+
 	static int Lua_GetEntityName(lua_State* L)
 	{
 		uint32_t entityID = (uint32_t)lua_tonumber(L, 1);
@@ -2246,6 +2270,7 @@ namespace Waffle {
 		lua_pushcfunction(L, Lua_SetAlpha);             lua_setglobal(L, "SetAlpha");
 		lua_pushcfunction(L, Lua_SetTexture);           lua_setglobal(L, "SetTexture");
 		lua_pushcfunction(L, Lua_SetUIText);             lua_setglobal(L, "SetUIText");
+		lua_pushcfunction(L, Lua_Quit);                  lua_setglobal(L, "Quit");
 		lua_pushcfunction(L, Lua_GetUIText);             lua_setglobal(L, "GetUIText");
 		lua_pushcfunction(L, Lua_SetUIProgress);          lua_setglobal(L, "SetUIProgress");
 		lua_pushcfunction(L, Lua_SetUIImage);            lua_setglobal(L, "SetUIImage");

@@ -29,6 +29,10 @@ namespace Waffle {
 		static const Frustum2D& GetFrustum();
 		static bool IsVisibleInFrustum(const AABB2D& bounds);
 		static bool IsVisibleInFrustum(const glm::vec2& position, const glm::vec2& size);
+		// Z-aware overloads: with a perspective camera the visible XY region
+		// depends on Z, so culling must test the object's actual depth.
+		static bool IsVisibleInFrustum(const glm::vec3& min, const glm::vec3& max);
+		static bool IsVisibleInFrustum(const glm::vec3& center, const glm::vec2& size);
 
 		static void DrawLine(const glm::vec3& p0, glm::vec3& p1, const glm::vec4& color, int entityID = -1);
 

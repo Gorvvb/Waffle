@@ -9,6 +9,7 @@
 
 #include <string>
 #include <vector>
+#include <map>
 #include <unordered_map>
 #include <yaml-cpp/yaml.h>
 
@@ -196,6 +197,14 @@ namespace Waffle {
 		// Storage for runtime
 		void* RuntimeBody = nullptr;
 
+		// Render interpolation state (runtime only, not serialized): the
+		// body state before the last physics step. Rendering blends
+		// prev->current by the accumulator fraction so bodies move
+		// smoothly between fixed steps instead of stair-stepping.
+		glm::vec2 RuntimePrevPosition{ 0.0f, 0.0f };
+		float RuntimePrevAngle = 0.0f;
+		bool RuntimePrevValid = false;
+
 		Rigidbody2DComponent() = default;
 		Rigidbody2DComponent(const Rigidbody2DComponent&) = default;
 	};
@@ -291,13 +300,20 @@ namespace Waffle {
 		// when the pixels can't be inspected.
 		std::vector<glm::vec4> SubContentFracs;
 
+		// Per-frame pivot override in RENDER space (y up: (0.5,0) = frame
+		// bottom). Negative x = unset: the animator's FramePivot applies.
+		// Comes from spritesheet region pivots.
+		std::vector<glm::vec2> SubPivots;
+
 		// Appends a frame and derives its content rect from an EXACT pixel
 		// window (top-left origin). The window must never be reconstructed
 		// from UVs: the float round-trip drifts by a pixel and bleeds into
 		// adjacent regions of tightly packed sheets, skewing alignment.
-		void PushFrame(const Ref<SubTexture2D>& sub, const std::string& imagePath, const glm::vec4& windowPx)
+		void PushFrame(const Ref<SubTexture2D>& sub, const std::string& imagePath, const glm::vec4& windowPx,
+			const glm::vec2& pivotOverride = glm::vec2(-1.0f))
 		{
 			SubTextures.push_back(sub);
+			SubPivots.push_back(pivotOverride);
 
 			glm::vec4 frac(0.0f, 0.0f, 1.0f, 1.0f);
 			glm::vec2 framePx(windowPx.z - windowPx.x, windowPx.w - windowPx.y);
@@ -325,6 +341,7 @@ namespace Waffle {
 		{
 			SubTextures.clear();
 			SubContentFracs.clear();
+			SubPivots.clear();
 			MaxFramePixelSize = glm::vec2(0.0f);
 			MaxContentPixelSize = glm::vec2(0.0f);
 
@@ -340,15 +357,30 @@ namespace Waffle {
 
 					Ref<SubTexture2D> sub = nullptr;
 					glm::vec4 windowPx(0.0f);   // exact pixel window, top-left origin
+					glm::vec2 pivotOverride(-1.0f); // render-space (y up)
 					std::string scanPath = path;
 
 					size_t pipePos = path.find('|');
 					size_t colonPos = (pipePos == std::string::npos) ? path.find(':') : std::string::npos;
 					if (pipePos != std::string::npos)
 					{
-						// New pixel-rect format: "texturePath|minX,minY,maxX,maxY"
+						// Pixel-rect format: "texturePath|minX,minY,maxX,maxY"
+						// with an optional third segment "|pivotX,pivotY"
+						// (normalized, image space y-down; -1 or missing =
+						// inherit the animator Frame Pivot).
 						std::string texPath = path.substr(0, pipePos);
 						std::string rectStr = path.substr(pipePos + 1);
+						size_t secondPipe = rectStr.find('|');
+						if (secondPipe != std::string::npos)
+						{
+							float pvx = -1.0f, pvy = -1.0f;
+							if (sscanf_s(rectStr.substr(secondPipe + 1).c_str(), "%f,%f", &pvx, &pvy) == 2 &&
+								pvx >= 0.0f && pvx <= 1.0f && pvy >= 0.0f && pvy <= 1.0f)
+							{
+								pivotOverride = { pvx, 1.0f - pvy }; // y-down -> y-up
+							}
+							rectStr = rectStr.substr(0, secondPipe);
+						}
 						scanPath = texPath;
 						try {
 							Ref<Texture2D> tex = Texture2D::Create(texPath, TextureFilter::Nearest);
@@ -427,7 +459,7 @@ namespace Waffle {
 						}
 					}
 
-					PushFrame(sub, scanPath, windowPx);
+					PushFrame(sub, scanPath, windowPx, pivotOverride);
 				}
 				return;
 			}
@@ -526,6 +558,23 @@ namespace Waffle {
 			if (idx < 0 || idx >= (int)clip.SubContentFracs.size())
 				idx = 0;
 			return clip.SubContentFracs[idx];
+		}
+
+		// Effective pivot for the current frame: the region's pivot
+		// override when set, else the animator-wide FramePivot.
+		glm::vec2 GetCurrentFramePivot()
+		{
+			auto it = Clips.find(CurrentClip);
+			if (it == Clips.end()) return FramePivot;
+			auto& clip = it->second;
+			if (clip.SubTextures.empty())
+				clip.RefreshSubTextures();
+
+			int idx = CurrentFrameIndex;
+			if (idx < 0 || idx >= (int)clip.SubPivots.size())
+				return FramePivot;
+			const glm::vec2& p = clip.SubPivots[idx];
+			return (p.x >= 0.0f && p.y >= 0.0f) ? p : FramePivot;
 		}
 
 		Ref<SubTexture2D> GetCurrentSubTexture()
@@ -697,5 +746,110 @@ namespace Waffle {
 
 		UIProgressBarComponent() = default;
 		UIProgressBarComponent(const UIProgressBarComponent&) = default;
+	};
+
+	// -------------------------------------------------------------------------
+	// Tilemaps.
+	//
+	// A TilemapComponent owns a tilesheet sliced into TileSize x TileSize
+	// pixel tiles and a sparse grid of placed tiles (cell -> tile index).
+	// Each tile renders one transform-scale square: the entity scale is the
+	// tile size in world units (per axis) and its translation offsets the
+	// whole, unbounded map. Solid tiles + the optional TilemapColliderComponent
+	// bake into a small set of merged static colliders at runtime start
+	// (greedy rectangle merge - one fixture per run of solid tiles, not one
+	// per tile).
+	// -------------------------------------------------------------------------
+
+	struct TilemapComponent
+	{
+		Ref<Texture2D> TilesetTexture;
+		std::string TexturePath;
+		TextureFilter FilterMode = TextureFilter::Nearest;
+
+		int TileSize = 16;          // pixels per tile in the sheet
+		glm::vec4 Tint{ 1.0f, 1.0f, 1.0f, 1.0f };
+
+		int SortingLayer = 0;
+		int SortingOrder = 0;
+
+		// Sparse map data: grid cell (x grows right, y grows up) -> tile
+		// index (row-major from the sheet's top-left).
+		std::map<std::pair<int, int>, int> Tiles;
+
+		TilemapComponent() = default;
+		TilemapComponent(const TilemapComponent&) = default;
+
+		// Runtime tile cache - not serialized.
+		std::vector<Ref<SubTexture2D>> TileCache;
+		int CacheTileSize = 0;
+
+		int TileColumns() const
+		{
+			if (!TilesetTexture || TileSize <= 0) return 0;
+			return (int)TilesetTexture->GetWidth() / TileSize;
+		}
+
+		int TileRows() const
+		{
+			if (!TilesetTexture || TileSize <= 0) return 0;
+			return (int)TilesetTexture->GetHeight() / TileSize;
+		}
+
+		Ref<SubTexture2D> GetTileSubTexture(int index)
+		{
+			if (!TilesetTexture || TileSize <= 0) return nullptr;
+			int cols = TileColumns();
+			int rows = TileRows();
+			if (cols <= 0 || rows <= 0 || index < 0 || index >= cols * rows) return nullptr;
+
+			if ((int)TileCache.size() != cols * rows || CacheTileSize != TileSize)
+			{
+				TileCache.clear();
+				TileCache.resize((size_t)cols * rows);
+				CacheTileSize = TileSize;
+			}
+
+			if (!TileCache[index])
+			{
+				int col = index % cols;
+				// Tile indices count rows from the sheet's top; UV space
+				// counts from the bottom.
+				int row = rows - 1 - (index / cols);
+				// Small UV inset: sampling exactly on the tile's borders
+				// lets neighbouring sheet pixels bleed through at seams.
+				// A tenth of a texel is enough to avoid boundary rounding
+				// while keeping the edge pixels (nearly) full width.
+				const float texWf = (float)TilesetTexture->GetWidth();
+				const float texHf = (float)TilesetTexture->GetHeight();
+				const float epsX = 0.1f / texWf;
+				const float epsY = 0.1f / texHf;
+				glm::vec2 uvMin = { (col * (float)TileSize) / texWf + epsX,
+					(row * (float)TileSize) / texHf + epsY };
+				glm::vec2 uvMax = { ((col + 1) * (float)TileSize) / texWf - epsX,
+					((row + 1) * (float)TileSize) / texHf - epsY };
+				TileCache[index] = CreateRef<SubTexture2D>(TilesetTexture, uvMin, uvMax);
+			}
+			return TileCache[index];
+		}
+	};
+
+	struct TilemapColliderComponent
+	{
+		// Tiles whose indices appear here are solid. Empty = no collision.
+		std::vector<int> SolidTileIndices;
+
+		// Surface material of the merged fixtures. Box2D mixes friction per
+		// contact pair (geometric mean): a wall/obstacle tilemap with
+		// Friction 0 never grips a falling body, while ground tilemaps keep
+		// their grip.
+		float Friction = 0.6f;
+		float Restitution = 0.0f;
+
+		// Runtime: merged fixtures live on one static body; not serialized.
+		void* RuntimeBody = nullptr;
+
+		TilemapColliderComponent() = default;
+		TilemapColliderComponent(const TilemapColliderComponent&) = default;
 	};
 }

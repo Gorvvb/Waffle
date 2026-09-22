@@ -30,7 +30,10 @@ namespace Waffle {
 
 	void SceneCamera::SetViewportSize(uint32_t width, uint32_t height)
 	{
-		WF_CORE_ASSERT(width > 0 && height > 0);
+		// Zero viewports happen (collapsed editor panel, minimized window) -
+		// ignore instead of asserting (or worse, dividing by zero in GLM).
+		if (width == 0 || height == 0)
+			return;
 		m_AspectRatio = (float)width / (float)height;
 		RecalculateProjection();
 	}

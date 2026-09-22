@@ -59,11 +59,17 @@ namespace Waffle {
 
 		void UI_Toolbar();
 		void UI_GizmoToolbar();
+		void UI_TilePalette();
 		void UI_ProjectSettings();
 		void UI_SettingsPanel();
 		void UI_ExportModal();
 
 		void UpdateWindowTitle();
+
+		// Tile painting state: 0 = off, 1 = paint, 2 = erase.
+		int m_TilePaintMode = 0;
+		int m_TilePaletteIndex = -1;
+		bool m_ShowTilePalette = true;
 
 	private:
 		OrthographicCameraController m_CameraController;
