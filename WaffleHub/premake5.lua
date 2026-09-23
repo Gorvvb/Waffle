@@ -39,8 +39,21 @@ project "WaffleHub"
 
 	postbuildcommands
 	{
-		"{COPYDIR} \"%{wks.location}/Waffle-Editor/Resources\" \"%{cfg.targetdir}/Resources\""
+		"{COPYDIR} \"../Waffle-Editor/Resources\" \"%{cfg.targetdir}/Resources\"",
+		"{COPYDIR} \"../Waffle-Editor/Assets\" \"%{cfg.targetdir}/Assets\""
 	}
+	
+	-- The exe loads shaderc_shared.dll through the engine's shader compilation;
+	-- a player machine has neither the SDK nor it on PATH, so the DLL must
+	-- sit next to the exe.
+	local shadercDll = os.getenv("VULKAN_SDK")
+	shadercDll = shadercDll and (shadercDll .. "/Bin/shaderc_shared.dll") or nil
+	if shadercDll and os.isfile(shadercDll) then
+		postbuildcommands
+		{
+			"{COPYFILE} \"" .. shadercDll .. "\" \"%{cfg.targetdir}/shaderc_shared.dll\""
+		}
+	end
 
 	filter "system:windows"
 		systemversion "latest"

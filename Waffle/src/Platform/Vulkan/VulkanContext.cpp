@@ -12,10 +12,23 @@
 #include "VulkanUtils.h"
 
 #include <GLFW/glfw3.h>
+#include <windows.h>
 #include <set>
 #include <algorithm>
 
 namespace Waffle {
+
+	// -----------------------------------------------------------------------
+	// Fatal initialization failure. Dist builds have no console and asserts
+	// compile out, so surface the reason in a message box and exit cleanly -
+	// a silent white-screen crash is impossible to diagnose remotely.
+	// -----------------------------------------------------------------------
+	static void FailGracefully(const char* title, const char* message)
+	{
+		WF_CORE_CRITICAL("{0}: {1}", title, message);
+		MessageBoxA(nullptr, message, title, MB_OK | MB_ICONERROR);
+		::ExitProcess(1);
+	}
 
 	// -----------------------------------------------------------------------
 	// Static instance
@@ -655,10 +668,18 @@ namespace Waffle {
 	{
 		if (volkInitialize() != VK_SUCCESS)
 		{
-			WF_CORE_ERROR("Failed to initialize Volk!");
-			WF_CORE_ASSERT(false, "Volk initialization failed!");
-			return;
+			FailGracefully("Vulkan not available",
+				"The Vulkan runtime could not be loaded. Install or update your "
+				"graphics driver (it must support Vulkan 1.3) and try again.");
 		}
+
+		// Report what the installed loader supports - an old driver here is
+		// the most common reason a machine cannot run the engine (1.3+ required).
+		uint32_t instanceVersion = 0;
+		if (vkEnumerateInstanceVersion(&instanceVersion) != VK_SUCCESS)
+			instanceVersion = VK_API_VERSION_1_0;
+		WF_CORE_INFO("  Vulkan instance version: {0}.{1}.{2}",
+			VK_API_VERSION_MAJOR(instanceVersion), VK_API_VERSION_MINOR(instanceVersion), VK_API_VERSION_PATCH(instanceVersion));
 
 		m_EnableValidation = s_EnableValidation && CheckValidationLayerSupport();
 		if (s_EnableValidation && !m_EnableValidation)
@@ -732,7 +753,9 @@ namespace Waffle {
 		if (res != VK_SUCCESS || m_Surface == VK_NULL_HANDLE)
 		{
 			WF_CORE_ERROR("glfwCreateWindowSurface failed with error code: {0}", (int)res);
-			WF_CORE_ASSERT(false, "Failed to create Vulkan window surface!");
+			FailGracefully("Vulkan surface creation failed",
+				"The Vulkan window surface could not be created. Update your "
+				"graphics driver and try again.");
 		}
 	}
 
@@ -740,7 +763,12 @@ namespace Waffle {
 	{
 		uint32_t deviceCount = 0;
 		vkEnumeratePhysicalDevices(m_Instance, &deviceCount, nullptr);
-		WF_CORE_ASSERT(deviceCount > 0, "Failed to find a GPU with Vulkan support!");
+		if (deviceCount == 0)
+		{
+			FailGracefully("No Vulkan GPU found",
+				"No Vulkan-capable GPU was found on this system. Update your "
+				"graphics driver (it must support Vulkan 1.3) and try again.");
+		}
 
 		std::vector<VkPhysicalDevice> devices(deviceCount);
 		vkEnumeratePhysicalDevices(m_Instance, &deviceCount, devices.data());
@@ -750,6 +778,8 @@ namespace Waffle {
 		{
 			VkPhysicalDeviceProperties props;
 			vkGetPhysicalDeviceProperties(device, &props);
+			WF_CORE_INFO("  Vulkan device: {0} (driver reports Vulkan {1}.{2})",
+				props.deviceName, VK_API_VERSION_MAJOR(props.apiVersion), VK_API_VERSION_MINOR(props.apiVersion));
 			if (IsDeviceSuitable(device) && props.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU)
 			{
 				m_PhysicalDevice = device;
@@ -766,7 +796,10 @@ namespace Waffle {
 			}
 		}
 
-		WF_CORE_ASSERT(false, "Failed to find a suitable Vulkan GPU!");
+		FailGracefully("No suitable Vulkan GPU",
+			"This application requires a GPU with Vulkan 1.3 support. The GPUs "
+			"detected on this system are listed in Waffle.log - update your "
+			"graphics driver and try again.");
 	}
 
 	void VulkanContext::CreateLogicalDevice()
@@ -791,16 +824,13 @@ namespace Waffle {
 			queueCreateInfos.push_back(queueInfo);
 		}
 
-		// Vulkan 1.4 feature chain using C++20 designated initializers
-		VkPhysicalDeviceVulkan14Features features14
-		{
-			.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_4_FEATURES,
-			.pNext = nullptr
-		};
+		// Vulkan 1.3 feature chain using C++20 designated initializers.
+		// Nothing 1.4-specific is requested, so no Vulkan14Features struct is
+		// in the chain - a 1.3-capable device (most laptops) is sufficient.
 		VkPhysicalDeviceVulkan13Features features13
 		{
 			.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES,
-			.pNext = &features14,
+			.pNext = nullptr,
 			.shaderDemoteToHelperInvocation = VK_TRUE,
 			.synchronization2 = VK_TRUE,
 			.dynamicRendering = VK_TRUE
@@ -839,7 +869,9 @@ namespace Waffle {
 		if (res != VK_SUCCESS || m_Device == VK_NULL_HANDLE)
 		{
 			WF_CORE_ERROR("vkCreateDevice failed with error code: {0}", (int)res);
-			WF_CORE_ASSERT(false, "Failed to create Vulkan logical device!");
+			FailGracefully("Vulkan device creation failed",
+				"The Vulkan graphics device could not be created. Update your "
+				"graphics driver and try again.");
 		}
 
 		volkLoadDevice(m_Device);
@@ -1196,14 +1228,15 @@ namespace Waffle {
 	// -----------------------------------------------------------------------
 	bool VulkanContext::IsDeviceSuitable(VkPhysicalDevice device) const
 	{
-		// Must actually support the instance's target API version - a device
-		// reporting a lower version cannot back the 1.4 features used
-		// (synchronization2, dynamic rendering).
+		// The engine requires Vulkan 1.3 (dynamic rendering, synchronization2,
+		// timeline semaphores). Nothing 1.4-specific is used - demanding 1.4
+		// here rejected perfectly capable laptops, whose drivers commonly
+		// report exactly 1.3.
 		VkPhysicalDeviceProperties props;
 		vkGetPhysicalDeviceProperties(device, &props);
 		uint32_t deviceMajor = VK_API_VERSION_MAJOR(props.apiVersion);
 		uint32_t deviceMinor = VK_API_VERSION_MINOR(props.apiVersion);
-		if (deviceMajor < 1 || (deviceMajor == 1 && deviceMinor < 4))
+		if (deviceMajor != 1 || deviceMinor < 3)
 			return false;
 
 		auto indices = FindQueueFamilies(device);

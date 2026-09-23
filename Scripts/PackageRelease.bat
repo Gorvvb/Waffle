@@ -66,6 +66,7 @@ if defined VULKAN_SDK (
     if exist "%VULKAN_SDK%\Bin\shaderc_shared.dll" (
         copy /Y "%VULKAN_SDK%\Bin\shaderc_shared.dll" "%DIST_DIR%\Waffle-Editor\shaderc_shared.dll" >nul
         copy /Y "%VULKAN_SDK%\Bin\shaderc_shared.dll" "%DIST_DIR%\Waffle-Runtime\shaderc_shared.dll" >nul
+        copy /Y "%VULKAN_SDK%\Bin\shaderc_shared.dll" "%DIST_DIR%\WaffleHub\shaderc_shared.dll" >nul
         echo [OK] shaderc_shared.dll copied from %%VULKAN_SDK%%
         set SHADERC_COPIED=1
     )
@@ -75,6 +76,7 @@ if "!SHADERC_COPIED!"=="0" (
         if exist "%%V\Bin\shaderc_shared.dll" (
             copy /Y "%%V\Bin\shaderc_shared.dll" "%DIST_DIR%\Waffle-Editor\shaderc_shared.dll" >nul
             copy /Y "%%V\Bin\shaderc_shared.dll" "%DIST_DIR%\Waffle-Runtime\shaderc_shared.dll" >nul
+            copy /Y "%%V\Bin\shaderc_shared.dll" "%DIST_DIR%\WaffleHub\shaderc_shared.dll" >nul
             echo [OK] shaderc_shared.dll copied from %%V
         )
     )
@@ -85,6 +87,7 @@ echo [6/7] Deploying Assets, Resources, Projects and Waffle Hub Shortcut...
 if exist "Waffle-Editor\Assets" (
     xcopy /E /I /Y "Waffle-Editor\Assets" "%DIST_DIR%\Waffle-Editor\Assets" >nul
     xcopy /E /I /Y "Waffle-Editor\Assets" "%DIST_DIR%\Waffle-Runtime\Assets" >nul
+    xcopy /E /I /Y "Waffle-Editor\Assets" "%DIST_DIR%\WaffleHub\Assets" >nul
 )
 if exist "Waffle-Editor\Resources" (
     xcopy /E /I /Y "Waffle-Editor\Resources" "%DIST_DIR%\WaffleHub\Resources" >nul
