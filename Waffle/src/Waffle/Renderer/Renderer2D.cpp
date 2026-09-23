@@ -6,6 +6,8 @@
 #include "Shader.h"
 #include "Waffle/Renderer/UniformBuffer.h"
 #include "RenderCommand.h"
+#include "Renderer.h"
+#include "Waffle/RHI/GraphicsPipeline.h"
 
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
@@ -112,15 +114,18 @@ namespace Waffle {
 		Ref<VertexArray> QuadVertexArray;
 		Ref<VertexBuffer> QuadVertexBuffer;
 		Ref<Shader> QuadShader;
+		Ref<GraphicsPipeline> QuadPipeline;
 		Ref<Texture2D> WhiteTexture;
 
 		Ref<VertexArray> CircleVertexArray;
 		Ref<VertexBuffer> CircleVertexBuffer;
 		Ref<Shader> CircleShader;
+		Ref<GraphicsPipeline> CirclePipeline;
 
 		Ref<VertexArray> LineVertexArray;
 		Ref<VertexBuffer> LineVertexBuffer;
 		Ref<Shader> LineShader;
+		Ref<GraphicsPipeline> LinePipeline;
 
 		uint32_t QuadIndexCount = 0;
 		QuadVertex* QuadVertexBufferBase = nullptr;
@@ -286,7 +291,24 @@ namespace Waffle {
 
 		s_Data.CircleShader = Shader::Create("assets/shaders/2DCircleShader.glsl");
 		s_Data.LineShader = Shader::Create("assets/shaders/2DLineShader.glsl");
-		
+
+		// Explicit pipelines - the backend no longer derives state from
+		// "whatever shader/VAO is bound" at draw time.
+		GraphicsPipeline::Desc pipelineDesc;
+		pipelineDesc.Blending   = GraphicsPipeline::BlendMode::SrcAlpha;
+		pipelineDesc.DepthTest  = true;
+		pipelineDesc.DepthWrite = true;
+
+		pipelineDesc.Shader = s_Data.QuadShader;
+		s_Data.QuadPipeline = GraphicsPipeline::Create(pipelineDesc);
+
+		pipelineDesc.Shader = s_Data.CircleShader;
+		s_Data.CirclePipeline = GraphicsPipeline::Create(pipelineDesc);
+
+		pipelineDesc.Shader = s_Data.LineShader;
+		pipelineDesc.Topology = GraphicsPipeline::Topology::Lines;
+		s_Data.LinePipeline = GraphicsPipeline::Create(pipelineDesc);
+
 		s_Data.TextureSlots[0] = s_Data.WhiteTexture;
 
 		s_Data.QuadVertexPositions[0] = { -0.5f, -0.5f, 0.0f, 1.0f };
@@ -315,15 +337,18 @@ namespace Waffle {
 		s_Data.QuadVertexArray = nullptr;
 		s_Data.QuadVertexBuffer = nullptr;
 		s_Data.QuadShader = nullptr;
+		s_Data.QuadPipeline = nullptr;
 		s_Data.WhiteTexture = nullptr;
 
 		s_Data.CircleVertexArray = nullptr;
 		s_Data.CircleVertexBuffer = nullptr;
 		s_Data.CircleShader = nullptr;
+		s_Data.CirclePipeline = nullptr;
 
 		s_Data.LineVertexArray = nullptr;
 		s_Data.LineVertexBuffer = nullptr;
 		s_Data.LineShader = nullptr;
+		s_Data.LinePipeline = nullptr;
 
 		s_Data.CameraUniformBuffer = nullptr;
 		for (auto& slot : s_Data.TextureSlots)
@@ -336,7 +361,8 @@ namespace Waffle {
 		WF_PROFILE_FUNCTION();
 
 		s_Data.CameraBuffer.ViewProjection = camera.GetViewProjectionMatrix();
-		s_Data.CameraUniformBuffer->SetData(&s_Data.CameraBuffer, sizeof(Renderer2DData::CameraData));
+		Renderer::GetCommandBuffer()->UpdateUniformBuffer(s_Data.CameraUniformBuffer,
+			&s_Data.CameraBuffer, sizeof(Renderer2DData::CameraData), 0);
 		s_Data.ActiveFrustum = Frustum2D::FromProjectionAndView(camera.GetProjectionMatrix(), camera.GetViewMatrix());
 
 		StartBatch();
@@ -347,7 +373,8 @@ namespace Waffle {
 		WF_PROFILE_FUNCTION();
 
 		s_Data.CameraBuffer.ViewProjection = camera.GetProjection() * glm::inverse(transform);
-		s_Data.CameraUniformBuffer->SetData(&s_Data.CameraBuffer, sizeof(Renderer2DData::CameraData));
+		Renderer::GetCommandBuffer()->UpdateUniformBuffer(s_Data.CameraUniformBuffer,
+			&s_Data.CameraBuffer, sizeof(Renderer2DData::CameraData), 0);
 		s_Data.ActiveFrustum = Frustum2D::FromProjectionAndView(camera.GetProjection(), glm::inverse(transform));
 
 		StartBatch();
@@ -358,7 +385,8 @@ namespace Waffle {
 		WF_PROFILE_FUNCTION();
 
 		s_Data.CameraBuffer.ViewProjection = camera.GetViewProjection();
-		s_Data.CameraUniformBuffer->SetData(&s_Data.CameraBuffer, sizeof(Renderer2DData::CameraData));
+		Renderer::GetCommandBuffer()->UpdateUniformBuffer(s_Data.CameraUniformBuffer,
+			&s_Data.CameraBuffer, sizeof(Renderer2DData::CameraData), 0);
 		s_Data.ActiveFrustum = Frustum2D::FromProjectionAndView(camera.GetProjection(), camera.GetViewMatrix());
 
 		StartBatch();
@@ -422,34 +450,34 @@ namespace Waffle {
 			s_Data.LineVertexBuffer->SetData(s_Data.LineVertexBufferBase, dataSize);
 		}
 
-		for (const auto& cmd : s_Data.Commands)
-		{
-			if (cmd.ElementCount == 0) continue;
+		CommandBuffer* cmd = Renderer::GetCommandBuffer();
 
-			switch (cmd.Type)
+		for (const auto& command : s_Data.Commands)
+		{
+			if (command.ElementCount == 0) continue;
+
+			switch (command.Type)
 			{
 			case Renderer2DData::PrimitiveType::Quad:
 			{
-				for (uint32_t i = 0; i < cmd.TextureCount; i++)
-					s_Data.TextureSlots[i]->Bind(i);
-
-				s_Data.QuadShader->Bind();
-				RenderCommand::DrawIndexed(s_Data.QuadVertexArray, cmd.ElementCount, cmd.ElementOffset);
+				cmd->BindTextures(0, s_Data.TextureSlots.data(), command.TextureCount);
+				cmd->BindPipeline(s_Data.QuadPipeline);
+				cmd->DrawIndexed(s_Data.QuadVertexArray, command.ElementCount, command.ElementOffset);
 				s_Data.Stats.DrawCalls++;
 				break;
 			}
 			case Renderer2DData::PrimitiveType::Circle:
 			{
-				s_Data.CircleShader->Bind();
-				RenderCommand::DrawIndexed(s_Data.CircleVertexArray, cmd.ElementCount, cmd.ElementOffset);
+				cmd->BindPipeline(s_Data.CirclePipeline);
+				cmd->DrawIndexed(s_Data.CircleVertexArray, command.ElementCount, command.ElementOffset);
 				s_Data.Stats.DrawCalls++;
 				break;
 			}
 			case Renderer2DData::PrimitiveType::Line:
 			{
-				s_Data.LineShader->Bind();
-				RenderCommand::SetLineWidth(s_Data.LineWidth);
-				RenderCommand::DrawLines(s_Data.LineVertexArray, cmd.ElementCount, cmd.ElementOffset);
+				cmd->BindPipeline(s_Data.LinePipeline);
+				cmd->SetLineWidth(s_Data.LineWidth);
+				cmd->DrawLines(s_Data.LineVertexArray, command.ElementCount, command.ElementOffset);
 				s_Data.Stats.DrawCalls++;
 				break;
 			}

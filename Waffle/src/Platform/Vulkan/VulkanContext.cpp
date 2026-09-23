@@ -453,7 +453,6 @@ namespace Waffle {
 		VkClearDepthStencilValue clearDepth)
 	{
 		SetActiveRenderingFormats({ m_SwapChainImageFormat }, m_DepthFormat);
-		m_BoundShader = nullptr;
 		VkCommandBuffer cmd = GetCurrentCommandBuffer();
 
 		// Transition swap-chain image to color attachment
@@ -1056,6 +1055,9 @@ namespace Waffle {
 		// shader alone is 32 x 2 = 64), so 1000 was reachable in real scenes.
 		std::vector<VkDescriptorPoolSize> poolSizes = {
 			{ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,          4096 },
+			// Shader-owned UBO descriptors are dynamic (per-pass ring slices
+			// inside one buffer) - see VulkanUniformBuffer.
+			{ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC,  4096 },
 			{ VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,  4096 },
 			{ VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,           4096 },
 			{ VK_DESCRIPTOR_TYPE_SAMPLER,                 4096 },

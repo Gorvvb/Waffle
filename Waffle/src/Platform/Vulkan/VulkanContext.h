@@ -20,7 +20,6 @@ namespace Waffle {
 	// -----------------------------------------------------------------------
 	class VulkanShader;
 	class VulkanVertexArray;
-
 	// -----------------------------------------------------------------------
 	// VulkanContext
 	// Owns ALL core Vulkan infrastructure: instance, device, swap chain,
@@ -86,23 +85,25 @@ namespace Waffle {
 		void NotifyRenderingEnded()  { m_IsRenderingActive = false; }
 
 		// ---- Bound-shader / vertex-array tracking (for pipeline lookup) -----
-		void SetBoundShader(VulkanShader* shader)           { m_BoundShader = shader; }
-		void SetBoundVertexArray(VulkanVertexArray* va)     { m_BoundVertexArray = va; }
-		VulkanShader*      GetBoundShader()      const { return m_BoundShader; }
-		VulkanVertexArray* GetBoundVertexArray() const { return m_BoundVertexArray; }
+		// REMOVED: pipeline/VAO state is no longer global. Draws record
+		// through VulkanCommandBuffer, which carries explicit pipeline and
+		// vertex-array state per command.
 
 		// ---- Descriptor-set tracking (UBOs / textures) ----------------------
 		struct UniformBufferBindInfo {
 			VkBuffer Buffer = VK_NULL_HANDLE;
 			VkDeviceSize Size = 0;
+			// Offset of the current ring slice inside Buffer - applied as a
+			// dynamic offset when the shader's descriptor sets are bound.
+			uint64_t DynamicOffset = 0;
 		};
 		struct TextureBindInfo {
 			VkImageView ImageView = VK_NULL_HANDLE;
 			VkSampler Sampler = VK_NULL_HANDLE;
 		};
 
-		void RegisterUniformBuffer(uint32_t binding, VkBuffer buffer, VkDeviceSize size) {
-			m_BoundUniformBuffers[binding] = { buffer, size };
+		void RegisterUniformBuffer(uint32_t binding, VkBuffer buffer, VkDeviceSize size, uint64_t dynamicOffset = 0) {
+			m_BoundUniformBuffers[binding] = { buffer, size, dynamicOffset };
 		}
 		void RegisterTexture(uint32_t slot, VkImageView imageView, VkSampler sampler) {
 			m_BoundTextures[slot] = { imageView, sampler };
@@ -277,10 +278,6 @@ namespace Waffle {
 		// Rendering state
 		bool m_IsRenderingActive = false;
 		bool m_SwapChainNeedsRecreation = false;
-
-		// Bound pipeline state (updated by VulkanShader/VulkanVertexArray::Bind())
-		VulkanShader*      m_BoundShader      = nullptr;
-		VulkanVertexArray* m_BoundVertexArray = nullptr;
 
 		// Descriptor set slots [0..3] - updated by UBOs and textures
 		std::vector<VkDescriptorSet> m_BoundDescriptorSets;

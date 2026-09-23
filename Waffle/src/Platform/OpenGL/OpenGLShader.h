@@ -2,11 +2,9 @@
 
 #include "Waffle/Renderer/Shader.h"
 #include <glm/glm.hpp>
+#include <glad/glad.h>
 #include <unordered_map>
 
-
-// TODO: REMOVE!
-typedef unsigned int GLenum;
 
 namespace Waffle {
 

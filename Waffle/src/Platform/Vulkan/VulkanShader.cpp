@@ -9,7 +9,8 @@
 #include <spirv_cross/spirv_cross.hpp>
 #include <spirv_cross/spirv_glsl.hpp>
 
-#include <glad/glad.h>  // for GL_VERTEX_SHADER / GL_FRAGMENT_SHADER constants
+// Stage keys are local - the GL loader headers do not belong in the
+// Vulkan backend.
 #include <glm/gtc/type_ptr.hpp>
 
 #include "Waffle/Core/Timer.h"
@@ -17,13 +18,17 @@
 
 namespace Waffle {
 
+	// Local stage keys (previously GLenums via glad - an OpenGL loader does
+	// not belong in the Vulkan backend).
+	enum Stage : uint32_t { Stage_Vertex = 0, Stage_Fragment = 1 };
+
 	// -------------------------------------------------------------------------
 	// Stage helpers
 	// -------------------------------------------------------------------------
 	static uint32_t ShaderTypeFromString(const std::string& type)
 	{
-		if (type == "vertex")                      return GL_VERTEX_SHADER;
-		if (type == "fragment" || type == "pixel") return GL_FRAGMENT_SHADER;
+		if (type == "vertex")                      return Stage_Vertex;
+		if (type == "fragment" || type == "pixel") return Stage_Fragment;
 		WF_CORE_ASSERT(false, "Unknown shader type!");
 		return 0;
 	}
@@ -32,8 +37,8 @@ namespace Waffle {
 	{
 		switch (stage)
 		{
-		case GL_VERTEX_SHADER:   return shaderc_glsl_vertex_shader;
-		case GL_FRAGMENT_SHADER: return shaderc_glsl_fragment_shader;
+		case Stage_Vertex:   return shaderc_glsl_vertex_shader;
+		case Stage_Fragment: return shaderc_glsl_fragment_shader;
 		}
 		WF_CORE_ASSERT(false); return (shaderc_shader_kind)0;
 	}
@@ -42,8 +47,8 @@ namespace Waffle {
 	{
 		switch (stage)
 		{
-		case GL_VERTEX_SHADER:   return "vertex";
-		case GL_FRAGMENT_SHADER: return "fragment";
+		case Stage_Vertex:   return "vertex";
+		case Stage_Fragment: return "fragment";
 		}
 		return "unknown";
 	}
@@ -69,8 +74,8 @@ namespace Waffle {
 	{
 		switch (glStage)
 		{
-		case GL_VERTEX_SHADER:   return ".cached_vulkan.vert";
-		case GL_FRAGMENT_SHADER: return ".cached_vulkan.frag";
+		case Stage_Vertex:   return ".cached_vulkan.vert";
+		case Stage_Fragment: return ".cached_vulkan.frag";
 		}
 		return ".cached_vulkan";
 	}
@@ -112,8 +117,8 @@ namespace Waffle {
 		EnsureCacheDirectoryExists();
 
 		std::unordered_map<uint32_t, std::string> sources;
-		sources[GL_VERTEX_SHADER]   = vertexSrc;
-		sources[GL_FRAGMENT_SHADER] = fragmentSrc;
+		sources[Stage_Vertex]   = vertexSrc;
+		sources[Stage_Fragment] = fragmentSrc;
 
 		CompileOrGetVulkanSPIRV(sources);
 		CreateShaderModules();
@@ -158,13 +163,13 @@ namespace Waffle {
 	// -------------------------------------------------------------------------
 	void VulkanShader::Bind() const
 	{
-		VulkanContext::Get()->SetBoundShader(const_cast<VulkanShader*>(this));
+		// No-op on Vulkan: pipelines are bound explicitly through the RHI
+		// CommandBuffer (BindPipeline), not via global shader state.
+		// (GL needs glUseProgram before glUniform* calls; Vulkan uniform
+		// writes go to push-constant staging, which needs no bind.)
 	}
 
-	void VulkanShader::Unbind() const
-	{
-		VulkanContext::Get()->SetBoundShader(nullptr);
-	}
+	void VulkanShader::Unbind() const {}
 
 	// -------------------------------------------------------------------------
 	// SetXxx - write into the push-constant staging buffer
@@ -237,6 +242,10 @@ namespace Waffle {
 			std::vector<VkWriteDescriptorSet> writes;
 			std::vector<VkDescriptorBufferInfo> bufferInfos;
 			std::vector<std::vector<VkDescriptorImageInfo>> imageInfoArrays;
+			// One dynamic offset per dynamic descriptor IN THE SET LAYOUT,
+			// in binding order (vkCmdBindDescriptorSets requirement) - even
+			// for bindings whose buffer was never registered (offset 0).
+			std::vector<uint32_t> dynamicOffsets;
 
 			// Reserve BEFORE the fill loop: writes store pointers into
 			// bufferInfos, so a push_back reallocation would dangle every
@@ -252,11 +261,18 @@ namespace Waffle {
 				if (d.Type == VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER)
 				{
 					auto ubo = ctx->GetUniformBuffer(d.Binding);
+					for (uint32_t e = 0; e < d.Count; e++)
+						dynamicOffsets.push_back((uint32_t)ubo.DynamicOffset);
+
 					if (ubo.Buffer != VK_NULL_HANDLE)
 					{
 						VkDescriptorBufferInfo bInfo{};
 						bInfo.buffer = ubo.Buffer;
 						bInfo.offset = 0;
+						// The UBO is a ring of slices; the slice is chosen
+						// by the dynamic offset at bind time. This is what
+						// lets several passes per frame each read the camera
+						// data written for THEM.
 						bInfo.range  = ubo.Size;
 						bufferInfos.push_back(bInfo);
 
@@ -265,8 +281,8 @@ namespace Waffle {
 						w.dstSet          = ds;
 						w.dstBinding      = d.Binding;
 						w.dstArrayElement = 0;
-						w.descriptorType  = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-						w.descriptorCount = 1;
+						w.descriptorType  = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
+						w.descriptorCount = d.Count;
 						w.pBufferInfo     = &bufferInfos.back();
 						writes.push_back(w);
 					}
@@ -279,7 +295,12 @@ namespace Waffle {
 					bool bindingValid = true;
 					for (uint32_t slot = 0; slot < count; slot++)
 					{
-						auto tex = ctx->GetTexture(slot);
+						// Slot convention: slot N of a sampler binding B
+						// reads registry entry (B + N). For the 2D batcher's
+						// u_Textures[32] at binding 0 this is the plain
+						// slot 0..31; a second single-sampler binding (post
+						// chain) reads the slot equal to its binding index.
+						auto tex = ctx->GetTexture(d.Binding + slot);
 						if (tex.ImageView == VK_NULL_HANDLE || tex.Sampler == VK_NULL_HANDLE)
 							tex = ctx->GetTexture(0);
 
@@ -323,7 +344,8 @@ namespace Waffle {
 				VK_PIPELINE_BIND_POINT_GRAPHICS,
 				m_PipelineLayout,
 				(uint32_t)setIdx, 1, &ds,
-				0, nullptr);
+				(uint32_t)dynamicOffsets.size(),
+				dynamicOffsets.empty() ? nullptr : dynamicOffsets.data());
 		}
 	}
 
@@ -334,7 +356,10 @@ namespace Waffle {
 		const VulkanVertexArray* vertexArray,
 		VkPrimitiveTopology topology,
 		const std::vector<VkFormat>& colorFormats,
-		VkFormat depthFormat)
+		VkFormat depthFormat,
+		int blendMode,
+		bool depthTest,
+		bool depthWrite)
 	{
 		auto* ctx = VulkanContext::Get();
 
@@ -351,14 +376,19 @@ namespace Waffle {
 					fmt = ctx->GetSwapChainFormat();
 			}
 		}
-		VkFormat finalDepthFormat = (depthFormat == VK_FORMAT_UNDEFINED) ? ctx->GetDepthFormat() : depthFormat;
+		// UNDEFINED is meaningful here: it means the active render target
+		// has NO depth attachment (e.g. bloom mip chains) - pipelines must
+		// be created without one, so no substitution takes place.
 
 		PipelineKey key;
 		key.Bindings     = vertexArray ? vertexArray->GetBindingDescriptions()   : std::vector<VkVertexInputBindingDescription>();
 		key.Attributes   = vertexArray ? vertexArray->GetAttributeDescriptions() : std::vector<VkVertexInputAttributeDescription>();
 		key.Topology     = topology;
 		key.ColorFormats = finalColorFormats;
-		key.DepthFormat  = finalDepthFormat;
+		key.DepthFormat  = depthFormat;
+		key.BlendMode    = blendMode;
+		key.DepthTest    = depthTest;
+		key.DepthWrite   = depthWrite;
 
 		auto it = m_Pipelines.find(key);
 		if (it != m_Pipelines.end())
@@ -424,13 +454,13 @@ namespace Waffle {
 		// Depth / stencil
 		VkPipelineDepthStencilStateCreateInfo depthStencil{};
 		depthStencil.sType                 = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
-		depthStencil.depthTestEnable       = VK_TRUE;
-		depthStencil.depthWriteEnable      = VK_TRUE;
+		depthStencil.depthTestEnable       = depthTest ? VK_TRUE : VK_FALSE;
+		depthStencil.depthWriteEnable      = (depthTest && depthWrite) ? VK_TRUE : VK_FALSE;
 		depthStencil.depthCompareOp        = VK_COMPARE_OP_LESS;
 		depthStencil.depthBoundsTestEnable = VK_FALSE;
 		depthStencil.stencilTestEnable     = VK_FALSE;
 
-		// Color blend (alpha blending) for each color attachment
+		// Color blend for each color attachment
 		std::vector<VkPipelineColorBlendAttachmentState> blendAttachments(finalColorFormats.size());
 		for (size_t i = 0; i < finalColorFormats.size(); i++)
 		{
@@ -445,13 +475,31 @@ namespace Waffle {
 			                        finalColorFormats[i] == VK_FORMAT_R16_SINT ||
 			                        finalColorFormats[i] == VK_FORMAT_R16_UINT);
 
-			blendAttachments[i].blendEnable         = isIntegerFormat ? VK_FALSE : VK_TRUE;
-			blendAttachments[i].srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA;
-			blendAttachments[i].dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
-			blendAttachments[i].colorBlendOp        = VK_BLEND_OP_ADD;
-			blendAttachments[i].srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
-			blendAttachments[i].dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO;
-			blendAttachments[i].alphaBlendOp        = VK_BLEND_OP_ADD;
+			if (!blendMode || isIntegerFormat)
+			{
+				blendAttachments[i].blendEnable = VK_FALSE;
+			}
+			else
+			{
+				blendAttachments[i].blendEnable = VK_TRUE;
+				if (blendMode == 2) // Additive
+				{
+					blendAttachments[i].srcColorBlendFactor = VK_BLEND_FACTOR_ONE;
+					blendAttachments[i].dstColorBlendFactor = VK_BLEND_FACTOR_ONE;
+				}
+				else // SrcAlpha
+				{
+					blendAttachments[i].srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA;
+					blendAttachments[i].dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
+				}
+				blendAttachments[i].colorBlendOp = VK_BLEND_OP_ADD;
+				// Keep the framebuffer attachment alpha untouched: translucent
+				// draws (selection fill, sprites) must not lower it, or ImGui
+				// displays the whole viewport washed out / gray.
+				blendAttachments[i].srcAlphaBlendFactor = VK_BLEND_FACTOR_ZERO;
+				blendAttachments[i].dstAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
+				blendAttachments[i].alphaBlendOp        = VK_BLEND_OP_ADD;
+			}
 		}
 
 		VkPipelineColorBlendStateCreateInfo colorBlending{};
@@ -476,7 +524,7 @@ namespace Waffle {
 		renderingInfo.sType                   = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO;
 		renderingInfo.colorAttachmentCount    = (uint32_t)finalColorFormats.size();
 		renderingInfo.pColorAttachmentFormats = finalColorFormats.data();
-		renderingInfo.depthAttachmentFormat   = finalDepthFormat;
+		renderingInfo.depthAttachmentFormat   = depthFormat;
 
 		// Create pipeline
 		VkGraphicsPipelineCreateInfo pipelineInfo{};
@@ -646,8 +694,8 @@ namespace Waffle {
 			return mod;
 		};
 
-		m_VertModule = createModule(GL_VERTEX_SHADER);
-		m_FragModule = createModule(GL_FRAGMENT_SHADER);
+		m_VertModule = createModule(Stage_Vertex);
+		m_FragModule = createModule(Stage_Fragment);
 	}
 
 	void VulkanShader::Reflect(uint32_t stage, const std::vector<uint32_t>& spirv)
@@ -706,7 +754,7 @@ namespace Waffle {
 		{
 		for (auto& [stage, spirv] : m_SPIRV)
 		{
-			VkShaderStageFlags vkStage = (stage == GL_VERTEX_SHADER)
+			VkShaderStageFlags vkStage = (stage == Stage_Vertex)
 				? VK_SHADER_STAGE_VERTEX_BIT
 				: VK_SHADER_STAGE_FRAGMENT_BIT;
 
@@ -870,6 +918,9 @@ namespace Waffle {
 		return Topology == o.Topology
 			&& ColorFormats == o.ColorFormats
 			&& DepthFormat == o.DepthFormat
+			&& BlendMode == o.BlendMode
+			&& DepthTest == o.DepthTest
+			&& DepthWrite == o.DepthWrite
 			&& EqualBindings(Bindings, o.Bindings)
 			&& EqualAttributes(Attributes, o.Attributes);
 	}
@@ -877,7 +928,10 @@ namespace Waffle {
 	size_t VulkanShader::PipelineKeyHash::operator()(const PipelineKey& k) const
 	{
 		size_t seed = std::hash<int>{}((int)k.Topology)
-			^ (std::hash<int>{}((int)k.DepthFormat) << 2);
+			^ (std::hash<int>{}((int)k.DepthFormat) << 2)
+			^ (std::hash<int>{}(k.BlendMode) << 4)
+			^ (std::hash<int>{}((int)k.DepthTest) << 6)
+			^ (std::hash<int>{}((int)k.DepthWrite) << 8);
 
 		for (auto f : k.ColorFormats)
 			seed ^= std::hash<int>{}((int)f) << 1;

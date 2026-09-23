@@ -119,8 +119,22 @@ namespace Waffle {
 		std::filesystem::path defaultDir = ProjectManager::GetDefaultProjectsDirectory();
 		strcpy_s(m_NewProjectPathBuffer, sizeof(m_NewProjectPathBuffer), defaultDir.string().c_str());
 
-		if (std::filesystem::exists("Resources/Icons/logo.png"))
-			m_LogoTexture = Texture2D::Create("Resources/Icons/logo.png");
+		// Resolve next to the executable first - the CWD depends on how
+		// the Hub was launched (VS uses the project folder).
+		std::filesystem::path logoPath = "Resources/Icons/logo.png";
+		if (!std::filesystem::exists(logoPath))
+		{
+			char exeBuf[MAX_PATH] = {};
+			if (GetModuleFileNameA(NULL, exeBuf, MAX_PATH) > 0)
+			{
+				std::filesystem::path exeRelative =
+					std::filesystem::path(exeBuf).parent_path() / "Resources/Icons/logo.png";
+				if (std::filesystem::exists(exeRelative))
+					logoPath = exeRelative;
+			}
+		}
+		if (std::filesystem::exists(logoPath))
+			m_LogoTexture = Texture2D::Create(logoPath.string());
 
 		WF_CORE_INFO("HubLayer: Attached Waffle Hub Launcher UI layer.");
 	}
@@ -218,7 +232,9 @@ namespace Waffle {
 			{
 				ImVec2 cp = ImGui::GetCursorPos();
 				ImGui::SetCursorPos(ImVec2(cp.x + 9.0f, cp.y + 9.0f));
-				ImGui::Image((ImTextureID)(uintptr_t)m_LogoTexture->GetRendererID(), ImVec2(34, 34));
+				// UVs flipped: engine textures load top-down-flipped for the
+				// GL renderer, ImGui expects unflipped by default.
+				ImGui::Image((ImTextureID)m_LogoTexture->GetImGuiTextureId(), ImVec2(34, 34), ImVec2(0, 1), ImVec2(1, 0));
 				ImGui::SetCursorPosY(ImGui::GetCursorPosY() - 9.0f);
 			}
 			ImGui::SameLine(0.0f, 16.0f);

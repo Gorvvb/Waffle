@@ -79,7 +79,10 @@ namespace Waffle {
 				.QueueFamily = ctx->GetGraphicsQueueFamily(),
 				.Queue = ctx->GetGraphicsQueue(),
 				.DescriptorPool = ctx->GetDescriptorPool(),
-				.MinImageCount = ctx->GetFramesInFlight(),
+				// ImGui requires MinImageCount >= ImageCount. With 3 swapchain
+				// images and only 2 frames in flight, the backend rotated its font
+				// descriptor sets through destroyed/uninitialized handles.
+				.MinImageCount = ctx->GetSwapChainImageCount(),
 				.ImageCount = ctx->GetSwapChainImageCount(),
 				.UseDynamicRendering = true
 			};

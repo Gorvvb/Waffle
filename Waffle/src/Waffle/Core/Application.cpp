@@ -1,4 +1,7 @@
 #include "wfpch.h"
+#ifdef WF_PLATFORM_WINDOWS
+#include <shobjidl.h>
+#endif
 #include "Application.h"
 
 #include "Waffle/Core/Input.h"
@@ -25,6 +28,19 @@ namespace Waffle {
 		// Set working directory
 		if (!m_Specification.WorkingDirectory.empty())
 			std::filesystem::current_path(m_Specification.WorkingDirectory);
+
+		#ifdef WF_PLATFORM_WINDOWS
+		// Unique taskbar identity. Without an AppUserModelID, Windows may
+		// represent these windows with the icon of another Waffle app that
+		// happens to be running or cached (e.g. a game launched by the Hub).
+		{
+			std::wstring aumid;
+			for (char c : m_Specification.Name)
+				aumid += (c == ' ') ? L'.' : (wchar_t)c;
+			aumid = L"Waffle." + aumid;
+			SetCurrentProcessExplicitAppUserModelID(aumid.c_str());
+		}
+		#endif
 
 		// Core engine services initialization
 		JobSystem::Init();

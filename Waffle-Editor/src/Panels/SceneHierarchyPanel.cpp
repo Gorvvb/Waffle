@@ -573,7 +573,7 @@ namespace Waffle {
 						ImGui::GetWindowDrawList()->AddCallback(ImGui::GetPlatformIO().DrawCallback_SetSamplerLinear, nullptr);
 				}
 
-				ImGui::ImageButton("##BgTexture", (void*)(intptr_t)component.BackgroundImage->GetRendererID(), ImVec2(100.0f, 100.0f), ImVec2(0, 1), ImVec2(1, 0));
+				ImGui::ImageButton("##BgTexture", (void*)component.BackgroundImage->GetImGuiTextureId(), ImVec2(100.0f, 100.0f), ImVec2(0, 1), ImVec2(1, 0));
 
 				if (ImGui::GetPlatformIO().DrawCallback_SetSamplerLinear)
 					ImGui::GetWindowDrawList()->AddCallback(ImGui::GetPlatformIO().DrawCallback_SetSamplerLinear, nullptr);
@@ -834,7 +834,7 @@ namespace Waffle {
 
 			if (component.Texture)
 			{
-				ImGui::ImageButton("##SpriteTexturePreview", (ImTextureID)(uintptr_t)component.Texture->GetRendererID(), { 64, 64 }, { 0, 1 }, { 1, 0 });
+				ImGui::ImageButton("##SpriteTexturePreview", (ImTextureID)component.Texture->GetImGuiTextureId(), { 64, 64 }, { 0, 1 }, { 1, 0 });
 			}
 			else
 			{
@@ -966,7 +966,7 @@ namespace Waffle {
 			UI::EndPropertyGrid();
 
 			if (component.Texture)
-				ImGui::ImageButton("##UIImageTexturePreview", (ImTextureID)(uintptr_t)component.Texture->GetRendererID(), { 64, 64 }, { 0, 1 }, { 1, 0 });
+				ImGui::ImageButton("##UIImageTexturePreview", (ImTextureID)component.Texture->GetImGuiTextureId(), { 64, 64 }, { 0, 1 }, { 1, 0 });
 			else
 				ImGui::Button("No Texture", { 64, 64 });
 
@@ -1049,7 +1049,7 @@ namespace Waffle {
 				ImGui::PushID(name);
 				ImGui::TextUnformatted(name);
 				if (texture)
-					ImGui::ImageButton("##UITex", (ImTextureID)(uintptr_t)texture->GetRendererID(), { 48, 48 }, { 0, 1 }, { 1, 0 });
+					ImGui::ImageButton("##UITex", (ImTextureID)texture->GetImGuiTextureId(), { 48, 48 }, { 0, 1 }, { 1, 0 });
 				else
 					ImGui::Button("No Texture", { 48, 48 });
 				if (ImGui::BeginDragDropTarget())
@@ -1115,7 +1115,7 @@ namespace Waffle {
 			UI::EndPropertyGrid();
 
 			if (component.TilesetTexture)
-				ImGui::Image((ImTextureID)(uintptr_t)component.TilesetTexture->GetRendererID(),
+				ImGui::Image((ImTextureID)component.TilesetTexture->GetImGuiTextureId(),
 					{ 64, 64 }, { 0, 1 }, { 1, 0 });
 			else
 				ImGui::Button("No Tilesheet", { 64, 64 });

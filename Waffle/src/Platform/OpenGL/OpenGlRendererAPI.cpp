@@ -118,12 +118,6 @@ namespace Waffle {
 		glDepthFunc(GL_LEQUAL);
 		glEnable(GL_LINE_SMOOTH);
 
-		// Core-profile GL guarantees only line width 1.0; clamp requests to
-		// the device's supported range instead of logging GL_INVALID_VALUE.
-		GLfloat lineWidthRange[2] = { 1.0f, 1.0f };
-		glGetFloatv(GL_LINE_WIDTH_RANGE, lineWidthRange);
-		m_MaxLineWidth = lineWidthRange[1];
-
 		// Query the real sampler limit - GL guarantees only 16 texture image
 		// units; batching must clamp to whatever this device actually has.
 		GLint maxUnits = 32;
@@ -145,27 +139,5 @@ namespace Waffle {
 	void OpenGLRendererAPI::Clear()
 	{
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-	}
-
-	void OpenGLRendererAPI::DrawIndexed(const Ref<VertexArray>& vertexArray, uint32_t indexCount, uint32_t indexOffset)
-	{
-		vertexArray->Bind();
-		uint32_t count = indexCount ? indexCount : vertexArray->GetIndexBuffer()->GetCount();
-		glDrawElements(GL_TRIANGLES, count, GL_UNSIGNED_INT, (const void*)(uintptr_t)(indexOffset * sizeof(uint32_t)));
-	}
-
-	void OpenGLRendererAPI::DrawLines(const Ref<VertexArray>& vertexArray, uint32_t vertexCount, uint32_t vertexOffset)
-	{
-		vertexArray->Bind();
-		glDrawArrays(GL_LINES, vertexOffset, vertexCount);
-	}
-
-	void OpenGLRendererAPI::SetLineWidth(float width)
-	{
-		if (m_MaxLineWidth > 0.0f && width > m_MaxLineWidth)
-			width = m_MaxLineWidth;
-		if (width < 1.0f)
-			width = 1.0f;
-		glLineWidth(width);
 	}
 }

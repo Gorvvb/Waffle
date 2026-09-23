@@ -53,13 +53,17 @@ namespace Waffle {
 		// ---- Vulkan-specific accessors (used by VulkanRendererAPI) ----------
 		VkPipelineLayout GetPipelineLayout() const { return m_PipelineLayout; }
 
-		// Returns (or creates) a VkPipeline for the given vertex-array input layout.
-		// topology: VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST or LINE_LIST etc.
+		// Returns (or creates) a VkPipeline for the given vertex-array input
+		// layout, active render target formats and fixed state. Cached per
+		// combination - each is created exactly once.
 		VkPipeline GetOrCreatePipeline(
 			const VulkanVertexArray* vertexArray,
 			VkPrimitiveTopology topology,
 			const std::vector<VkFormat>& colorFormats,
-			VkFormat depthFormat);
+			VkFormat depthFormat,
+			int blendMode,
+			bool depthTest,
+			bool depthWrite);
 
 		// Flush push constants into the current command buffer.
 		// Called by VulkanRendererAPI just before a draw call.
@@ -96,6 +100,9 @@ namespace Waffle {
 			VkPrimitiveTopology Topology;
 			std::vector<VkFormat> ColorFormats;
 			VkFormat DepthFormat;
+			int BlendMode = 1; // GraphicsPipeline::Desc::BlendMode
+			bool DepthTest = true;
+			bool DepthWrite = true;
 
 			bool operator==(const PipelineKey& o) const;
 		};

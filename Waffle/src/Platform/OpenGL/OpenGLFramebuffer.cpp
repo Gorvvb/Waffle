@@ -31,7 +31,9 @@ namespace Waffle {
 			}
 			else
 			{
-				GLenum dataType = (format == GL_RED_INTEGER) ? GL_INT : GL_UNSIGNED_BYTE;
+				GLenum dataType = (format == GL_RED_INTEGER) ? GL_INT
+					: (internalFormat == GL_RGBA16F) ? GL_FLOAT
+					: GL_UNSIGNED_BYTE;
 				glTexImage2D(GL_TEXTURE_2D, 0, internalFormat, width, height, 0, format, dataType, nullptr);
 
 				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
@@ -79,6 +81,7 @@ namespace Waffle {
 			switch (format)
 			{
 				case Waffle::FramebufferTextureFormat::RGBA8:		return GL_RGBA8;
+				case Waffle::FramebufferTextureFormat::RGBA16F:		return GL_RGBA16F;
 				case Waffle::FramebufferTextureFormat::RED_INTEGER: return GL_RED_INTEGER;
 			}
 
@@ -139,6 +142,9 @@ namespace Waffle {
 				{
 				case FramebufferTextureFormat::RGBA8:
 					Utils::AttachColorTexture(m_ColorAttachments[i], m_Specification.Samples, GL_RGBA8, GL_RGBA, m_Specification.Width, m_Specification.Height, (int)i);
+					break;
+				case FramebufferTextureFormat::RGBA16F:
+					Utils::AttachColorTexture(m_ColorAttachments[i], m_Specification.Samples, GL_RGBA16F, GL_RGBA, m_Specification.Width, m_Specification.Height, (int)i);
 					break;
 				case FramebufferTextureFormat::RED_INTEGER:
 					Utils::AttachColorTexture(m_ColorAttachments[i], m_Specification.Samples, GL_R32I, GL_RED_INTEGER, m_Specification.Width, m_Specification.Height, (int)i);

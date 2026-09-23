@@ -10,15 +10,12 @@ namespace Waffle {
 
 	void VulkanVertexArray::Bind() const
 	{
-		// Notify the context which vertex array is "active" so the
-		// renderer API can resolve the correct pipeline.
-		VulkanContext::Get()->SetBoundVertexArray(const_cast<VulkanVertexArray*>(this));
+		// No-op on Vulkan: vertex buffers are bound explicitly per draw by
+		// VulkanCommandBuffer::DrawIndexed/DrawLines; the vertex input
+		// layout feeds pipeline resolution from the draw's own state.
 	}
 
-	void VulkanVertexArray::Unbind() const
-	{
-		VulkanContext::Get()->SetBoundVertexArray(nullptr);
-	}
+	void VulkanVertexArray::Unbind() const {}
 
 	void VulkanVertexArray::AddVertexBuffer(const Ref<VertexBuffer>& vertexBuffer)
 	{

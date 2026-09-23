@@ -31,7 +31,12 @@ namespace Waffle {
 
 		virtual uint32_t GetWidth() const = 0;
 		virtual uint32_t GetHeight() const = 0;
-		virtual uint64_t GetRendererID() const = 0;
+
+		// Explicit bridge for drawing this texture through ImGui.
+		// OpenGL: the GLuint texture name. Vulkan: an ImGui-owned
+		// VkDescriptorSet. Never store or truncate this value - it is only
+		// valid as an ImTextureID for the current frame/backend.
+		virtual void* GetImGuiTextureId() const = 0;
 
 		virtual void SetData(void* data, uint32_t size) = 0;
 		

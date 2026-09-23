@@ -2,47 +2,30 @@
 #include "PostProcessing.h"
 #include "Waffle/Renderer/Framebuffer.h"
 #include "Waffle/Renderer/Renderer.h"
+#include "Waffle/Renderer/UniformBuffer.h"
+#include "Waffle/RHI/GraphicsPipeline.h"
 
-#include <glad/glad.h>
 #include <glm/gtc/type_ptr.hpp>
-#include <vector>
-#include <algorithm>
 
 namespace Waffle {
 
-	struct BloomMip
-	{
-		uint32_t FBO = 0;
-		uint32_t Texture = 0;
-		uint32_t Width = 0;
-		uint32_t Height = 0;
-	};
-
-	struct PostProcessingData
-	{
-		uint32_t QuadVAO = 0;
-		uint32_t QuadVBO = 0;
-
-		uint32_t CompositeProgram = 0;
-		uint32_t DownsampleProgram = 0;
-		uint32_t UpsampleProgram = 0;
-
-		Ref<Framebuffer> OutputFramebuffer;
-
-		static const int BloomMipLevels = 5;
-		BloomMip BloomMips[BloomMipLevels];
-		uint32_t BloomWidth = 0;
-		uint32_t BloomHeight = 0;
-	};
-
-	static PostProcessingData s_Data;
+	// =========================================================================
+	// Shaders
+	// One GLSL source per stage for BOTH backends: samplers carry Vulkan
+	// set/binding decorations (GL ignores `set`, honours `binding` as the
+	// texture unit), and per-pass parameters live in a std140 UBO at
+	// binding 2 (Vulkan: set 0 / binding 2 - a ring-sliced UniformBuffer, so
+	// every recorded pass keeps its own parameter set; see CommandBuffer::
+	// UpdateUniformBuffer).
+	// =========================================================================
 
 	static const char* g_VertexShaderSource = R"(
-#version 450 core
+#version 460 core
+
 layout(location = 0) in vec2 a_Position;
 layout(location = 1) in vec2 a_TexCoord;
 
-out vec2 v_TexCoord;
+layout(location = 0) out vec2 v_TexCoord;
 
 void main()
 {
@@ -52,15 +35,20 @@ void main()
 )";
 
 	static const char* g_DownsampleShaderSource = R"(
-#version 450 core
+#version 460 core
+
 layout(location = 0) out vec4 o_Color;
 
-in vec2 v_TexCoord;
+layout(location = 0) in vec2 v_TexCoord;
 
-uniform sampler2D u_SrcTexture;
-uniform vec2 u_TexelSize;
-uniform int u_MipLevel;
-uniform float u_Threshold;
+layout (set = 1, binding = 0) uniform sampler2D u_SrcTexture;
+
+layout(std140, binding = 2) uniform Params
+{
+    vec2 u_TexelSize;
+    int u_MipLevel;
+    float u_Threshold;
+};
 
 vec3 DownsampleBox13(sampler2D tex, vec2 uv, vec2 texelSize)
 {
@@ -113,14 +101,19 @@ void main()
 )";
 
 	static const char* g_UpsampleShaderSource = R"(
-#version 450 core
+#version 460 core
+
 layout(location = 0) out vec4 o_Color;
 
-in vec2 v_TexCoord;
+layout(location = 0) in vec2 v_TexCoord;
 
-uniform sampler2D u_SrcTexture;
-uniform vec2 u_TexelSize;
-uniform float u_FilterRadius;
+layout (set = 1, binding = 0) uniform sampler2D u_SrcTexture;
+
+layout(std140, binding = 2) uniform Params
+{
+    vec2 u_TexelSize;
+    float u_FilterRadius;
+};
 
 vec3 UpsampleTent9(sampler2D tex, vec2 uv, vec2 texelSize, float radius)
 {
@@ -129,7 +122,7 @@ vec3 UpsampleTent9(sampler2D tex, vec2 uv, vec2 texelSize, float radius)
     vec3 s;
     s  = texture(tex, uv - d.xy).rgb;
     s += texture(tex, uv - d.wy).rgb * 2.0;
-    s += texture(tex, uv - d.zy).rgb;
+    s += texture(tex, uv + d.zy).rgb;
 
     s += texture(tex, uv + d.zw).rgb * 2.0;
     s += texture(tex, uv       ).rgb * 4.0;
@@ -150,30 +143,34 @@ void main()
 )";
 
 	static const char* g_CompositeShaderSource = R"(
-#version 450 core
+#version 460 core
+
 layout(location = 0) out vec4 o_Color;
 
-in vec2 v_TexCoord;
+layout(location = 0) in vec2 v_TexCoord;
 
-uniform sampler2D u_ScreenTexture;
-uniform sampler2D u_BloomTexture;
+layout (set = 1, binding = 0) uniform sampler2D u_ScreenTexture;
+layout (set = 1, binding = 1) uniform sampler2D u_BloomTexture;
 
-uniform bool u_EnablePostProcessing;
+layout(std140, binding = 2) uniform Params
+{
+    bool u_EnablePostProcessing;
 
-uniform bool u_EnableBloom;
-uniform float u_BloomIntensity;
-uniform vec3 u_BloomColor;
+    bool u_EnableBloom;
+    float u_BloomIntensity;
+    vec3 u_BloomColor;
 
-uniform bool u_EnableVignette;
-uniform float u_VignetteIntensity;
-uniform float u_VignetteSmoothness;
-uniform vec3 u_VignetteColor;
+    bool u_EnableVignette;
+    float u_VignetteIntensity;
+    float u_VignetteSmoothness;
+    vec3 u_VignetteColor;
 
-uniform bool u_EnableTonemapping;
-uniform float u_Exposure;
-uniform float u_Contrast;
-uniform float u_Saturation;
-uniform vec3 u_ColorGradingTint;
+    bool u_EnableTonemapping;
+    float u_Exposure;
+    float u_Contrast;
+    float u_Saturation;
+    vec3 u_ColorGradingTint;
+};
 
 vec3 ACESFilm(vec3 x)
 {
@@ -237,107 +234,86 @@ void main()
 }
 )";
 
-	static bool CheckShaderCompileStatus(uint32_t shader, const char* type)
+	// std140 mirrors of the Params blocks. Field order and padding must
+	// match the GLSL exactly (bool == 4 bytes, vec3 aligned to 16).
+	struct DownsampleParams
 	{
-		int success;
-		char infoLog[1024];
-		glGetShaderiv(shader, GL_COMPILE_STATUS, &success);
-		if (!success)
-		{
-			glGetShaderInfoLog(shader, 1024, nullptr, infoLog);
-			WF_CORE_ERROR("PostProcessing Shader Compile Error ({0}): {1}", type, infoLog);
-			return false;
-		}
-		return true;
-	}
+		glm::vec2 TexelSize;
+		int32_t MipLevel;
+		float Threshold;
+	};
+	static_assert(sizeof(DownsampleParams) == 16, "std140 mismatch");
 
-	static bool CheckProgramLinkStatus(uint32_t program)
+	struct UpsampleParams
 	{
-		int success;
-		char infoLog[1024];
-		glGetProgramiv(program, GL_LINK_STATUS, &success);
-		if (!success)
-		{
-			glGetProgramInfoLog(program, 1024, nullptr, infoLog);
-			WF_CORE_ERROR("PostProcessing Program Link Error: {0}", infoLog);
-			return false;
-		}
-		return true;
-	}
+		glm::vec2 TexelSize;
+		float FilterRadius;
+		float _pad;
+	};
+	static_assert(sizeof(UpsampleParams) == 16, "std140 mismatch");
 
-	static uint32_t CreateShaderProgram(const char* vsSrc, const char* fsSrc)
+	struct CompositeParams
 	{
-		uint32_t vs = glCreateShader(GL_VERTEX_SHADER);
-		glShaderSource(vs, 1, &vsSrc, nullptr);
-		glCompileShader(vs);
-		if (!CheckShaderCompileStatus(vs, "VERTEX"))
-		{
-			glDeleteShader(vs);
-			return 0;
-		}
+		int32_t EnablePostProcessing; // 0
+		int32_t EnableBloom;          // 4
+		int32_t EnableVignette;       // 8
+		int32_t EnableTonemapping;    // 12
+		float BloomIntensity;         // 16
+		float _pad0[3];
+		glm::vec3 BloomColor;         // 32
+		float _pad1;
+		float VignetteIntensity;      // 48
+		float VignetteSmoothness;     // 52
+		float _pad2[2];
+		glm::vec3 VignetteColor;      // 64
+		float _pad3;
+		float Exposure;               // 80
+		float Contrast;               // 84
+		float Saturation;             // 88
+		float _pad4;
+		glm::vec3 ColorGradingTint;   // 96
+		float _pad5;
+	};
+	static_assert(sizeof(CompositeParams) == 112, "std140 mismatch");
 
-		uint32_t fs = glCreateShader(GL_FRAGMENT_SHADER);
-		glShaderSource(fs, 1, &fsSrc, nullptr);
-		glCompileShader(fs);
-		if (!CheckShaderCompileStatus(fs, "FRAGMENT"))
-		{
-			glDeleteShader(vs);
-			glDeleteShader(fs);
-			return 0;
-		}
+	// =========================================================================
+	// Resources
+	// =========================================================================
 
-		uint32_t program = glCreateProgram();
-		glAttachShader(program, vs);
-		glAttachShader(program, fs);
-		glLinkProgram(program);
-
-		glDeleteShader(vs);
-		glDeleteShader(fs);
-
-		if (!CheckProgramLinkStatus(program))
-		{
-			glDeleteProgram(program);
-			return 0;
-		}
-
-		return program;
-	}
-
-	static void DestroyBloomMips()
+	struct BloomMip
 	{
-		for (int i = 0; i < PostProcessingData::BloomMipLevels; i++)
-		{
-			if (s_Data.BloomMips[i].FBO != 0)
-			{
-				glDeleteFramebuffers(1, &s_Data.BloomMips[i].FBO);
-				glDeleteTextures(1, &s_Data.BloomMips[i].Texture);
-				s_Data.BloomMips[i].FBO = 0;
-				s_Data.BloomMips[i].Texture = 0;
-			}
-		}
-	}
+		Ref<Framebuffer> Target;
+		uint32_t Width = 0;
+		uint32_t Height = 0;
+	};
 
-	// Memoized uniform locations. The post chain issued ~20 string-keyed
-	// driver queries per frame; programs are immutable once linked. The
-	// cache must be cleared in Shutdown (program ids can be recycled).
-	static std::unordered_map<uint64_t, GLint> s_UniformLocations;
-
-	static GLint GetUniformLocationCached(uint32_t program, const char* name)
+	struct PostProcessingData
 	{
-		uint64_t key = ((uint64_t)program << 32) ^ std::hash<std::string_view>()(name);
-		auto it = s_UniformLocations.find(key);
-		if (it != s_UniformLocations.end())
-			return it->second;
+		Ref<VertexArray> QuadVertexArray;
 
-		GLint location = glGetUniformLocation(program, name);
-		s_UniformLocations[key] = location;
-		return location;
-	}
+		Ref<Shader> CompositeShader;
+		Ref<Shader> DownsampleShader;
+		Ref<Shader> UpsampleShader;
 
-	static void RecreateBloomMips(uint32_t width, uint32_t height)
+		Ref<GraphicsPipeline> CompositePipeline;
+		Ref<GraphicsPipeline> DownsamplePipeline;
+		Ref<GraphicsPipeline> UpsamplePipeline;
+
+		// Per-pass parameters (binding 2) - ring-sliced on Vulkan.
+		Ref<UniformBuffer> ParamsUniformBuffer;
+
+		Ref<Framebuffer> OutputFramebuffer;
+
+		static const int BloomMipLevels = 5;
+		BloomMip BloomMips[BloomMipLevels];
+		uint32_t BloomWidth = 0;
+		uint32_t BloomHeight = 0;
+	};
+
+	static PostProcessingData s_Data;
+
+	static void CreateBloomMips(uint32_t width, uint32_t height)
 	{
-		DestroyBloomMips();
-
 		s_Data.BloomWidth = width;
 		s_Data.BloomHeight = height;
 
@@ -352,31 +328,23 @@ void main()
 			s_Data.BloomMips[i].Width = mipWidth;
 			s_Data.BloomMips[i].Height = mipHeight;
 
-			glGenFramebuffers(1, &s_Data.BloomMips[i].FBO);
-			glBindFramebuffer(GL_FRAMEBUFFER, s_Data.BloomMips[i].FBO);
-
-			glGenTextures(1, &s_Data.BloomMips[i].Texture);
-			glBindTexture(GL_TEXTURE_2D, s_Data.BloomMips[i].Texture);
-			glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, mipWidth, mipHeight, 0, GL_RGBA, GL_FLOAT, nullptr);
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-
-			glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, s_Data.BloomMips[i].Texture, 0);
-
-			glBindFramebuffer(GL_FRAMEBUFFER, 0);
+			FramebufferSpecification spec;
+			spec.Width = mipWidth;
+			spec.Height = mipHeight;
+			spec.Attachments = { FramebufferTextureFormat::RGBA16F };
+			s_Data.BloomMips[i].Target = Framebuffer::Create(spec);
 
 			mipWidth /= 2;
 			mipHeight /= 2;
 		}
 	}
 
-	void PostProcessing::Init()
+	void PostProcessing::EnsureResources()
 	{
-		if (s_Data.QuadVAO != 0)
+		if (s_Data.QuadVertexArray)
 			return;
 
+		// Fullscreen quad: two triangles with 0..1 UVs.
 		float quadVertices[] = {
 			-1.0f, -1.0f,  0.0f, 0.0f,
 			 1.0f, -1.0f,  1.0f, 0.0f,
@@ -387,254 +355,204 @@ void main()
 			-1.0f,  1.0f,  0.0f, 1.0f
 		};
 
-		glGenVertexArrays(1, &s_Data.QuadVAO);
-		glGenBuffers(1, &s_Data.QuadVBO);
+		s_Data.QuadVertexArray = VertexArray::Create();
+		Ref<VertexBuffer> quadVB = VertexBuffer::Create((float*)quadVertices, sizeof(quadVertices));
+		quadVB->SetLayout({
+			{ ShaderDataType::Float2, "a_Position" },
+			{ ShaderDataType::Float2, "a_TexCoord" }
+		});
+		s_Data.QuadVertexArray->AddVertexBuffer(quadVB);
 
-		glBindVertexArray(s_Data.QuadVAO);
-		glBindBuffer(GL_ARRAY_BUFFER, s_Data.QuadVBO);
-		glBufferData(GL_ARRAY_BUFFER, sizeof(quadVertices), quadVertices, GL_STATIC_DRAW);
+		uint32_t indices[6] = { 0, 1, 2, 3, 4, 5 };
+		s_Data.QuadVertexArray->SetIndexBuffer(IndexBuffer::Create(indices, 6));
 
-		glEnableVertexAttribArray(0);
-		glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)0);
+		// Shaders (compiled from memory on both backends).
+		s_Data.CompositeShader  = Shader::Create("PostComposite",  g_VertexShaderSource, g_CompositeShaderSource);
+		s_Data.DownsampleShader = Shader::Create("PostDownsample", g_VertexShaderSource, g_DownsampleShaderSource);
+		s_Data.UpsampleShader   = Shader::Create("PostUpsample",   g_VertexShaderSource, g_UpsampleShaderSource);
 
-		glEnableVertexAttribArray(1);
-		glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)(2 * sizeof(float)));
+		GraphicsPipeline::Desc desc;
+		desc.DepthTest = false;   // fullscreen passes over colour-only targets
+		desc.DepthWrite = false;
 
-		glBindBuffer(GL_ARRAY_BUFFER, 0);
-		glBindVertexArray(0);
+		desc.Blending = GraphicsPipeline::BlendMode::Opaque;
+		desc.Shader = s_Data.CompositeShader;
+		s_Data.CompositePipeline = GraphicsPipeline::Create(desc);
 
-		s_Data.CompositeProgram = CreateShaderProgram(g_VertexShaderSource, g_CompositeShaderSource);
-		s_Data.DownsampleProgram = CreateShaderProgram(g_VertexShaderSource, g_DownsampleShaderSource);
-		s_Data.UpsampleProgram = CreateShaderProgram(g_VertexShaderSource, g_UpsampleShaderSource);
+		desc.Shader = s_Data.DownsampleShader;
+		s_Data.DownsamplePipeline = GraphicsPipeline::Create(desc);
+
+		desc.Blending = GraphicsPipeline::BlendMode::Additive;
+		desc.Shader = s_Data.UpsampleShader;
+		s_Data.UpsamplePipeline = GraphicsPipeline::Create(desc);
+
+		// Parameter UBO shared by all three shaders (binding 2).
+		s_Data.ParamsUniformBuffer = UniformBuffer::Create(sizeof(CompositeParams), 2);
 
 		FramebufferSpecification spec;
 		spec.Width = 1280;
 		spec.Height = 720;
-		spec.Attachments = { FramebufferTextureFormat::RGBA8, FramebufferTextureFormat::Depth };
+		spec.Attachments = { FramebufferTextureFormat::RGBA8 };
 		s_Data.OutputFramebuffer = Framebuffer::Create(spec);
+	}
+
+	void PostProcessing::EnsureSizes(uint32_t width, uint32_t height)
+	{
+		if (width == 0 || height == 0)
+			return;
+
+		const auto& spec = s_Data.OutputFramebuffer->GetSpecification();
+		if (spec.Width != width || spec.Height != height)
+			s_Data.OutputFramebuffer->Resize(width, height);
+
+		if (s_Data.BloomWidth != width || s_Data.BloomHeight != height || !s_Data.BloomMips[0].Target)
+			CreateBloomMips(width, height);
+	}
+
+	void PostProcessing::Init()
+	{
+		WF_PROFILE_FUNCTION();
+		EnsureResources();
 	}
 
 	void PostProcessing::Shutdown()
 	{
-		DestroyBloomMips();
-
-		if (s_Data.QuadVAO != 0)
-		{
-			glDeleteVertexArrays(1, &s_Data.QuadVAO);
-			glDeleteBuffers(1, &s_Data.QuadVBO);
-			glDeleteProgram(s_Data.CompositeProgram);
-			glDeleteProgram(s_Data.DownsampleProgram);
-			glDeleteProgram(s_Data.UpsampleProgram);
-			s_Data.QuadVAO = 0;
-			// Program ids can be recycled by the driver after deletion.
-			s_UniformLocations.clear();
-		}
+		s_Data.QuadVertexArray = nullptr;
+		s_Data.CompositeShader = nullptr;
+		s_Data.DownsampleShader = nullptr;
+		s_Data.UpsampleShader = nullptr;
+		s_Data.CompositePipeline = nullptr;
+		s_Data.DownsamplePipeline = nullptr;
+		s_Data.UpsamplePipeline = nullptr;
+		s_Data.ParamsUniformBuffer = nullptr;
+		s_Data.OutputFramebuffer = nullptr;
+		for (auto& mip : s_Data.BloomMips)
+			mip.Target = nullptr;
 	}
 
-	uint32_t PostProcessing::Process(uint32_t inputTextureID, uint32_t width, uint32_t height)
+	// =========================================================================
+	// Post chain
+	// =========================================================================
+
+	Ref<Framebuffer> PostProcessing::Process(const Ref<Framebuffer>& src, uint32_t attachmentIndex, uint32_t width, uint32_t height)
 	{
-		// The bloom/composite chain below drives raw OpenGL objects (FBOs,
-		// programs, texture names). A Vulkan implementation has to live in
-		// Platform/Vulkan; until then, never execute this on another backend.
-		if (Renderer::GetAPI() != RendererAPI::API::OpenGL)
-			return inputTextureID;
+		WF_PROFILE_FUNCTION();
 
-		if (width == 0 || height == 0 || inputTextureID == 0)
-			return inputTextureID;
+		if (!src || width == 0 || height == 0)
+			return nullptr;
 
-		if (s_Data.QuadVAO == 0)
-			Init();
+		EnsureResources();
+		EnsureSizes(width, height);
 
-		if (s_Data.CompositeProgram == 0)
-			return inputTextureID;
+		CommandBuffer* cmd = Renderer::GetCommandBuffer();
+		if (!cmd)
+			return nullptr;
 
-		const auto& spec = s_Data.OutputFramebuffer->GetSpecification();
-		if (spec.Width != width || spec.Height != height)
+		const auto& settings = s_Settings;
+
+		// -----------------------------------------------------------------
+		// 1. Bloom multi-pass downsample & upsample chain
+		// -----------------------------------------------------------------
+		if (settings.EnablePostProcessing && settings.EnableBloom)
 		{
-			s_Data.OutputFramebuffer->Resize(width, height);
-		}
+			DownsampleParams dsParams{};
 
-		if (s_Data.BloomWidth != width || s_Data.BloomHeight != height || s_Data.BloomMips[0].FBO == 0)
-		{
-			RecreateBloomMips(width, height);
-		}
-
-		GLboolean depthTest = glIsEnabled(GL_DEPTH_TEST);
-		GLboolean cullFace = glIsEnabled(GL_CULL_FACE);
-		GLboolean blend = glIsEnabled(GL_BLEND);
-
-		// The bloom upsample pass changes the blend *function* (not just the
-		// enable bit) and the viewport/FBO bindings - save all of it so the
-		// caller's state survives this pass exactly.
-		GLint blendSrc = GL_ONE, blendDst = GL_ZERO;
-		glGetIntegerv(GL_BLEND_SRC_RGB, &blendSrc);
-		glGetIntegerv(GL_BLEND_DST_RGB, &blendDst);
-		GLint previousFBO = 0;
-		glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &previousFBO);
-		GLint previousViewport[4] = { 0, 0, 1, 1 };
-		glGetIntegerv(GL_VIEWPORT, previousViewport);
-
-		glDisable(GL_DEPTH_TEST);
-		glDisable(GL_CULL_FACE);
-		glBindVertexArray(s_Data.QuadVAO);
-
-		// =========================================================================
-		// 1. Bloom Multi-Pass Downsample & Upsample Chain
-		// =========================================================================
-		if (s_Settings.EnablePostProcessing && s_Settings.EnableBloom)
-		{
-			// ---- Downsample Chain ----
-			glDisable(GL_BLEND);
-			glUseProgram(s_Data.DownsampleProgram);
-
-			uint32_t currentInputTex = inputTextureID;
-			glm::vec2 currentSrcDim = glm::vec2((float)width, (float)height);
-
+			// ---- Downsample chain (opaque, each mip cleared) ----
+			cmd->BindPipeline(s_Data.DownsamplePipeline);
 			for (int i = 0; i < PostProcessingData::BloomMipLevels; i++)
 			{
-				glBindFramebuffer(GL_FRAMEBUFFER, s_Data.BloomMips[i].FBO);
-				glViewport(0, 0, s_Data.BloomMips[i].Width, s_Data.BloomMips[i].Height);
+				glm::vec2 srcDim = (i == 0)
+					? glm::vec2((float)width, (float)height)
+					: glm::vec2((float)s_Data.BloomMips[i - 1].Width, (float)s_Data.BloomMips[i - 1].Height);
 
-				glActiveTexture(GL_TEXTURE0);
-				glBindTexture(GL_TEXTURE_2D, currentInputTex);
-				glUniform1i(GetUniformLocationCached(s_Data.DownsampleProgram, "u_SrcTexture"), 0);
+				dsParams.TexelSize = glm::vec2(1.0f) / srcDim;
+				dsParams.MipLevel = i;
+				dsParams.Threshold = settings.BloomThreshold;
+				cmd->UpdateUniformBuffer(s_Data.ParamsUniformBuffer, &dsParams, sizeof(dsParams), 0);
 
-				glUniform2f(GetUniformLocationCached(s_Data.DownsampleProgram, "u_TexelSize"), 1.0f / currentSrcDim.x, 1.0f / currentSrcDim.y);
-				glUniform1i(GetUniformLocationCached(s_Data.DownsampleProgram, "u_MipLevel"), i);
-				glUniform1f(GetUniformLocationCached(s_Data.DownsampleProgram, "u_Threshold"), s_Settings.BloomThreshold);
+				cmd->BeginRenderPass(s_Data.BloomMips[i].Target);
 
-				glDrawArrays(GL_TRIANGLES, 0, 6);
+				if (i == 0)
+					cmd->BindFramebufferAttachment(0, src, attachmentIndex);
+				else
+					cmd->BindFramebufferAttachment(0, s_Data.BloomMips[i - 1].Target, 0);
 
-				currentInputTex = s_Data.BloomMips[i].Texture;
-				currentSrcDim = glm::vec2((float)s_Data.BloomMips[i].Width, (float)s_Data.BloomMips[i].Height);
+				cmd->DrawIndexed(s_Data.QuadVertexArray, 6, 0);
+				cmd->EndRenderPass();
 			}
 
-			// ---- Upsample Chain (Additive Blending) ----
-			glEnable(GL_BLEND);
-			glBlendFunc(GL_ONE, GL_ONE);
-			glUseProgram(s_Data.UpsampleProgram);
-			glUniform1f(GetUniformLocationCached(s_Data.UpsampleProgram, "u_FilterRadius"), 1.0f);
-
+			// ---- Upsample chain (ADDITIVE into the previous mip: no clear) ----
+			UpsampleParams upParams{};
+			upParams.FilterRadius = 1.0f;
+			cmd->BindPipeline(s_Data.UpsamplePipeline);
 			for (int i = PostProcessingData::BloomMipLevels - 1; i > 0; i--)
 			{
-				const auto& nextMip = s_Data.BloomMips[i];
-				const auto& targetMip = s_Data.BloomMips[i - 1];
+				upParams.TexelSize = glm::vec2(1.0f) / glm::vec2((float)s_Data.BloomMips[i].Width, (float)s_Data.BloomMips[i].Height);
+				cmd->UpdateUniformBuffer(s_Data.ParamsUniformBuffer, &upParams, sizeof(upParams), 0);
 
-				glBindFramebuffer(GL_FRAMEBUFFER, targetMip.FBO);
-				glViewport(0, 0, targetMip.Width, targetMip.Height);
-
-				glActiveTexture(GL_TEXTURE0);
-				glBindTexture(GL_TEXTURE_2D, nextMip.Texture);
-				glUniform1i(GetUniformLocationCached(s_Data.UpsampleProgram, "u_SrcTexture"), 0);
-				glUniform2f(GetUniformLocationCached(s_Data.UpsampleProgram, "u_TexelSize"), 1.0f / (float)nextMip.Width, 1.0f / (float)nextMip.Height);
-
-				glDrawArrays(GL_TRIANGLES, 0, 6);
+				cmd->BeginRenderPass(s_Data.BloomMips[i - 1].Target, /*clear=*/false);
+				cmd->BindFramebufferAttachment(0, s_Data.BloomMips[i].Target, 0);
+				cmd->DrawIndexed(s_Data.QuadVertexArray, 6, 0);
+				cmd->EndRenderPass();
 			}
-
-			glDisable(GL_BLEND);
 		}
 
-		// =========================================================================
-		// 2. Final Post-Processing Composite Pass
-		// =========================================================================
-		s_Data.OutputFramebuffer->Bind();
-		glViewport(0, 0, width, height);
-		glDisable(GL_BLEND);
+		// -----------------------------------------------------------------
+		// 2. Final composite pass
+		// -----------------------------------------------------------------
+		CompositeParams params{};
+		params.EnablePostProcessing = settings.EnablePostProcessing ? 1 : 0;
+		params.EnableBloom = settings.EnableBloom ? 1 : 0;
+		params.EnableVignette = settings.EnableVignette ? 1 : 0;
+		params.EnableTonemapping = settings.EnableTonemapping ? 1 : 0;
+		params.BloomIntensity = settings.BloomIntensity;
+		params.BloomColor = settings.BloomColor;
+		params.VignetteIntensity = settings.VignetteIntensity;
+		params.VignetteSmoothness = settings.VignetteSmoothness;
+		params.VignetteColor = settings.VignetteColor;
+		params.Exposure = settings.Exposure;
+		params.Contrast = settings.Contrast;
+		params.Saturation = settings.Saturation;
+		params.ColorGradingTint = settings.ColorGradingTint;
+		cmd->UpdateUniformBuffer(s_Data.ParamsUniformBuffer, &params, sizeof(params), 0);
 
-		glUseProgram(s_Data.CompositeProgram);
+		cmd->BeginRenderPass(s_Data.OutputFramebuffer);
+		cmd->BindPipeline(s_Data.CompositePipeline);
+		cmd->BindFramebufferAttachment(0, src, attachmentIndex);
 
-		glActiveTexture(GL_TEXTURE0);
-		glBindTexture(GL_TEXTURE_2D, inputTextureID);
-		glUniform1i(GetUniformLocationCached(s_Data.CompositeProgram, "u_ScreenTexture"), 0);
+		if (settings.EnablePostProcessing && settings.EnableBloom)
+			cmd->BindFramebufferAttachment(1, s_Data.BloomMips[0].Target, 0);
 
-		glActiveTexture(GL_TEXTURE1);
-		glBindTexture(GL_TEXTURE_2D, s_Data.BloomMips[0].Texture);
-		glUniform1i(GetUniformLocationCached(s_Data.CompositeProgram, "u_BloomTexture"), 1);
+		cmd->DrawIndexed(s_Data.QuadVertexArray, 6, 0);
+		cmd->EndRenderPass();
 
-		glUniform1i(GetUniformLocationCached(s_Data.CompositeProgram, "u_EnablePostProcessing"), s_Settings.EnablePostProcessing ? 1 : 0);
-
-		glUniform1i(GetUniformLocationCached(s_Data.CompositeProgram, "u_EnableBloom"), s_Settings.EnableBloom ? 1 : 0);
-		glUniform1f(GetUniformLocationCached(s_Data.CompositeProgram, "u_BloomIntensity"), s_Settings.BloomIntensity);
-		glUniform3fv(GetUniformLocationCached(s_Data.CompositeProgram, "u_BloomColor"), 1, glm::value_ptr(s_Settings.BloomColor));
-
-		glUniform1i(GetUniformLocationCached(s_Data.CompositeProgram, "u_EnableVignette"), s_Settings.EnableVignette ? 1 : 0);
-		glUniform1f(GetUniformLocationCached(s_Data.CompositeProgram, "u_VignetteIntensity"), s_Settings.VignetteIntensity);
-		glUniform1f(GetUniformLocationCached(s_Data.CompositeProgram, "u_VignetteSmoothness"), s_Settings.VignetteSmoothness);
-		glUniform3fv(GetUniformLocationCached(s_Data.CompositeProgram, "u_VignetteColor"), 1, glm::value_ptr(s_Settings.VignetteColor));
-
-		glUniform1i(GetUniformLocationCached(s_Data.CompositeProgram, "u_EnableTonemapping"), s_Settings.EnableTonemapping ? 1 : 0);
-		glUniform1f(GetUniformLocationCached(s_Data.CompositeProgram, "u_Exposure"), s_Settings.Exposure);
-		glUniform1f(GetUniformLocationCached(s_Data.CompositeProgram, "u_Contrast"), s_Settings.Contrast);
-		glUniform1f(GetUniformLocationCached(s_Data.CompositeProgram, "u_Saturation"), s_Settings.Saturation);
-		glUniform3fv(GetUniformLocationCached(s_Data.CompositeProgram, "u_ColorGradingTint"), 1, glm::value_ptr(s_Settings.ColorGradingTint));
-
-		glDrawArrays(GL_TRIANGLES, 0, 6);
-
-		glBindVertexArray(0);
-		glUseProgram(0);
-
-		glBindFramebuffer(GL_DRAW_FRAMEBUFFER, (GLuint)previousFBO);
-		glViewport(previousViewport[0], previousViewport[1], previousViewport[2], previousViewport[3]);
-		glBlendFunc((GLenum)blendSrc, (GLenum)blendDst);
-		if (depthTest) glEnable(GL_DEPTH_TEST);
-		if (cullFace) glEnable(GL_CULL_FACE);
-		if (blend) glEnable(GL_BLEND);
-
-		return (uint32_t)s_Data.OutputFramebuffer->GetColorAttachmentRendererID(0);
+		return s_Data.OutputFramebuffer;
 	}
 
-	void PostProcessing::PresentToScreen(uint32_t textureID, uint32_t width, uint32_t height)
+	void PostProcessing::ProcessAndPresent(const Ref<Framebuffer>& src, uint32_t attachmentIndex, uint32_t width, uint32_t height)
 	{
-		if (Renderer::GetAPI() != RendererAPI::API::OpenGL)
+		WF_PROFILE_FUNCTION();
+
+		Ref<Framebuffer> processed = Process(src, attachmentIndex, width, height);
+		if (!processed)
 			return;
 
-		if (width == 0 || height == 0 || textureID == 0)
-			return;
+		CommandBuffer* cmd = Renderer::GetCommandBuffer();
 
-		if (s_Data.QuadVAO == 0)
-			Init();
+		// Present: composite the processed image straight onto the present
+		// surface with post effects disabled (pure blit).
+		CompositeParams params{};
+		params.EnablePostProcessing = 0;
+		cmd->UpdateUniformBuffer(s_Data.ParamsUniformBuffer, &params, sizeof(params), 0);
 
-		if (s_Data.CompositeProgram == 0)
-			return;
-
-		GLint previousViewport[4] = { 0, 0, 1, 1 };
-		glGetIntegerv(GL_VIEWPORT, previousViewport);
-		// PresentToScreen may not be the caller's last GL operation - restore
-		// the draw framebuffer it had, like Process does.
-		GLint previousFBO = 0;
-		glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &previousFBO);
-
-		glBindFramebuffer(GL_FRAMEBUFFER, 0);
-		glViewport(0, 0, width, height);
-
-		GLboolean depthTest = glIsEnabled(GL_DEPTH_TEST);
-		GLboolean cullFace = glIsEnabled(GL_CULL_FACE);
-		GLboolean blend = glIsEnabled(GL_BLEND);
-
-		glDisable(GL_DEPTH_TEST);
-		glDisable(GL_CULL_FACE);
-		glDisable(GL_BLEND);
-
-		glUseProgram(s_Data.CompositeProgram);
-
-		glActiveTexture(GL_TEXTURE0);
-		glBindTexture(GL_TEXTURE_2D, textureID);
-		glUniform1i(GetUniformLocationCached(s_Data.CompositeProgram, "u_ScreenTexture"), 0);
-
-		glUniform1i(GetUniformLocationCached(s_Data.CompositeProgram, "u_EnablePostProcessing"), 0);
-
-		glBindVertexArray(s_Data.QuadVAO);
-		glDrawArrays(GL_TRIANGLES, 0, 6);
-		glBindVertexArray(0);
-
-		glUseProgram(0);
-
-		glBindFramebuffer(GL_DRAW_FRAMEBUFFER, (GLuint)previousFBO);
-		glViewport(previousViewport[0], previousViewport[1], previousViewport[2], previousViewport[3]);
-
-		if (depthTest) glEnable(GL_DEPTH_TEST);
-		if (cullFace) glEnable(GL_CULL_FACE);
-		if (blend) glEnable(GL_BLEND);
+		cmd->BeginSwapchainPass(width, height);
+		cmd->BindPipeline(s_Data.CompositePipeline);
+		cmd->BindFramebufferAttachment(0, processed, 0);
+		// The shader declares u_BloomTexture even when unused (disabled
+		// path); give the descriptor a valid binding.
+		cmd->BindFramebufferAttachment(1, processed, 0);
+		cmd->DrawIndexed(s_Data.QuadVertexArray, 6, 0);
+		cmd->EndRenderPass();
 	}
 
 }

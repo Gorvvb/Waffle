@@ -9,6 +9,7 @@
 #include "Waffle/Scripting/LuaScriptEngine.h"
 #include "Waffle/Audio/AudioEngine.h"
 #include "Waffle/Renderer/PostProcessing.h"
+#include "Waffle/Renderer/Renderer.h"
 #include <Box2D/include/box2d/box2d.h>
 
 #include <glm/gtc/matrix_transform.hpp>
@@ -194,9 +195,9 @@ namespace Waffle {
 		if (Entity primaryCam = m_ActiveScene->GetPrimaryCameraEntity())
 			clearColor = primaryCam.GetComponent<CameraComponent>().BackgroundColor;
 
-		RenderCommand::SetClearColor(clearColor);
-		m_Framebuffer->Bind();
-		RenderCommand::Clear();
+		CommandBuffer* cmd = Renderer::GetCommandBuffer();
+		cmd->SetClearColor(clearColor);
+		cmd->BeginRenderPass(m_Framebuffer);
 		m_Framebuffer->ClearAttachment(1, -1);
 
 		// Scene update
@@ -255,7 +256,7 @@ namespace Waffle {
 		}
 
 		OnOverlayRender();
-		m_Framebuffer->Unbind();
+		Renderer::GetCommandBuffer()->EndRenderPass();
 	}
 
 	// Unprojects an ImGui-space mouse position to the world point on the
@@ -571,14 +572,17 @@ namespace Waffle {
 				m_HoveredEntity = Entity();
 			}
 
-			uint32_t textureID = (uint32_t)m_Framebuffer->GetColorAttachmentRendererID();
+			void* textureID = m_Framebuffer->GetImGuiAttachmentId();
 			if (PostProcessing::GetSettings().EnablePostProcessing)
 			{
-				textureID = PostProcessing::Process(textureID, (uint32_t)m_ViewportSize.x, (uint32_t)m_ViewportSize.y);
+				Ref<Framebuffer> processed = PostProcessing::Process(m_Framebuffer, 0,
+					(uint32_t)m_ViewportSize.x, (uint32_t)m_ViewportSize.y);
+				if (processed)
+					textureID = processed->GetImGuiAttachmentId(0);
 			}
 
 			ImGui::Image(
-				reinterpret_cast<void*>(static_cast<uintptr_t>(textureID)),
+				textureID,
 				ImVec2{ m_ViewportSize.x, m_ViewportSize.y },
 				ImVec2{ 0, 1 }, ImVec2{ 1, 0 });
 
@@ -749,23 +753,6 @@ namespace Waffle {
 							mouse, world, tileXf[3].z);
 					}
 
-					static int s_TilePaintLog = 0;
-					if ((Input::IsMouseButtonPressed(Mouse::ButtonLeft) ||
-						Input::IsMouseButtonHeld(Mouse::ButtonLeft)) &&
-						s_TilePaintLog < 40 && unprojected && !ImGuizmo::IsOver() && !ImGuizmo::IsUsing())
-					{
-						s_TilePaintLog++;
-						glm::vec2 dbgLocal = (world - entPos) / tileScale;
-						WF_CORE_INFO("[TilePaint] mouse=({0:.0f},{1:.0f}) bounds=[({2:.0f},{3:.0f}),({4:.0f},{5:.0f})] world=({6:.2f},{7:.2f}) entPos=({8:.2f},{9:.2f}) tileScale=({10:.2f},{11:.2f}) cell=({12},{13}) mode={14} hovered={15}",
-							mouse.x, mouse.y,
-							m_ViewportBounds[0].x, m_ViewportBounds[0].y,
-							m_ViewportBounds[1].x, m_ViewportBounds[1].y,
-							world.x, world.y, entPos.x, entPos.y,
-							tileScale.x, tileScale.y,
-							(int)std::floor(dbgLocal.x), (int)std::floor(dbgLocal.y),
-							m_TilePaintMode, m_ViewportHovered ? 1 : 0);
-					}
-
 					if (unprojected && !ImGuizmo::IsOver() && !ImGuizmo::IsUsing())
 					{
 						// Grid-relative coords: scale IS the tile size.
@@ -815,26 +802,26 @@ namespace Waffle {
 
 		GizmoBtn("##NoGizmo",
 			(m_GizmoType == -1)
-			? (ImTextureID)(uintptr_t)m_IconNoGizmoActive->GetRendererID()
-			: (ImTextureID)(uintptr_t)m_IconNoGizmo->GetRendererID(),
+			? (ImTextureID)m_IconNoGizmoActive->GetImGuiTextureId()
+			: (ImTextureID)m_IconNoGizmo->GetImGuiTextureId(),
 			-1);
 
 		GizmoBtn("##TranslateGizmo",
 			(m_GizmoType == ImGuizmo::OPERATION::TRANSLATE)
-			? (ImTextureID)(uintptr_t)m_IconTransformGizmoActive->GetRendererID()
-			: (ImTextureID)(uintptr_t)m_IconTransformGizmo->GetRendererID(),
+			? (ImTextureID)m_IconTransformGizmoActive->GetImGuiTextureId()
+			: (ImTextureID)m_IconTransformGizmo->GetImGuiTextureId(),
 			ImGuizmo::OPERATION::TRANSLATE);
 
 		GizmoBtn("##RotateGizmo",
 			(m_GizmoType == ImGuizmo::OPERATION::ROTATE)
-			? (ImTextureID)(uintptr_t)m_IconRotationGizmoActive->GetRendererID()
-			: (ImTextureID)(uintptr_t)m_IconRotationGizmo->GetRendererID(),
+			? (ImTextureID)m_IconRotationGizmoActive->GetImGuiTextureId()
+			: (ImTextureID)m_IconRotationGizmo->GetImGuiTextureId(),
 			ImGuizmo::OPERATION::ROTATE);
 
 		GizmoBtn("##ScaleGizmo",
 			(m_GizmoType == ImGuizmo::OPERATION::SCALE)
-			? (ImTextureID)(uintptr_t)m_IconScaleGizmoActive->GetRendererID()
-			: (ImTextureID)(uintptr_t)m_IconScaleGizmo->GetRendererID(),
+			? (ImTextureID)m_IconScaleGizmoActive->GetImGuiTextureId()
+			: (ImTextureID)m_IconScaleGizmo->GetImGuiTextureId(),
 			ImGuizmo::OPERATION::SCALE);
 
 		ImGui::EndGroup();
@@ -896,7 +883,7 @@ namespace Waffle {
 		ImDrawList* dl = ImGui::GetWindowDrawList();
 
 		ImGuiLayer::BeginTextureSamplerPassthrough(dl);
-		dl->AddImage((ImTextureID)tm.TilesetTexture->GetRendererID(),
+		dl->AddImage((ImTextureID)tm.TilesetTexture->GetImGuiTextureId(),
 			tl, { tl.x + disp.x, tl.y + disp.y }, ImVec2(0, 1), ImVec2(1, 0));
 		ImGuiLayer::EndTextureSamplerPassthrough(dl);
 
@@ -1016,7 +1003,7 @@ namespace Waffle {
 		// Play / Stop (icon swaps with state; amber while running)
 		Ref<Texture2D> playIcon = (m_SceneState == SceneState::Edit) ? m_IconPlay : m_IconStop;
 		if (ImGui::ImageButton("##Play",
-			(ImTextureID)(uintptr_t)playIcon->GetRendererID(),
+			(ImTextureID)playIcon->GetImGuiTextureId(),
 			ImVec2(iconSize, iconSize), ImVec2(0, 0), ImVec2(1, 1),
 			ImVec4(0, 0, 0, 0), playing ? tintHot : tintIdle) && m_ActiveScene)
 		{
@@ -1033,7 +1020,7 @@ namespace Waffle {
 				: m_IconPauseInactive;
 			ImVec4 pauseTint = (m_SceneState == SceneState::Play && isPaused) ? tintHot : tintIdle;
 			if (ImGui::ImageButton("##Pause",
-				(ImTextureID)(uintptr_t)icon->GetRendererID(),
+				(ImTextureID)icon->GetImGuiTextureId(),
 				ImVec2(iconSize, iconSize), ImVec2(0, 0), ImVec2(1, 1),
 				ImVec4(0, 0, 0, 0), pauseTint) && m_ActiveScene)
 			{
@@ -1051,7 +1038,7 @@ namespace Waffle {
 			Ref<Texture2D> icon = (m_SceneState == SceneState::Play)
 				? m_IconStep : m_IconStepInactive;
 			if (ImGui::ImageButton("##Step",
-				(ImTextureID)(uintptr_t)icon->GetRendererID(),
+				(ImTextureID)icon->GetImGuiTextureId(),
 				ImVec2(iconSize, iconSize), ImVec2(0, 0), ImVec2(1, 1),
 				ImVec4(0, 0, 0, 0), tintIdle) && m_ActiveScene)
 			{
@@ -1105,7 +1092,7 @@ namespace Waffle {
 		if (m_ProjectIconPreviewTexture)
 		{
 			ImGui::ImageButton("##ProjectIcon",
-				(ImTextureID)(uintptr_t)m_ProjectIconPreviewTexture->GetRendererID(),
+				(ImTextureID)m_ProjectIconPreviewTexture->GetImGuiTextureId(),
 				ImVec2(48, 48), ImVec2(0, 1), ImVec2(1, 0));
 		}
 		else
