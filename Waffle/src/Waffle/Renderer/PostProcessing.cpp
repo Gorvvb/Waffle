@@ -152,20 +152,25 @@ layout(location = 0) in vec2 v_TexCoord;
 layout (set = 1, binding = 0) uniform sampler2D u_ScreenTexture;
 layout (set = 1, binding = 1) uniform sampler2D u_BloomTexture;
 
+// Member ORDER must match CompositeParams in PostProcessing.cpp exactly:
+// std140 assigns offsets positionally (4-byte scalars first, then vec3s at
+// 16-byte alignment). The old interleaved order made every setting read
+// from the wrong offset - which greyed out the whole frame and silently
+// disabled the vignette.
 layout(std140, binding = 2) uniform Params
 {
     bool u_EnablePostProcessing;
-
     bool u_EnableBloom;
+    bool u_EnableVignette;
+    bool u_EnableTonemapping;
+
     float u_BloomIntensity;
     vec3 u_BloomColor;
 
-    bool u_EnableVignette;
     float u_VignetteIntensity;
     float u_VignetteSmoothness;
     vec3 u_VignetteColor;
 
-    bool u_EnableTonemapping;
     float u_Exposure;
     float u_Contrast;
     float u_Saturation;
@@ -252,6 +257,10 @@ void main()
 	};
 	static_assert(sizeof(UpsampleParams) == 16, "std140 mismatch");
 
+	// std140 packing note: a vec3 must START at a 16-byte boundary, but the
+	// member AFTER it only needs 4-byte alignment - scalars pack tightly
+	// following a vec3. Getting this wrong shifts every later setting by one
+	// slot (the vignette smoothness slider was completely dead because of it).
 	struct CompositeParams
 	{
 		int32_t EnablePostProcessing; // 0
@@ -259,20 +268,18 @@ void main()
 		int32_t EnableVignette;       // 8
 		int32_t EnableTonemapping;    // 12
 		float BloomIntensity;         // 16
-		float _pad0[3];
+		float _pad0[3];               // 20-31 (vec3 alignment)
 		glm::vec3 BloomColor;         // 32
-		float _pad1;
-		float VignetteIntensity;      // 48
-		float VignetteSmoothness;     // 52
-		float _pad2[2];
+		float VignetteIntensity;      // 44 (packs right after the vec3)
+		float VignetteSmoothness;     // 48
+		float _pad2[3];               // 52-63 (vec3 alignment)
 		glm::vec3 VignetteColor;      // 64
-		float _pad3;
-		float Exposure;               // 80
-		float Contrast;               // 84
-		float Saturation;             // 88
-		float _pad4;
+		float Exposure;               // 76 (packs right after the vec3)
+		float Contrast;               // 80
+		float Saturation;             // 84
+		float _pad4[2];               // 88-95 (vec3 alignment)
 		glm::vec3 ColorGradingTint;   // 96
-		float _pad5;
+		float _pad5;                  // 108 (block padded to 16)
 	};
 	static_assert(sizeof(CompositeParams) == 112, "std140 mismatch");
 

@@ -61,6 +61,9 @@ namespace Waffle {
 		// Safe per-frame descriptor set deletion
 		void SafeFreeDescriptorSet(VkDescriptorSet set);
 
+		// Render-finished semaphores, indexed by swapchain image
+		void CreateSwapchainRenderFinishedSemaphores();
+		void DestroySwapchainRenderFinishedSemaphores();
 		// ---- Per-frame state ------------------------------------------------
 		VkCommandBuffer   GetCurrentCommandBuffer() const;
 		uint32_t          GetCurrentFrameIndex()    const { return m_CurrentFrameIndex; }
@@ -257,7 +260,6 @@ namespace Waffle {
 			VkCommandPool   CommandPool   = VK_NULL_HANDLE;
 			VkCommandBuffer CommandBuffer = VK_NULL_HANDLE;
 			VkSemaphore     ImageAvailableSemaphore  = VK_NULL_HANDLE;
-			VkSemaphore     RenderFinishedSemaphore  = VK_NULL_HANDLE;
 			VkFence         InFlightFence            = VK_NULL_HANDLE;
 			// Timeline value this slot's submission last signaled - used to
 			// gate host writes to shared mapped buffers (see WaitForFrameUploads).
@@ -269,15 +271,27 @@ namespace Waffle {
 		uint32_t m_FramesInFlight    = 2;  // configurable before Init()
 		uint64_t m_UploadsSyncedTimeline = 0; // highest timeline value already host-waited
 
+		// One render-finished semaphore PER SWAPCHAIN IMAGE (not per frame
+		// slot): present(image i) waits it, so it may only be re-signaled
+		// after image i has been re-acquired.
+		std::vector<VkSemaphore> m_SwapchainRenderFinished;
+
 		// Single-time command pool
 		VkCommandPool m_CommandPool = VK_NULL_HANDLE;
 
 		// Shared descriptor pool
 		VkDescriptorPool m_DescriptorPool = VK_NULL_HANDLE;
 
-		// Rendering state
+		// ---- Rendering state ------------------------------------------------
 		bool m_IsRenderingActive = false;
 		bool m_SwapChainNeedsRecreation = false;
+
+		// Swap-chain begin tracking: the FIRST BeginSwapChainRendering of a
+		// frame clears (LOAD_OP_CLEAR); any re-begin in the same frame (the
+		// runtime's empty ImGui pass after the game's present pass) must
+		// PRESERVE content (LOAD_OP_LOAD) or it wipes the presented frame.
+		bool m_SwapchainClearedThisFrame = false;
+		bool m_SwapchainImageInColor     = false;
 
 		// Descriptor set slots [0..3] - updated by UBOs and textures
 		std::vector<VkDescriptorSet> m_BoundDescriptorSets;

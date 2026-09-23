@@ -23,6 +23,11 @@ namespace Waffle {
 		// Release GPU objects while the graphics context is still alive.
 		Renderer2D::Shutdown();
 		PostProcessing::Shutdown();
+		// The static font cache holds atlas textures; it must be released
+		// here or those VMA allocations are still alive when the Vulkan
+		// allocator is destroyed (static destructors run after the context
+		// is gone).
+		Font::ClearCache();
 		s_CommandBuffer = nullptr;
 	}
 
