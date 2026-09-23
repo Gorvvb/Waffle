@@ -135,9 +135,9 @@ namespace Waffle {
 		};
 		std::vector<ReflectedDescriptor> m_ReflectedDescriptors;
 
-		// Per-frame, per-set descriptor sets
-		// m_DescriptorSets[frameIndex][setIndex]
-		std::vector<std::vector<VkDescriptorSet>> m_DescriptorSets;
+		// NOTE: descriptor sets are allocated fresh per bind in
+		// BindAndFlushDescriptors and freed through the context's deferred
+		// queue - see the comment there for why (update-while-bound).
 
 		// Push constant info (reflected)
 		struct PushConstantMember {

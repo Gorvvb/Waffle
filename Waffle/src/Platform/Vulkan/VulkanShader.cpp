@@ -143,19 +143,8 @@ namespace Waffle {
 		if (m_VertModule) vkDestroyShaderModule(dev, m_VertModule, nullptr);
 		if (m_FragModule) vkDestroyShaderModule(dev, m_FragModule, nullptr);
 
-		// Return every per-frame descriptor set to the shared pool - without
-		// this, each shader load/unload permanently consumed
-		// framesInFlight * setCount sets until the pool was exhausted.
-		// The vkDeviceWaitIdle above makes freeing safe.
-		for (auto& frameSets : m_DescriptorSets)
-		{
-			for (VkDescriptorSet set : frameSets)
-			{
-				if (set != VK_NULL_HANDLE)
-					vkFreeDescriptorSets(dev, ctx->GetDescriptorPool(), 1, &set);
-			}
-		}
-		m_DescriptorSets.clear();
+		// Descriptor sets are allocated per bind and freed through the
+		// context's deferred queue - nothing pre-allocated to release here.
 	}
 
 	// -------------------------------------------------------------------------
@@ -231,13 +220,42 @@ namespace Waffle {
 		if (!ctx) return;
 		VkDevice dev = ctx->GetDevice();
 
-		if (m_DescriptorSets.empty()) return;
-		uint32_t f = frameIndex % m_DescriptorSets.size();
+		if (m_DescriptorSetLayouts.empty()) return;
+		(void)frameIndex;
 
-		for (size_t setIdx = 0; setIdx < m_DescriptorSets[f].size(); setIdx++)
+		for (size_t setIdx = 0; setIdx < m_DescriptorSetLayouts.size(); setIdx++)
 		{
-			VkDescriptorSet ds = m_DescriptorSets[f][setIdx];
-			if (ds == VK_NULL_HANDLE) continue;
+			VkDescriptorSetLayout layout = m_DescriptorSetLayouts[setIdx];
+			if (layout == VK_NULL_HANDLE) continue;
+
+			// A FRESH set per bind. The slot-registry contents change between
+			// draws (each batch maps slots differently), and a descriptor set
+			// that is already bound in the current recording must NEVER be
+			// updated again - that invalidates the whole command buffer
+			// (no UPDATE_AFTER_BIND). Allocating per bind and deferring the
+			// free until this frame slot wraps (its fence has been waited by
+			// then) guarantees every update targets a set nothing references.
+			VkDescriptorSet ds = VK_NULL_HANDLE;
+			{
+				VkDescriptorSetAllocateInfo allocInfo
+				{
+					.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
+					.descriptorPool = ctx->GetDescriptorPool(),
+					.descriptorSetCount = 1,
+					.pSetLayouts = &layout
+				};
+				if (vkAllocateDescriptorSets(dev, &allocInfo, &ds) != VK_SUCCESS)
+				{
+					static bool s_AllocWarned = false;
+					if (!s_AllocWarned)
+					{
+						WF_CORE_ERROR("VulkanShader: descriptor pool exhausted - skipping descriptor binds (shader '{0}')",
+							m_FilePath.empty() ? "<memory>" : m_FilePath);
+						s_AllocWarned = true;
+					}
+					continue;
+				}
+			}
 
 			std::vector<VkWriteDescriptorSet> writes;
 			std::vector<VkDescriptorBufferInfo> bufferInfos;
@@ -250,7 +268,7 @@ namespace Waffle {
 			// Reserve BEFORE the fill loop: writes store pointers into
 			// bufferInfos, so a push_back reallocation would dangle every
 			// previously stored pBufferInfo before vkUpdateDescriptorSets reads them.
-			bufferInfos.reserve(m_ReflectedDescriptors.size());
+			bufferInfos.reserve(m_ReflectedDescriptors.size() * 2);
 			imageInfoArrays.reserve(m_ReflectedDescriptors.size());
 			writes.reserve(m_ReflectedDescriptors.size());
 
@@ -258,24 +276,26 @@ namespace Waffle {
 			{
 				if (d.Set != (uint32_t)setIdx) continue;
 
-				if (d.Type == VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER)
+				if (d.Type == VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC)
 				{
 					auto ubo = ctx->GetUniformBuffer(d.Binding);
 					for (uint32_t e = 0; e < d.Count; e++)
+					{
 						dynamicOffsets.push_back((uint32_t)ubo.DynamicOffset);
 
-					if (ubo.Buffer != VK_NULL_HANDLE)
-					{
+						// The UBO is a ring of slices; the slice is chosen by
+						// the dynamic offset at bind time. This is what lets
+						// several passes per frame each read the camera data
+						// written for THEM.
 						VkDescriptorBufferInfo bInfo{};
 						bInfo.buffer = ubo.Buffer;
 						bInfo.offset = 0;
-						// The UBO is a ring of slices; the slice is chosen
-						// by the dynamic offset at bind time. This is what
-						// lets several passes per frame each read the camera
-						// data written for THEM.
 						bInfo.range  = ubo.Size;
 						bufferInfos.push_back(bInfo);
+					}
 
+					if (ubo.Buffer != VK_NULL_HANDLE)
+					{
 						VkWriteDescriptorSet w{};
 						w.sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
 						w.dstSet          = ds;
@@ -283,7 +303,7 @@ namespace Waffle {
 						w.dstArrayElement = 0;
 						w.descriptorType  = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
 						w.descriptorCount = d.Count;
-						w.pBufferInfo     = &bufferInfos.back();
+						w.pBufferInfo     = &bufferInfos[bufferInfos.size() - d.Count];
 						writes.push_back(w);
 					}
 				}
@@ -295,11 +315,11 @@ namespace Waffle {
 					bool bindingValid = true;
 					for (uint32_t slot = 0; slot < count; slot++)
 					{
-						// Slot convention: slot N of a sampler binding B
-						// reads registry entry (B + N). For the 2D batcher's
-						// u_Textures[32] at binding 0 this is the plain
-						// slot 0..31; a second single-sampler binding (post
-						// chain) reads the slot equal to its binding index.
+						// Slot convention: slot N of a sampler binding B reads
+						// registry entry (B + N). For the 2D batcher's
+						// u_Textures[32] at binding 0 this is the plain slot
+						// 0..31; a second single-sampler binding (post chain)
+						// reads the slot equal to its binding index.
 						auto tex = ctx->GetTexture(d.Binding + slot);
 						if (tex.ImageView == VK_NULL_HANDLE || tex.Sampler == VK_NULL_HANDLE)
 							tex = ctx->GetTexture(0);
@@ -346,6 +366,11 @@ namespace Waffle {
 				(uint32_t)setIdx, 1, &ds,
 				(uint32_t)dynamicOffsets.size(),
 				dynamicOffsets.empty() ? nullptr : dynamicOffsets.data());
+
+			// Deferred free: queued for this frame slot; executed after that
+			// slot's fence has been waited (2 frames from now), i.e. long
+			// after this submission has completed.
+			ctx->SafeFreeDescriptorSet(ds);
 		}
 	}
 
@@ -456,7 +481,11 @@ namespace Waffle {
 		depthStencil.sType                 = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
 		depthStencil.depthTestEnable       = depthTest ? VK_TRUE : VK_FALSE;
 		depthStencil.depthWriteEnable      = (depthTest && depthWrite) ? VK_TRUE : VK_FALSE;
-		depthStencil.depthCompareOp        = VK_COMPARE_OP_LESS;
+		// LEQUAL, matching the OpenGL backend: 2D content is routinely
+		// coplanar (UI text over its button quad, sprites at z=0), and
+		// strict LESS discards the later fragment at equal depth - which
+		// made button labels vanish on Vulkan only.
+		depthStencil.depthCompareOp        = VK_COMPARE_OP_LESS_OR_EQUAL;
 		depthStencil.depthBoundsTestEnable = VK_FALSE;
 		depthStencil.stencilTestEnable     = VK_FALSE;
 
@@ -777,7 +806,9 @@ namespace Waffle {
 				}
 				else
 				{
-					mergedDescriptors[key] = { set, binding, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, uboStages, count };
+					// DYNAMIC: descriptors are bound with per-pass ring-slice offsets
+				// (must match the descriptor WRITE type in BindAndFlushDescriptors).
+				mergedDescriptors[key] = { set, binding, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, uboStages, count };
 				}
 				maxSet = std::max(maxSet, set);
 			}
@@ -833,32 +864,6 @@ namespace Waffle {
 		for (auto& [key, d] : mergedDescriptors)
 		{
 			m_ReflectedDescriptors.push_back({ d.set, d.binding, d.type, d.count });
-		}
-
-		// Allocate per-frame descriptor sets from shared descriptor pool
-		uint32_t framesInFlight = VulkanContext::Get()->GetFramesInFlight();
-		m_DescriptorSets.resize(framesInFlight);
-		for (uint32_t f = 0; f < framesInFlight; f++)
-		{
-			m_DescriptorSets[f].resize(m_DescriptorSetLayouts.size(), VK_NULL_HANDLE);
-			for (size_t s = 0; s < m_DescriptorSetLayouts.size(); s++)
-			{
-				if (m_DescriptorSetLayouts[s] == VK_NULL_HANDLE) continue;
-
-				VkDescriptorSetAllocateInfo allocInfo{};
-				allocInfo.sType              = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-				allocInfo.descriptorPool     = VulkanContext::Get()->GetDescriptorPool();
-				allocInfo.descriptorSetCount = 1;
-				allocInfo.pSetLayouts        = &m_DescriptorSetLayouts[s];
-
-			VkResult allocRes = vkAllocateDescriptorSets(dev, &allocInfo, &m_DescriptorSets[f][s]);
-			if (allocRes != VK_SUCCESS)
-			{
-				WF_CORE_ERROR("VulkanShader: vkAllocateDescriptorSets failed ({0}) - shader '{1}' will not bind textures/uniforms",
-					(int)allocRes, m_FilePath.empty() ? "<memory>" : m_FilePath);
-				m_DescriptorSets[f][s] = VK_NULL_HANDLE;
-			}
-		}
 		}
 
 		// ---------- Push constant range ----------
