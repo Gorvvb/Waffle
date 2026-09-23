@@ -1049,18 +1049,18 @@ namespace Waffle {
 
 	void VulkanContext::CreateDescriptorPool()
 	{
-		// Large general-purpose pool. Every shader permanently holds
-		// framesInFlight * sets and each sampler-array set consumes
-		// `descriptorCount` sampler descriptors per frame slot (the quad
-		// shader alone is 32 x 2 = 64), so 1000 was reachable in real scenes.
+		// Large general-purpose pool. Descriptor sets are allocated per bind
+		// (BindAndFlushDescriptors) and freed two frames later via the
+		// deferred queue, so live sets = draws/frame x framesInFlight; the
+		// quad shader alone consumes 32 sampler descriptors per set.
 		std::vector<VkDescriptorPoolSize> poolSizes = {
-			{ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,          4096 },
+			{ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,          8192 },
 			// Shader-owned UBO descriptors are dynamic (per-pass ring slices
 			// inside one buffer) - see VulkanUniformBuffer.
-			{ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC,  4096 },
-			{ VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,  4096 },
-			{ VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,           4096 },
-			{ VK_DESCRIPTOR_TYPE_SAMPLER,                 4096 },
+			{ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC,  16384 },
+			{ VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,  65536 },
+			{ VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,           8192 },
+			{ VK_DESCRIPTOR_TYPE_SAMPLER,                 8192 },
 			{ VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,          512  },
 		};
 
@@ -1068,7 +1068,7 @@ namespace Waffle {
 		{
 			.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
 			.flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT,
-			.maxSets = 8192,
+			.maxSets = 131072,
 			.poolSizeCount = static_cast<uint32_t>(poolSizes.size()),
 			.pPoolSizes = poolSizes.data()
 		};

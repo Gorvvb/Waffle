@@ -345,13 +345,16 @@ namespace Waffle {
 
 			cmd = ctx->BeginSingleTimeCommands();
 
-			// THIS transition — the source layout is wrong:
+			// Outside a pass the attachment sits in its TRACKED layout
+			// (SHADER_READ_ONLY after Unbind) - the old hardcoded COLOR
+			// source emitted an invalid barrier every pick.
+			VkImageLayout sourceLayout = m_ColorCurrentLayouts[attachmentIndex];
 			VulkanUtils::TransitionImageLayout(cmd, m_ColorImages[attachmentIndex],
-				VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+				sourceLayout,
 				VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-				VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_2_COLOR_ATTACHMENT_READ_BIT,
+				VK_ACCESS_2_SHADER_READ_BIT | VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_2_COLOR_ATTACHMENT_READ_BIT,
 				VK_ACCESS_2_TRANSFER_READ_BIT,
-				VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
+				VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
 				VK_PIPELINE_STAGE_2_TRANSFER_BIT);
 			m_ColorCurrentLayouts[attachmentIndex] = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
 		}
