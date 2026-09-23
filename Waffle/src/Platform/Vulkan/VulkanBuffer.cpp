@@ -16,9 +16,14 @@ namespace Waffle {
 		auto* ctx = VulkanContext::Get();
 		VmaAllocator allocator = ctx->GetVmaAllocator();
 
+		// Ring of slices: each SetData writes the next slice so earlier
+		// recorded batches in the same frame are never overwritten before
+		// execution (see class comment).
+		m_SliceStride = size;
+
 		// Host-visible (dynamic) buffer - mapped persistently via VMA
 		VulkanUtils::CreateBuffer(allocator,
-			size,
+			m_SliceStride * kSliceCount,
 			VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
 			VMA_MEMORY_USAGE_AUTO,
 			m_Buffer, m_Allocation,
@@ -85,11 +90,20 @@ namespace Waffle {
 	void VulkanVertexBuffer::SetData(const void* data, uint32_t size)
 	{
 		WF_CORE_ASSERT(m_HostVisible && m_MappedPtr, "SetData called on non-dynamic vertex buffer!");
+		WF_CORE_ASSERT(size <= m_Size, "SetData size exceeds vertex buffer capacity!");
 		// The previous frame (different slot, same shared buffer) may still
 		// be executing on the GPU - wait before overwriting the mapping.
 		if (auto* ctx = VulkanContext::Get())
 			ctx->WaitForFrameUploads(ctx->GetCurrentFrameIndex());
-		memcpy(m_MappedPtr, data, size);
+
+		// Advance the ring. A slice is reused only after kSliceCount uploads
+		// (typically several frames apart) - by then every submission that
+		// could still be reading it has completed.
+		uint64_t sliceBase = (uint64_t)m_NextSlice * m_SliceStride;
+		m_NextSlice = (m_NextSlice + 1) % kSliceCount;
+		m_CurrentOffset = sliceBase;
+
+		memcpy((uint8_t*)m_MappedPtr + sliceBase, data, size);
 	}
 
 	// =========================================================================

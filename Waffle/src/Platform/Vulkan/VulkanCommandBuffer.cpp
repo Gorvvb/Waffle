@@ -6,6 +6,7 @@
 #include "VulkanFramebuffer.h"
 #include "VulkanVertexArray.h"
 #include "VulkanUniformBuffer.h"
+#include "VulkanBuffer.h"
 
 namespace Waffle {
 
@@ -27,7 +28,29 @@ namespace Waffle {
 			(int)m_Desc.Blending, m_Desc.DepthTest, m_Desc.DepthWrite);
 	}
 
-	// =========================================================================
+		static void BindVertexBuffersAtCurrentSlice(VkCommandBuffer cmd, const VulkanVertexArray* va)
+	{
+		const auto& vertexBuffers = va->GetVertexBuffers();
+		if (vertexBuffers.empty())
+			return;
+
+		std::vector<VkBuffer> buffers;
+		std::vector<VkDeviceSize> offsets;
+		buffers.reserve(vertexBuffers.size());
+		offsets.reserve(vertexBuffers.size());
+		for (const auto& vb : vertexBuffers)
+		{
+			auto* vkvb = dynamic_cast<VulkanVertexBuffer*>(vb.get());
+			WF_CORE_ASSERT(vkvb, "Vertex array holds a non-Vulkan vertex buffer!");
+			// Dynamic vertex buffers are ring-sliced; the draw must read the
+			// slice its batch was uploaded to, not offset 0.
+			buffers.push_back(vkvb->GetVulkanBuffer());
+			offsets.push_back(vkvb ? vkvb->GetCurrentOffset() : 0);
+		}
+		vkCmdBindVertexBuffers(cmd, 0, (uint32_t)buffers.size(), buffers.data(), offsets.data());
+	}
+
+// =========================================================================
 	// VulkanCommandBuffer - passes
 	// =========================================================================
 	void VulkanCommandBuffer::SetClearColor(const glm::vec4& color)
@@ -202,12 +225,7 @@ namespace Waffle {
 		vkCmdSetViewport(cmd, 0, 1, &vp);
 		vkCmdSetScissor(cmd, 0, 1, &sc);
 
-		const auto& vkBuffers = va->GetVkVertexBuffers();
-		const auto& vkOffsets = va->GetVkOffsets();
-		if (!vkBuffers.empty())
-		{
-			vkCmdBindVertexBuffers(cmd, 0, (uint32_t)vkBuffers.size(), vkBuffers.data(), vkOffsets.data());
-		}
+		BindVertexBuffersAtCurrentSlice(cmd, va);
 
 		VkBuffer idxBuf = va->GetVkIndexBuffer();
 		WF_CORE_ASSERT(idxBuf != VK_NULL_HANDLE, "No index buffer bound!");
@@ -253,12 +271,7 @@ namespace Waffle {
 		vkCmdSetViewport(cmd, 0, 1, &vp);
 		vkCmdSetScissor(cmd, 0, 1, &sc);
 
-		const auto& vkBuffers = va->GetVkVertexBuffers();
-		const auto& vkOffsets = va->GetVkOffsets();
-		if (!vkBuffers.empty())
-		{
-			vkCmdBindVertexBuffers(cmd, 0, (uint32_t)vkBuffers.size(), vkBuffers.data(), vkOffsets.data());
-		}
+		BindVertexBuffersAtCurrentSlice(cmd, va);
 
 		vkCmdDraw(cmd, vertexCount, 1, vertexOffset, 0);
 	}

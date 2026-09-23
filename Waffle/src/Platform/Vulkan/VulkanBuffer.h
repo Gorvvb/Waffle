@@ -12,6 +12,13 @@ namespace Waffle {
 
 	// -------------------------------------------------------------------------
 	// VulkanVertexBuffer
+	// Dynamic (host-mapped) vertex buffers are a RING of slices: every
+	// SetData writes the next slice and the draw binds the buffer at that
+	// slice's offset. Without the ring, a second Flush (UI pass, selection
+	// overlay) would overwrite the first batch's vertices before the
+	// frame's deferred command buffer ever executed - GL is immune because
+	// it draws immediately, but on Vulkan the earlier batches rendered
+	// garbage from the last write.
 	// -------------------------------------------------------------------------
 	class VulkanVertexBuffer : public VertexBuffer
 	{
@@ -36,6 +43,8 @@ namespace Waffle {
 
 		// Raw handle for the renderer API
 		VkBuffer GetVulkanBuffer() const { return m_Buffer; }
+		// Offset of the slice the LAST SetData wrote (0 for static buffers).
+		VkDeviceSize GetCurrentOffset() const { return m_CurrentOffset; }
 
 	private:
 		VkBuffer      m_Buffer     = VK_NULL_HANDLE;
@@ -43,6 +52,12 @@ namespace Waffle {
 		uint32_t      m_Size       = 0;
 		bool          m_HostVisible = false;  // true → persistent map
 		void*         m_MappedPtr  = nullptr;
+
+		// Ring layout (dynamic buffers only)
+		static constexpr uint32_t kSliceCount = 8;
+		VkDeviceSize   m_SliceStride   = 0;
+		uint32_t       m_NextSlice     = 0;
+		VkDeviceSize   m_CurrentOffset = 0;
 
 		BufferLayout m_Layout;
 	};
