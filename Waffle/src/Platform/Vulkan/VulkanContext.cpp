@@ -121,8 +121,6 @@ namespace Waffle {
 			{
 				if (frame.ImageAvailableSemaphore)
 					vkDestroySemaphore(m_Device, frame.ImageAvailableSemaphore, nullptr);
-				if (frame.RenderFinishedSemaphore)
-					vkDestroySemaphore(m_Device, frame.RenderFinishedSemaphore, nullptr);
 				if (frame.InFlightFence)
 					vkDestroyFence(m_Device, frame.InFlightFence, nullptr);
 				if (frame.CommandPool)
@@ -190,6 +188,9 @@ namespace Waffle {
 		CreateSwapChain();
 		CreateSwapChainImageViews();
 		CreateDepthResources();
+		CreateSwapchainRenderFinishedSemaphores();
+		m_SwapchainImageInColor = false;
+		m_SwapchainClearedThisFrame = false;
 		CreateCommandPool();
 		CreateSyncObjects();
 		CreateCommandBuffers();
@@ -242,6 +243,7 @@ namespace Waffle {
 			VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT, 0,
 			VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
 			VK_PIPELINE_STAGE_2_NONE);
+			m_SwapchainImageInColor = false;
 
 		// End command buffer
 		VkResult endCmdRes = vkEndCommandBuffer(cmd);
@@ -262,7 +264,7 @@ namespace Waffle {
 		{
 			{
 				.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO,
-				.semaphore = m_Frames[m_CurrentFrameIndex].RenderFinishedSemaphore,
+				.semaphore = m_SwapchainRenderFinished[m_CurrentImageIndex],
 				.stageMask = VK_PIPELINE_STAGE_2_ALL_GRAPHICS_BIT
 			},
 			{
@@ -324,7 +326,7 @@ namespace Waffle {
 		{
 			.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
 			.waitSemaphoreCount = 1,
-			.pWaitSemaphores = &m_Frames[m_CurrentFrameIndex].RenderFinishedSemaphore,
+			.pWaitSemaphores = &m_SwapchainRenderFinished[m_CurrentImageIndex],
 			.swapchainCount = 1,
 			.pSwapchains = &m_SwapChain,
 			.pImageIndices = &m_CurrentImageIndex
@@ -412,6 +414,12 @@ namespace Waffle {
 		};
 		VkResult beginCmdRes = vkBeginCommandBuffer(m_Frames[m_CurrentFrameIndex].CommandBuffer, &beginInfo);
 		WF_CORE_ASSERT(beginCmdRes == VK_SUCCESS, "Failed to begin command buffer!");
+
+		// A newly acquired image carries no presented content - the FIRST
+		// BeginSwapChainRendering of the frame clears it. Re-begins within the
+		// frame (the runtime's empty ImGui pass after the game's present pass)
+		// must PRESERVE that content.
+		m_SwapchainClearedThisFrame = false;
 	}
 
 	// -----------------------------------------------------------------------
@@ -455,14 +463,21 @@ namespace Waffle {
 		SetActiveRenderingFormats({ m_SwapChainImageFormat }, m_DepthFormat);
 		VkCommandBuffer cmd = GetCurrentCommandBuffer();
 
-		// Transition swap-chain image to color attachment
-		VulkanUtils::TransitionImageLayout(cmd,
-			m_SwapChainImages[m_CurrentImageIndex],
-			VK_IMAGE_LAYOUT_UNDEFINED,
-			VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-			0, VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
-			VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT,
-			VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT);
+		// Transition the swap-chain image to the color-attachment layout - only
+		// from UNDEFINED. A re-begin within the same frame (the runtime's empty
+		// ImGui pass after the game's present pass) must NOT discard the
+		// already-presented content.
+		if (!m_SwapchainImageInColor)
+		{
+			VulkanUtils::TransitionImageLayout(cmd,
+				m_SwapChainImages[m_CurrentImageIndex],
+				VK_IMAGE_LAYOUT_UNDEFINED,
+				VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+				0, VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
+				VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT,
+				VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT);
+			m_SwapchainImageInColor = true;
+		}
 
 		// Transition depth image to depth-stencil attachment
 		if (m_DepthImage != VK_NULL_HANDLE)
@@ -487,7 +502,9 @@ namespace Waffle {
 			.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
 			.imageView = m_SwapChainImageViews[m_CurrentImageIndex],
 			.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-			.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
+			// First begin of the frame clears; a re-begin in the same frame must
+			// preserve what is already on the swap-chain image.
+			.loadOp = m_SwapchainClearedThisFrame ? VK_ATTACHMENT_LOAD_OP_LOAD : VK_ATTACHMENT_LOAD_OP_CLEAR,
 			.storeOp = VK_ATTACHMENT_STORE_OP_STORE,
 			.clearValue{.color = clearColor}
 		};
@@ -520,6 +537,7 @@ namespace Waffle {
 
 		vkCmdBeginRendering(cmd, &renderingInfo);
 		m_IsRenderingActive = true;
+		m_SwapchainClearedThisFrame = true;
 	}
 
 	void VulkanContext::EndSwapChainRendering()
@@ -1040,12 +1058,38 @@ namespace Waffle {
 		for (auto& frame : m_Frames)
 		{
 			VkResult s1 = vkCreateSemaphore(m_Device, &semaphoreInfo, nullptr, &frame.ImageAvailableSemaphore);
-			VkResult s2 = vkCreateSemaphore(m_Device, &semaphoreInfo, nullptr, &frame.RenderFinishedSemaphore);
 			VkResult f1 = vkCreateFence(m_Device, &fenceInfo, nullptr, &frame.InFlightFence);
-			WF_CORE_ASSERT(s1 == VK_SUCCESS && s2 == VK_SUCCESS && f1 == VK_SUCCESS,
+			WF_CORE_ASSERT(s1 == VK_SUCCESS && f1 == VK_SUCCESS,
 				"Failed to create Vulkan sync objects!");
 		}
-	}
+	
+		// One render-finished semaphore per swapchain IMAGE: present(image i)
+		// waits it, so it may only be re-signaled after image i was re-acquired.
+		// Per-frame-slot semaphores get re-signaled while their previous
+		// presentation may still be pending (validation VUID-03868).
+		CreateSwapchainRenderFinishedSemaphores();
+		}
+	
+		void VulkanContext::CreateSwapchainRenderFinishedSemaphores()
+		{
+			VkSemaphoreCreateInfo semaphoreInfo{ .sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO };
+			m_SwapchainRenderFinished.assign(m_SwapChainImages.size(), VK_NULL_HANDLE);
+			for (auto& semaphore : m_SwapchainRenderFinished)
+			{
+				VkResult r = vkCreateSemaphore(m_Device, &semaphoreInfo, nullptr, &semaphore);
+				WF_CORE_ASSERT(r == VK_SUCCESS, "Failed to create render-finished semaphore!");
+			}
+		}
+	
+		void VulkanContext::DestroySwapchainRenderFinishedSemaphores()
+		{
+			for (auto& semaphore : m_SwapchainRenderFinished)
+			{
+				if (semaphore != VK_NULL_HANDLE)
+					vkDestroySemaphore(m_Device, semaphore, nullptr);
+			}
+			m_SwapchainRenderFinished.clear();
+		}
 
 	void VulkanContext::CreateDescriptorPool()
 	{
@@ -1089,6 +1133,8 @@ namespace Waffle {
 		for (auto view : m_SwapChainImageViews)
 			vkDestroyImageView(m_Device, view, nullptr);
 		m_SwapChainImageViews.clear();
+
+		DestroySwapchainRenderFinishedSemaphores();
 
 		vkDestroySwapchainKHR(m_Device, m_SwapChain, nullptr);
 		// Null the handle: a failed re-creation must not leave a stale
