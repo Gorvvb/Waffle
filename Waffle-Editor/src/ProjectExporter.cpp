@@ -550,12 +550,20 @@ static std::filesystem::path FindRuntimeExecutable()
 			if (const char* sdk = getenv("VULKAN_SDK"))
 				sdkBin = std::filesystem::path(sdk) / "Bin";
 
+			// The editor's own directory often carries the DLL (it links the
+			// same shaderc and must be able to run).
+			char editorModuleBuffer[MAX_PATH];
+			GetModuleFileNameA(nullptr, editorModuleBuffer, MAX_PATH);
+			std::filesystem::path editorDir = std::filesystem::path(editorModuleBuffer).parent_path();
+
 			for (const char* dll : requiredDlls)
 			{
 				std::vector<std::filesystem::path> dllCandidates = {
 					runtimeExe.parent_path() / dll,
+					editorDir / dll,
 					sdkBin / dll
 				};
+				bool shipped = false;
 				for (const auto& dllPath : dllCandidates)
 				{
 					if (std::filesystem::exists(dllPath, ec))
@@ -567,8 +575,21 @@ static std::filesystem::path FindRuntimeExecutable()
 							outErrorMessage = std::string("Failed to copy runtime DLL ") + dll + ": " + ec.message();
 							return false;
 						}
+						shipped = true;
 						break;
 					}
+				}
+
+				// A missing DLL must fail the export LOUDLY: the packaged
+				// game would not start on a machine without the Vulkan SDK,
+				// and the old silent skip produced exactly that.
+				if (!shipped)
+				{
+					outErrorMessage = std::string("Could not find ") + dll +
+						" to ship with the game. Build the Waffle-Runtime project "
+						"(the DLL is copied next to its exe), make sure the VULKAN_SDK "
+						"environment variable is set, and export again.";
+					return false;
 				}
 			}
 		}
