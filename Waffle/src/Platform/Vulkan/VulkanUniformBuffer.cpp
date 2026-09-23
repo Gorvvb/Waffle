@@ -29,10 +29,16 @@ namespace Waffle {
 			return;
 		}
 
-		// Create persistently-mapped host-coherent UBO buffer via VMA
+		// Ring slice stride aligned to the device's dynamic-offset alignment.
+		VkPhysicalDeviceProperties props;
+		vkGetPhysicalDeviceProperties(ctx->GetPhysicalDevice(), &props);
+		uint32_t alignment = props.limits.minUniformBufferOffsetAlignment;
+		m_SliceStride = ((VkDeviceSize)size + alignment - 1) / alignment * alignment;
+
+		// Create persistently-mapped host-coherent UBO ring via VMA
 		VmaAllocator allocator = ctx->GetVmaAllocator();
 		VulkanUtils::CreateBuffer(allocator,
-			size,
+			m_SliceStride * kSliceCount,
 			VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
 			VMA_MEMORY_USAGE_AUTO,
 			m_Buffer, m_Allocation,
@@ -48,71 +54,10 @@ namespace Waffle {
 		vmaGetAllocationInfo(allocator, m_Allocation, &allocInfo);
 		m_MappedPtr = allocInfo.pMappedData;
 
-		// Create descriptor set layout (set=0, one UBO binding)
-		VkDescriptorSetLayoutBinding layoutBinding
-		{
-			.binding = binding,
-			.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-			.descriptorCount = 1,
-			.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT
-		};
-
-		VkDescriptorSetLayoutCreateInfo layoutInfo
-		{
-			.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
-			.bindingCount = 1,
-			.pBindings = &layoutBinding
-		};
-
-		VkResult layoutRes = vkCreateDescriptorSetLayout(dev, &layoutInfo, nullptr, &m_DescriptorSetLayout);
-		if (layoutRes != VK_SUCCESS || m_DescriptorSetLayout == VK_NULL_HANDLE)
-		{
-			WF_CORE_ERROR("vkCreateDescriptorSetLayout failed with error code: {0}", (int)layoutRes);
-			WF_CORE_ASSERT(false, "Failed to create UBO descriptor set layout!");
-			return;
-		}
-
-		// Allocate descriptor set from shared pool
-		VkDescriptorSetAllocateInfo dsAllocInfo
-		{
-			.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
-			.descriptorPool = pool,
-			.descriptorSetCount = 1,
-			.pSetLayouts = &m_DescriptorSetLayout
-		};
-
-		VkResult res = vkAllocateDescriptorSets(dev, &dsAllocInfo, &m_DescriptorSet);
-		if (res != VK_SUCCESS || m_DescriptorSet == VK_NULL_HANDLE)
-		{
-			WF_CORE_ERROR("vkAllocateDescriptorSets in VulkanUniformBuffer failed with error code: {0}", (int)res);
-			WF_CORE_ASSERT(false, "Failed to allocate UBO descriptor set!");
-			return;
-		}
-
-		// Write descriptor (point to our buffer)
-		VkDescriptorBufferInfo bufferInfo
-		{
-			.buffer = m_Buffer,
-			.offset = 0,
-			.range = size
-		};
-
-		VkWriteDescriptorSet write
-		{
-			.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-			.dstSet = m_DescriptorSet,
-			.dstBinding = binding,
-			.dstArrayElement = 0,
-			.descriptorCount = 1,
-			.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-			.pBufferInfo = &bufferInfo
-		};
-
-		vkUpdateDescriptorSets(dev, 1, &write, 0, nullptr);
-
-		// Register with context (set=0, binding slot)
-		ctx->BindDescriptorSet(0, m_DescriptorSet);
-		ctx->RegisterUniformBuffer(m_Binding, m_Buffer, m_Size);
+		// The shader owns its per-frame descriptor sets (reflected, dynamic
+		// UBO + samplers); this buffer only registers itself with the
+		// context so BindAndFlushDescriptors can point descriptors at it.
+		ctx->RegisterUniformBuffer(m_Binding, m_Buffer, m_Size, 0);
 	}
 
 	VulkanUniformBuffer::~VulkanUniformBuffer()
@@ -123,14 +68,9 @@ namespace Waffle {
 		if (dev != VK_NULL_HANDLE)
 			vkDeviceWaitIdle(dev);
 
-		// Drop our registration BEFORE destroying the VkBuffer - otherwise the
-		// context hands a dead handle to BindAndFlushDescriptors.
+		// Drop our registration BEFORE destroying the VkBuffer - otherwise
+		// the context hands a dead handle to BindAndFlushDescriptors.
 		ctx->UnregisterUniformBuffer(m_Binding);
-
-		if (m_DescriptorSet != VK_NULL_HANDLE)
-			ctx->SafeFreeDescriptorSet(m_DescriptorSet);
-		if (m_DescriptorSetLayout != VK_NULL_HANDLE)
-			vkDestroyDescriptorSetLayout(dev, m_DescriptorSetLayout, nullptr);
 
 		if (m_Buffer != VK_NULL_HANDLE)
 			vmaDestroyBuffer(ctx->GetVmaAllocator(), m_Buffer, m_Allocation);
@@ -143,15 +83,21 @@ namespace Waffle {
 	{
 		WF_CORE_ASSERT(m_MappedPtr, "Uniform buffer not mapped!");
 		WF_CORE_ASSERT(offset + size <= m_Size, "Uniform buffer write out of bounds!");
-		// The previous frame may still be sampling this mapped memory -
-		// wait for it before overwriting.
+
+		// Advance the ring: pick the next slice. A slice is reused only
+		// after kSliceCount updates; WaitForFrameUploads additionally covers
+		// the in-flight frames that may still read this slice.
 		if (auto* ctx = VulkanContext::Get())
 			ctx->WaitForFrameUploads(ctx->GetCurrentFrameIndex());
-		memcpy((uint8_t*)m_MappedPtr + offset, data, size);
 
-		// Re-register in case the bound descriptor set was cleared
-		VulkanContext::Get()->BindDescriptorSet(0, m_DescriptorSet);
-		VulkanContext::Get()->RegisterUniformBuffer(m_Binding, m_Buffer, m_Size);
+		uint64_t sliceBase = (uint64_t)m_NextSlice * m_SliceStride;
+		m_NextSlice = (m_NextSlice + 1) % kSliceCount;
+
+		memcpy((uint8_t*)m_MappedPtr + sliceBase + offset, data, size);
+
+		// Re-register with the slice's dynamic offset - descriptor sets are
+		// bound with it at the next draw.
+		VulkanContext::Get()->RegisterUniformBuffer(m_Binding, m_Buffer, m_Size, sliceBase);
 	}
 
-} // namespace Waffle
+}

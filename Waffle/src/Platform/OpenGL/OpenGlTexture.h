@@ -25,7 +25,10 @@ namespace Waffle {
 
 		virtual uint32_t GetWidth() const override { return m_Width; }
 		virtual uint32_t GetHeight() const override { return m_Height; }
-		virtual uint64_t GetRendererID() const override { return m_RendererID; }
+		virtual void* GetImGuiTextureId() const override { return (void*)(uintptr_t)m_RendererID; }
+
+		// Raw GL texture name - only for use inside Platform/OpenGL.
+		uint32_t GetGLHandle() const { return m_RendererID; }
 
 		virtual void SetData(void* data, uint32_t size) override;
 

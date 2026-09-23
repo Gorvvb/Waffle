@@ -10,8 +10,6 @@
 
 		class Shader : public RefCounted
 		{
-		private:
-			uint32_t m_RendererID;
 		public:
 			virtual ~Shader() = default;
 

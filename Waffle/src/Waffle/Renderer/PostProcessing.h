@@ -5,6 +5,8 @@
 
 namespace Waffle {
 
+	class Framebuffer;
+
 	struct PostProcessingSettings
 	{
 		bool EnablePostProcessing = false;
@@ -29,6 +31,10 @@ namespace Waffle {
 		glm::vec3 ColorGradingTint = glm::vec3(1.0f, 1.0f, 1.0f);
 	};
 
+	// Fullscreen post chain (bloom + composite), recorded through the RHI
+	// CommandBuffer so it runs identically on OpenGL and Vulkan. Operates on
+	// framebuffers, never on raw texture IDs - backend handles must not
+	// cross this boundary (that was the original GL/Vulkan ID corruption bug).
 	class PostProcessing
 	{
 	public:
@@ -36,10 +42,19 @@ namespace Waffle {
 		static void Shutdown();
 
 		static PostProcessingSettings& GetSettings() { return s_Settings; }
-		static uint32_t Process(uint32_t inputTextureID, uint32_t width, uint32_t height);
-		static void PresentToScreen(uint32_t textureID, uint32_t width, uint32_t height);
+
+		// Runs the post chain over `src`'s color attachment and returns the
+		// framebuffer holding the result (for display inside an ImGui image).
+		static Ref<Framebuffer> Process(const Ref<Framebuffer>& src, uint32_t attachmentIndex, uint32_t width, uint32_t height);
+
+		// Process + present the result to the screen (swapchain / default
+		// framebuffer). Runtime path.
+		static void ProcessAndPresent(const Ref<Framebuffer>& src, uint32_t attachmentIndex, uint32_t width, uint32_t height);
 
 	private:
+		static void EnsureResources();
+		static void EnsureSizes(uint32_t width, uint32_t height);
+
 		inline static PostProcessingSettings s_Settings;
 	};
 

@@ -239,6 +239,9 @@ namespace Waffle {
 
 	void WindowsWindow::SetIcon(const std::string& path)
 	{
+		// GLFW expects top-down pixels; the texture loaders leave stb's
+		// GLOBAL vertical-flip flag on, which would mirror the icon.
+		stbi_set_flip_vertically_on_load(0);
 		stbi_uc* pixels = nullptr;
 		int width = 0, height = 0, channels = 0;
 
@@ -254,6 +257,19 @@ namespace Waffle {
 		{
 			std::string iconPath = path;
 			if (!std::filesystem::exists(iconPath))
+			{
+				// The icon ships next to the executable - resolve relative to
+				// it, since the CWD depends on the launch context (VS uses
+				// the project folder, double-click uses the exe folder).
+				char exeBuf[MAX_PATH] = {};
+				if (GetModuleFileNameA(NULL, exeBuf, MAX_PATH) > 0)
+				{
+					std::filesystem::path exeIcon = std::filesystem::path(exeBuf).parent_path() / "Resources/Icons/logo.png";
+					if (std::filesystem::exists(exeIcon))
+						iconPath = exeIcon.string();
+				}
+			}
+			if (iconPath != path && !std::filesystem::exists(iconPath))
 			{
 				std::filesystem::path resolved = ResolveTexturePath(path);
 				std::error_code ec;
@@ -286,5 +302,8 @@ namespace Waffle {
 		{
 			WF_CORE_WARN("Failed to load window icon from {0}", path);
 		}
+
+		// Restore the global flip state the texture loaders expect.
+		stbi_set_flip_vertically_on_load(1);
 	}
 }

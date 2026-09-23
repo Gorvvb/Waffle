@@ -2,10 +2,10 @@
 #include "Waffle/Scene/SceneSerializer.h"
 #include "Waffle/Core/VFS.h"
 #include "Waffle/Renderer/PostProcessing.h"
+#include "Waffle/Renderer/Renderer.h"
 #include "Waffle/Scripting/LuaScriptEngine.h"
 
 #include <yaml-cpp/yaml.h>
-#include <glad/glad.h>
 #include <glm/gtc/matrix_transform.hpp>
 
 namespace Waffle {
@@ -178,10 +178,20 @@ namespace Waffle {
 		if (!m_Scene)
 			return;
 
+		uint32_t width = Application::Get().GetWindow().GetWidth();
+		uint32_t height = Application::Get().GetWindow().GetHeight();
+		if (width == 0 || height == 0) return;
+
+		CommandBuffer* cmd = Renderer::GetCommandBuffer();
+
+		Entity primaryCam = m_Scene->GetPrimaryCameraEntity();
+		glm::vec4 clearColor = primaryCam
+			? primaryCam.GetComponent<CameraComponent>().BackgroundColor
+			: glm::vec4{ 0.1f, 0.1f, 0.1f, 1.0f };
+		cmd->SetClearColor(clearColor);
+
 		if (PostProcessing::GetSettings().EnablePostProcessing)
 		{
-			uint32_t width = Application::Get().GetWindow().GetWidth();
-			uint32_t height = Application::Get().GetWindow().GetHeight();
 			if (width == 0 || height == 0) return;
 
 			const auto& spec = m_Framebuffer->GetSpecification();
@@ -190,23 +200,13 @@ namespace Waffle {
 				m_Framebuffer->Resize(width, height);
 			}
 
-			m_Framebuffer->Bind();
-
-			Entity primaryCam = m_Scene->GetPrimaryCameraEntity();
-			if (primaryCam)
-			{
-				glm::vec4 clearColor = primaryCam.GetComponent<CameraComponent>().BackgroundColor;
-				RenderCommand::SetClearColor(clearColor);
-				RenderCommand::Clear();
-			}
-			else
-			{
-				RenderCommand::SetClearColor({ 0.1f, 0.1f, 0.1f, 1.0f });
-				RenderCommand::Clear();
-			}
+			// Render into the offscreen target, then post-process and
+			// present it to the screen.
+			cmd->BeginRenderPass(m_Framebuffer);
 
 			int pendingScene = m_Scene->OnUpdateRuntime(ts);
-			m_Framebuffer->Unbind();
+			cmd->EndRenderPass();
+
 			// Deferred Quit: tearing the scene down inside a click callback
 			// corrupts the registry, so it runs after the frame.
 			if (LuaScriptEngine::IsQuitRequested())
@@ -217,29 +217,19 @@ namespace Waffle {
 				return;
 			}
 
-			uint32_t processedTex = PostProcessing::Process((uint32_t)m_Framebuffer->GetColorAttachmentRendererID(0), width, height);
-
-			PostProcessing::PresentToScreen(processedTex, width, height);
+			PostProcessing::ProcessAndPresent(m_Framebuffer, 0, width, height);
 
 			if (pendingScene != -1)
 				LoadScene(pendingScene);
 		}
 		else
 		{
-			Entity primaryCam = m_Scene->GetPrimaryCameraEntity();
-			if (primaryCam)
-			{
-				glm::vec4 clearColor = primaryCam.GetComponent<CameraComponent>().BackgroundColor;
-				RenderCommand::SetClearColor(clearColor);
-				RenderCommand::Clear();
-			}
-			else
-			{
-				RenderCommand::SetClearColor({ 0.1f, 0.1f, 0.1f, 1.0f });
-				RenderCommand::Clear();
-			}
+			// No post chain - render straight to the present surface.
+			cmd->BeginSwapchainPass(width, height);
 
 			int pendingScene = m_Scene->OnUpdateRuntime(ts);
+			cmd->EndRenderPass();
+
 			if (LuaScriptEngine::IsQuitRequested())
 			{
 				LuaScriptEngine::ClearQuitRequest();

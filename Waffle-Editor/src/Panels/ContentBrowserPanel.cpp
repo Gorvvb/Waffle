@@ -253,7 +253,7 @@ namespace Waffle {
 
 				bool isSelected = (m_SelectedItem == path);
 				ImGui::PushStyleColor(ImGuiCol_Button, isSelected ? ImVec4{ 0.2f, 0.4f, 0.8f, 0.5f } : ImVec4{ 0, 0, 0, 0 });
-				ImGui::ImageButton("##", (ImTextureID)(uintptr_t)icon->GetRendererID(), iconSize, { 0, 1 }, { 1, 0 });
+				ImGui::ImageButton("##", (ImTextureID)icon->GetImGuiTextureId(), iconSize, { 0, 1 }, { 1, 0 });
 
 				if (icon && icon != m_DirectoryIcon && icon != m_FileIcon)
 				{
@@ -668,7 +668,7 @@ namespace Waffle {
 				};
 
 				ImGuiLayer::BeginTextureSamplerPassthrough(dl);
-				dl->AddImage((ImTextureID)m_SpritesheetTexture->GetRendererID(),
+				dl->AddImage((ImTextureID)m_SpritesheetTexture->GetImGuiTextureId(),
 					tl, { tl.x + disp.x, tl.y + disp.y }, ImVec2(0, 1), ImVec2(1, 0));
 				ImGuiLayer::EndTextureSamplerPassthrough(dl);
 
@@ -717,7 +717,7 @@ namespace Waffle {
 					const auto& sub = m_SpritesheetSubTextures[i];
 					const auto& region = (i < (int)m_SpritesheetRegions.size()) ? m_SpritesheetRegions[i] : SpritesheetRegionInfo{};
 
-					ImTextureID texID = (ImTextureID)m_SpritesheetTexture->GetRendererID();
+					ImTextureID texID = (ImTextureID)m_SpritesheetTexture->GetImGuiTextureId();
 					const glm::vec2* uvs = sub->GetTexCoords();
 
 					ImVec2 dispSize = { sprThumb, sprThumb };

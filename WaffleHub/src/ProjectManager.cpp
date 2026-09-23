@@ -30,7 +30,11 @@ namespace Waffle {
 
 	void ProjectManager::Init()
 	{
-		std::filesystem::create_directories("Projects");
+		// The manifest must live where the projects live. A CWD-relative
+		// path made launch context decide which manifest was read/written,
+		// so Remove/Add looked broken depending on how the Hub started.
+		s_ManifestPath = GetDefaultProjectsDirectory() / "projects_manifest.yaml";
+		std::filesystem::create_directories(s_ManifestPath.parent_path());
 		LoadManifest();
 	}
 
@@ -40,7 +44,7 @@ namespace Waffle {
 		if (!std::filesystem::exists(s_ManifestPath))
 		{
 			// Discover default projects if no manifest exists
-			std::filesystem::path defaultProj = "Projects/DefaultProject";
+			std::filesystem::path defaultProj = GetDefaultProjectsDirectory() / "DefaultProject";
 			if (std::filesystem::exists(defaultProj))
 			{
 				AddOrUpdateProject("DefaultProject", std::filesystem::absolute(defaultProj).string());
@@ -159,6 +163,14 @@ namespace Waffle {
 			return false;
 		}
 
+		// The Hub executable's folder (CWD-independent).
+		std::filesystem::path exeDir;
+		{
+			char exeBuf[MAX_PATH] = {};
+			if (GetModuleFileNameA(NULL, exeBuf, MAX_PATH) > 0)
+				exeDir = std::filesystem::path(exeBuf).parent_path();
+		}
+
 		// Locate template folder
 		std::vector<std::filesystem::path> templateCandidates = {
 			"Resources/Templates/Blank2D",
@@ -184,15 +196,16 @@ namespace Waffle {
 				std::filesystem::copy_options::recursive, ec);
 		}
 
-		// Copy imgui.ini into new project directory
+		// Copy imgui.ini into new project directory. The project is opened
+		// by the EDITOR, so it needs the EDITOR's current layout -
+		// which lives next to the editor executable. The template's copy
+		// is only a last resort and goes stale as the UI evolves.
 		std::vector<std::filesystem::path> iniCandidates = {
+			GetEditorExecutablePath().parent_path() / "imgui.ini",
 			sourceTemplate / "imgui.ini",
 			"Resources/Templates/Blank2D/imgui.ini",
 			"WaffleHub/Resources/Templates/Blank2D/imgui.ini",
-			"../Resources/Templates/Blank2D/imgui.ini",
-			"Projects/Platformer/imgui.ini",
-			"../Waffle-Editor/imgui.ini",
-			"Waffle-Editor/imgui.ini"
+			"../Resources/Templates/Blank2D/imgui.ini"
 		};
 
 		std::filesystem::path sourceIni;

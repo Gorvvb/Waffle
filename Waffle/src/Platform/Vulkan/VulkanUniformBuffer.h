@@ -13,8 +13,12 @@ namespace Waffle {
 	// -------------------------------------------------------------------------
 	// VulkanUniformBuffer
 	// Host-visible UBO backed by a persistently-mapped VkBuffer.
-	// Each instance owns one VkDescriptorSet (set=0, binding=<binding>).
-	// The descriptor set is registered with VulkanContext when SetData is called.
+	// The buffer is a RING of slices: every SetData writes the next slice and
+	// the consuming shader descriptor sets are UNIFORM_BUFFER_DYNAMIC, bound
+	// with that slice's offset. This keeps multiple passes per frame correct
+	// under deferred execution - without the ring, the GPU would read the
+	// LAST pass's data for every pass (a single host-mapped UBO is written
+	// again before the frame's command buffer ever runs).
 	// -------------------------------------------------------------------------
 	class VulkanUniformBuffer : public UniformBuffer
 	{
@@ -28,8 +32,8 @@ namespace Waffle {
 
 		virtual void SetData(const void* data, uint32_t size, uint32_t offset = 0) override;
 
-		VkDescriptorSet GetDescriptorSet() const { return m_DescriptorSet; }
-		uint32_t        GetBinding()       const { return m_Binding; }
+		VkBuffer   GetBuffer() const { return m_Buffer; }
+		uint32_t   GetBinding() const { return m_Binding; }
 
 	private:
 		VkBuffer              m_Buffer         = VK_NULL_HANDLE;
@@ -38,8 +42,10 @@ namespace Waffle {
 		uint32_t              m_Size           = 0;
 		uint32_t              m_Binding        = 0;
 
-		VkDescriptorSetLayout m_DescriptorSetLayout = VK_NULL_HANDLE;
-		VkDescriptorSet       m_DescriptorSet       = VK_NULL_HANDLE;
+		// Ring layout
+		static constexpr uint32_t kSliceCount = 16;
+		VkDeviceSize         m_SliceStride    = 0;
+		uint32_t             m_NextSlice      = 0;
 	};
 
 } // namespace Waffle

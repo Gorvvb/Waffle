@@ -1,19 +1,30 @@
 #include "wfpch.h"
 #include "Frustum2D.h"
 #include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/matrix_access.hpp>
 
 namespace Waffle {
 
+	// Gribb-Hartmann plane extraction. glm::row() reads through GLM's
+	// column-major storage, so this stays correct regardless of index-order
+	// conventions - a hand-rolled m[i][j] variant silently extracts planes
+	// from the TRANSPOSED matrix and mis-culls everything once the camera
+	// moves away from the origin.
 	Frustum2D Frustum2D::FromViewProjection(const glm::mat4& viewProj)
 	{
 		Frustum2D frustum;
 
-		frustum.m_Planes[0] = glm::vec4(viewProj[0][3] + viewProj[0][0], viewProj[1][3] + viewProj[1][0], viewProj[2][3] + viewProj[2][0], viewProj[3][3] + viewProj[3][0]);
-		frustum.m_Planes[1] = glm::vec4(viewProj[0][3] - viewProj[0][0], viewProj[1][3] - viewProj[1][0], viewProj[2][3] - viewProj[2][0], viewProj[3][3] - viewProj[3][0]);
-		frustum.m_Planes[2] = glm::vec4(viewProj[0][3] + viewProj[0][1], viewProj[1][3] + viewProj[1][1], viewProj[2][3] + viewProj[2][1], viewProj[3][3] + viewProj[3][1]);
-		frustum.m_Planes[3] = glm::vec4(viewProj[0][3] - viewProj[0][1], viewProj[1][3] - viewProj[1][1], viewProj[2][3] - viewProj[2][1], viewProj[3][3] - viewProj[3][1]);
-		frustum.m_Planes[4] = glm::vec4(viewProj[0][3] + viewProj[0][2], viewProj[1][3] + viewProj[1][2], viewProj[2][3] + viewProj[2][2], viewProj[3][3] + viewProj[3][2]);
-		frustum.m_Planes[5] = glm::vec4(viewProj[0][3] - viewProj[0][2], viewProj[1][3] - viewProj[1][2], viewProj[2][3] - viewProj[2][2], viewProj[3][3] - viewProj[3][2]);
+		const glm::vec4 row0 = glm::row(viewProj, 0);
+		const glm::vec4 row1 = glm::row(viewProj, 1);
+		const glm::vec4 row2 = glm::row(viewProj, 2);
+		const glm::vec4 row3 = glm::row(viewProj, 3);
+
+		frustum.m_Planes[0] = row3 + row0; // left
+		frustum.m_Planes[1] = row3 - row0; // right
+		frustum.m_Planes[2] = row3 + row1; // bottom
+		frustum.m_Planes[3] = row3 - row1; // top
+		frustum.m_Planes[4] = row3 + row2; // near
+		frustum.m_Planes[5] = row3 - row2; // far
 
 		for (int i = 0; i < 6; i++)
 		{
@@ -44,7 +55,7 @@ namespace Waffle {
 
 	bool Frustum2D::IsVisible(const glm::vec3& min, const glm::vec3& max) const
 	{
-		for (int i = 0; i < 4; i++)
+		for (int i = 0; i < 6; i++)
 		{
 			const glm::vec4& plane = m_Planes[i];
 			glm::vec3 normal(plane.x, plane.y, plane.z);
@@ -72,10 +83,10 @@ namespace Waffle {
 		return IsVisible(glm::vec3(position - halfSize, -1.0f), glm::vec3(position + halfSize, 1.0f));
 	}
 
-bool Frustum2D::IsVisible(const glm::vec2& position, const glm::vec2& size, float z) const
-{
-	glm::vec2 halfSize = size * 0.5f;
-	return IsVisible(glm::vec3(position - halfSize, z), glm::vec3(position + halfSize, z));
-}
+	bool Frustum2D::IsVisible(const glm::vec2& position, const glm::vec2& size, float z) const
+	{
+		glm::vec2 halfSize = size * 0.5f;
+		return IsVisible(glm::vec3(position - halfSize, z), glm::vec3(position + halfSize, z));
+	}
 
 }

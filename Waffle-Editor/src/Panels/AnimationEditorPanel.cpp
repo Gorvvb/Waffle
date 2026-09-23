@@ -214,7 +214,7 @@ namespace Waffle {
 				{
 					auto tex = clip.SubTextures[i]->GetTexture();
 					const glm::vec2* uvs = clip.SubTextures[i]->GetTexCoords();
-					ImGui::ImageButton("##FrameKey", (ImTextureID)(uintptr_t)tex->GetRendererID(),
+					ImGui::ImageButton("##FrameKey", (ImTextureID)tex->GetImGuiTextureId(),
 						frameSize, ImVec2(uvs[3].x, uvs[3].y), ImVec2(uvs[1].x, uvs[1].y),
 						ImVec4(0, 0, 0, 0), UI::Theme::Accent);
 				}

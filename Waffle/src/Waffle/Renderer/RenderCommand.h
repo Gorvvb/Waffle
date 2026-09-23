@@ -2,6 +2,11 @@
 
 #include "RendererAPI.h"
 
+// Thin facade over the backend's RendererAPI for a handful of global-ish
+// calls that survive the RHI migration (clear color, viewport, device
+// limits). All drawing and state binding goes through
+// Waffle::CommandBuffer - see Waffle/RHI/CommandBuffer.h.
+
 namespace Waffle {
 
 	class RenderCommand
@@ -31,24 +36,9 @@ namespace Waffle {
 			s_RendererAPI->Clear();
 		}
 
-		static void DrawIndexed(const Ref<VertexArray>& vertexArray, uint32_t indexCount = 0, uint32_t indexOffset = 0)
+		static uint32_t GetMaxTextureSlots()
 		{
-			s_RendererAPI->DrawIndexed(vertexArray, indexCount, indexOffset);
+			return s_RendererAPI->GetMaxTextureSlots();
 		}
-
-		static void DrawLines(const Ref<VertexArray>& vertexArray, uint32_t vertexCount, uint32_t vertexOffset = 0)
-		{
-			s_RendererAPI->DrawLines(vertexArray, vertexCount, vertexOffset);
-		}
-
-	static void SetLineWidth(float width)
-	{
-		s_RendererAPI->SetLineWidth(width);
-	}
-
-	static uint32_t GetMaxTextureSlots()
-	{
-		return s_RendererAPI->GetMaxTextureSlots();
-	}
-};
+	};
 }

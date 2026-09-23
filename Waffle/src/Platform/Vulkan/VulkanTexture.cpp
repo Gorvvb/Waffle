@@ -317,7 +317,7 @@ namespace Waffle {
 		m_CurrentFilter = filter;
 	}
 
-	uint64_t VulkanTexture2D::GetRendererID() const
+	void* VulkanTexture2D::GetImGuiTextureId() const
 	{
 		if (!m_ImGuiDescriptorSet)
 		{
@@ -327,7 +327,7 @@ namespace Waffle {
 					ImGui_ImplVulkan_AddTexture(m_Sampler, m_ImageView, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 			}
 		}
-		return (uint64_t)m_ImGuiDescriptorSet;
+		return (void*)m_ImGuiDescriptorSet;
 	}
 
 	void VulkanTexture2D::CreateImGuiDescriptorSet()

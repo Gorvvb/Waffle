@@ -29,6 +29,11 @@ namespace Waffle {
 
 		void Invalidate();
 
+		// Whether Begin (Bind) clears the color attachments (LOAD_OP_CLEAR)
+		// or preserves their content (LOAD_OP_LOAD, e.g. additive bloom
+		// upsampling into existing mips). Reset to true by the framework.
+		void SetClearOnBegin(bool clear) { m_ClearOnBegin = clear; }
+
 		virtual void Bind()   override;
 		virtual void Unbind() override;
 
@@ -36,13 +41,17 @@ namespace Waffle {
 		virtual int  ReadPixel(uint32_t attachmentIndex, int x, int y) override;
 		virtual void ClearAttachment(uint32_t attachmentIndex, int value) override;
 
-		virtual uint64_t GetColorAttachmentRendererID(uint32_t index = 0) const override;
+		virtual void* GetImGuiAttachmentId(uint32_t index = 0) const override;
 
 		virtual const FramebufferSpecification& GetSpecification() const override { return m_Specification; }
 
 		// Raw Vulkan handles
 		VkImage     GetColorAttachmentImage(uint32_t index = 0) const { return m_ColorImages[index]; }
 		VkImageView GetColorAttachmentView(uint32_t index = 0) const { return m_ColorImageViews[index]; }
+		VkSampler   GetColorAttachmentSampler(uint32_t index = 0) const
+		{
+			return (index < m_ColorSamplers.size()) ? m_ColorSamplers[index] : VK_NULL_HANDLE;
+		}
 		VkFormat    GetColorFormat() const { return m_ColorFormat; }
 		VkFormat    GetDepthFormat() const { return m_DepthFormat; }
 
@@ -64,18 +73,20 @@ namespace Waffle {
 		std::vector<VkImageView>   m_ColorImageViews;
 		std::vector<VkSampler>     m_ColorSamplers;
 
-		// ImGui descriptor sets (returned by GetColorAttachmentRendererID)
+		// ImGui descriptor sets (returned by GetImGuiAttachmentId)
 		std::vector<VkDescriptorSet> m_ColorImGuiDescriptorSets;
+		std::vector<VkImageLayout> m_ColorCurrentLayouts;
 
 		// Depth attachment
 		VkImage       m_DepthImage      = VK_NULL_HANDLE;
 		VmaAllocation m_DepthAllocation = VK_NULL_HANDLE;
 		VkImageView   m_DepthView       = VK_NULL_HANDLE;
 
-		VkFormat m_ColorFormat = VK_FORMAT_R8G8B8A8_UNORM;
+			VkFormat m_ColorFormat = VK_FORMAT_R8G8B8A8_UNORM;
 		std::vector<VkFormat> m_ColorFormats;
 		VkFormat m_DepthFormat = VK_FORMAT_D24_UNORM_S8_UINT;
 
+		bool m_ClearOnBegin = true;
 		bool m_IsRendering = false;
 	};
 

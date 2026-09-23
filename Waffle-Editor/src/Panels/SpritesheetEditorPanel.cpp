@@ -495,7 +495,7 @@ namespace Waffle {
                 dl->PopClipRect();
             }
 
-            ImTextureID texID = (ImTextureID)m_Texture->GetRendererID();
+            ImTextureID texID = (ImTextureID)m_Texture->GetImGuiTextureId();
 
             ImGuiLayer::BeginTextureSamplerPassthrough(dl);
 

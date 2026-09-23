@@ -10,6 +10,7 @@ namespace Waffle {
 
 		// Color
 		RGBA8,
+		RGBA16F,
 		RED_INTEGER,
 
 		// Depth / stencil
@@ -61,7 +62,10 @@ namespace Waffle {
 
 		virtual void ClearAttachment(uint32_t attachmentIndex, int value) = 0;
 
-		virtual uint64_t GetColorAttachmentRendererID(uint32_t index = 0) const = 0;
+		// Explicit bridge for displaying a color attachment through ImGui
+		// (viewport images, panel previews). Backend-specific payload - see
+		// Texture::GetImGuiTextureId. Not a storable ID.
+		virtual void* GetImGuiAttachmentId(uint32_t index = 0) const = 0;
 
 		virtual const FramebufferSpecification& GetSpecification() const = 0;
 

@@ -33,11 +33,18 @@ namespace Waffle {
 
 		virtual void ClearAttachment(uint32_t attachmentIndex, int value) override;
 
-		virtual uint64_t GetColorAttachmentRendererID(uint32_t index = 0) const override
+		virtual void* GetImGuiAttachmentId(uint32_t index = 0) const override
 		{
 			if (index >= m_ColorAttachments.size())
-				return 0;
-			return m_ColorAttachments[index];
+				return nullptr;
+			return (void*)(uintptr_t)m_ColorAttachments[index];
+		}
+
+		// Raw GL texture name of a color attachment - only for use inside
+		// Platform/OpenGL (sampling a render target in post-processing etc.).
+		uint32_t GetColorAttachmentGLHandle(uint32_t index = 0) const
+		{
+			return (index < m_ColorAttachments.size()) ? m_ColorAttachments[index] : 0;
 		}
 
 		virtual const FramebufferSpecification& GetSpecification() const override { return m_Specification; }
