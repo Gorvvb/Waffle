@@ -1213,6 +1213,7 @@ namespace Waffle {
 		CreateSwapChain();
 		CreateSwapChainImageViews();
 		CreateDepthResources();
+		CreateSwapchainRenderFinishedSemaphores();
 
 		// Update viewport/scissor (negative height for Y-flip)
 		m_CurrentViewport.y      = (float)m_SwapChainExtent.height;
