@@ -5,7 +5,7 @@ Waffle is a 2D game engine for Windows, built around a Lua-scripted ECS and a do
 
 ## Status
 
-Version 1.0.
+Version 1.0.0
 
 ## Requirements
 
