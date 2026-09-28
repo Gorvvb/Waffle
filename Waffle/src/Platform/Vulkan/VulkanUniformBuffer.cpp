@@ -32,7 +32,7 @@ namespace Waffle {
 		// Ring slice stride aligned to the device's dynamic-offset alignment.
 		VkPhysicalDeviceProperties props;
 		vkGetPhysicalDeviceProperties(ctx->GetPhysicalDevice(), &props);
-		uint32_t alignment = props.limits.minUniformBufferOffsetAlignment;
+		uint64_t alignment = props.limits.minUniformBufferOffsetAlignment;
 		m_SliceStride = ((VkDeviceSize)size + alignment - 1) / alignment * alignment;
 
 		// Create persistently-mapped host-coherent UBO ring via VMA

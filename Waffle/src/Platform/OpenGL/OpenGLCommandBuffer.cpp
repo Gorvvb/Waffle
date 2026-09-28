@@ -5,9 +5,6 @@
 
 namespace Waffle {
 
-	// =========================================================================
-	// OpenGLGraphicsPipeline
-	// =========================================================================
 	void OpenGLGraphicsPipeline::Apply() const
 	{
 		if (m_Desc.Shader)
@@ -43,9 +40,7 @@ namespace Waffle {
 		}
 	}
 
-	// =========================================================================
 	// OpenGLCommandBuffer
-	// =========================================================================
 	void OpenGLCommandBuffer::SetClearColor(const glm::vec4& color)
 	{
 		glClearColor(color.r, color.g, color.b, color.a);

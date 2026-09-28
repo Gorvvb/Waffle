@@ -30,9 +30,6 @@ namespace Waffle {
 			std::filesystem::current_path(m_Specification.WorkingDirectory);
 
 		#ifdef WF_PLATFORM_WINDOWS
-		// Unique taskbar identity. Without an AppUserModelID, Windows may
-		// represent these windows with the icon of another Waffle app that
-		// happens to be running or cached (e.g. a game launched by the Hub).
 		{
 			std::wstring aumid;
 			for (char c : m_Specification.Name)
@@ -64,9 +61,6 @@ namespace Waffle {
 		// Detach and destroy layers in REVERSE order (top-to-bottom: overlays first down to base layers)
 		m_LayerStack.Clear();
 
-		// Release renderer GPU resources HERE, while the window/context
-		// still exists - static destructors run after main() on a dead
-		// context (leaks at best, crashes at worst).
 		Renderer::Shutdown();
 
 		SubsystemManager::Shutdown();
@@ -94,8 +88,7 @@ namespace Waffle {
 		dispatcher.Dispatch<WindowCloseEvent>(WF_BIND_EVENT_FN(Application::OnWindowClose));
 		dispatcher.Dispatch<WindowResizeEvent>(WF_BIND_EVENT_FN(Application::OnWindowResize));
 
-		// Iteration guard: a handler may push/pop layers; the stack defers
-		// those mutations until the walk finishes.
+		// Iteration guard: a handler may push/pop layers; the stack defers those mutations until the walk finishes.
 		m_LayerStack.BeginIteration();
 		for (auto it = m_LayerStack.rbegin(); it != m_LayerStack.rend(); ++it)
 		{

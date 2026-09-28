@@ -31,17 +31,15 @@ namespace Waffle {
 	struct BufferElements
 	{
 		std::string Name;
-		ShaderDataType Type;
-		uint32_t Size;
-		uint32_t Offset;
-		bool Normalized;
+		ShaderDataType Type = ShaderDataType::None;
+		uint32_t Size		= 0;
+		uint32_t Offset		= 0;
+		bool Normalized		= false;
 
-		BufferElements() {}
+		BufferElements() = default;
 
 		BufferElements(ShaderDataType type, const std::string& name, bool normalized = false)
-			: Type(type), Name(name), Size(ShaderDataTypeSize(type)), Offset(0), Normalized(normalized)
-		{
-		}
+			: Type(type), Name(name), Size(ShaderDataTypeSize(type)), Offset(0), Normalized(normalized) {}
 
 		uint32_t GetComponentCount() const
 		{

@@ -14,12 +14,9 @@
 
 namespace Waffle {
 
-	// =========================================================================
-	// Design system - one cohesive palette so every tab shares the same voice.
-	// =========================================================================
 	namespace HubStyle {
 
-		// Surface colors (charcoal, slightly blue-tinted - modern IDE feel).
+		// Surface colors
 		const ImVec4 Bg        = ImVec4(0.055f, 0.062f, 0.078f, 1.00f); // window
 		const ImVec4 Panel     = ImVec4(0.086f, 0.094f, 0.114f, 1.00f); // cards / inputs
 		const ImVec4 PanelAlt  = ImVec4(0.118f, 0.128f, 0.155f, 1.00f); // hovered card
@@ -46,9 +43,7 @@ namespace Waffle {
 		const float  RoundingBig = 12.0f;
 	}
 
-	// =========================================================================
 	// Small widget helpers built on the palette above.
-	// =========================================================================
 	static bool HubAccentButton(const char* label, const ImVec2& size)
 	{
 		ImGui::PushStyleColor(ImGuiCol_Button, HubStyle::Accent);
@@ -216,8 +211,6 @@ namespace Waffle {
 		ImGui::PopStyleVar(11);
 	}
 
-	// ---------------------------------------------------------------------------
-
 	void HubLayer::UI_Header()
 	{
 		ImGui::BeginGroup();
@@ -291,11 +284,9 @@ namespace Waffle {
 		ImGui::Dummy(ImVec2(0.0f, 16.0f));
 	}
 
-	// ---------------------------------------------------------------------------
-
 	void HubLayer::UI_ProjectsTab()
 	{
-		// --- Toolbar: search + primary actions ------------------------------
+		// Toolbar: search + primary actions
 		float searchW = ImGui::GetContentRegionAvail().x - 320.0f;
 		if (searchW < 220.0f) searchW = 220.0f;
 		ImGui::SetNextItemWidth(searchW);
@@ -361,7 +352,7 @@ namespace Waffle {
 			return;
 		}
 
-		// --- Project cards ---------------------------------------------------
+		// Project cards
 		const float cardH = 84.0f;
 		for (size_t vi = 0; vi < visible.size(); vi++)
 		{
@@ -383,11 +374,10 @@ namespace Waffle {
 			ImVec2 cmax = ImVec2(cmin.x + cardW, cmin.y + cardH);
 
 			// Left accent stripe + hover wash.
-			dl->AddRectFilled(ImVec2(cmin.x + 1, cmin.y + 1), ImVec2(cmin.x + 5.0f, cmax.y - 1),
-				ImGui::ColorConvertFloat4ToU32(hovered ? HubStyle::Accent : HubStyle::BorderLit));
+			dl->AddRectFilled(ImVec2(cmin.x + 1, cmin.y + 1), ImVec2(cmin.x + 5.0f, cmax.y - 1), ImGui::ColorConvertFloat4ToU32(hovered ? HubStyle::Accent : HubStyle::BorderLit));
+			
 			if (hovered)
-				dl->AddRectFilled(ImVec2(cmin.x + 5, cmin.y + 1), ImVec2(cmax.x - 1, cmax.y - 1),
-					ImGui::ColorConvertFloat4ToU32(HubStyle::PanelAlt), HubStyle::Rounding);
+				dl->AddRectFilled(ImVec2(cmin.x + 5, cmin.y + 1), ImVec2(cmax.x - 1, cmax.y - 1), ImGui::ColorConvertFloat4ToU32(HubStyle::PanelAlt), HubStyle::Rounding);
 
 			// Title + path, left column.
 			ImGui::SetCursorPos(ImVec2(20.0f, 14.0f));
@@ -436,8 +426,6 @@ namespace Waffle {
 			m_ShowRemoveModal = false;
 		}
 	}
-
-	// ---------------------------------------------------------------------------
 
 	void HubLayer::UI_RemoveModal()
 	{
@@ -515,8 +503,6 @@ namespace Waffle {
 		}
 		ImGui::PopStyleVar(2);
 	}
-
-	// ---------------------------------------------------------------------------
 
 	void HubLayer::UI_NewProjectTab()
 	{
@@ -618,8 +604,6 @@ namespace Waffle {
 		}
 	}
 
-	// ---------------------------------------------------------------------------
-
 	void HubLayer::UI_SettingsTab()
 	{
 		HubSectionLabel("ABOUT");
@@ -668,8 +652,6 @@ namespace Waffle {
 
 		ImGui::Spacing();
 		ImGui::Spacing();
-		ImGui::TextColored(HubStyle::TextFaint,
-			"The default folder applies to newly created projects only.");
+		ImGui::TextColored(HubStyle::TextFaint, "The default folder applies to newly created projects only.");
 	}
-
 }

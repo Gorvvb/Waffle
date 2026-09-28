@@ -59,7 +59,8 @@ project "WaffleHub"
 		systemversion "latest"
 
 	filter "configurations:Debug"
-		kind "ConsoleApp"
+		--kind "ConsoleApp" -- Only for debugging
+		kind "WindowedApp"
 		defines "WF_DEBUG"
 		runtime "Debug"
 		symbols "on"
