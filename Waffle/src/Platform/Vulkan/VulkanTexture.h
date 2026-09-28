@@ -57,9 +57,7 @@ namespace Waffle {
 		VkImageView   m_ImageView   = VK_NULL_HANDLE;
 		VkSampler     m_Sampler     = VK_NULL_HANDLE;
 		VkFormat      m_Format      = VK_FORMAT_R8G8B8A8_UNORM;
-		// Current sampler mode - SetFilter is a full device stall, so it must
-		// early-out when callers (e.g. per-frame UI code) re-apply the same
-		// filter every frame.
+
 		TextureFilter m_CurrentFilter = TextureFilter::Linear;
 
 		// Pre-allocated descriptor set for use with ImGui and texture slots
@@ -68,5 +66,4 @@ namespace Waffle {
 		// Slot-indexed descriptor sets (one per Bind() slot used)
 		mutable std::unordered_map<uint32_t, VkDescriptorSet> m_SlotDescriptorSets;
 	};
-
-} // namespace Waffle
+}

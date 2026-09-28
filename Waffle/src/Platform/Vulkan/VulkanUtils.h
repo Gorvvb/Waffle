@@ -217,5 +217,4 @@ namespace Waffle {
 			}
 		}
 	};
-
-} // namespace Waffle
+}

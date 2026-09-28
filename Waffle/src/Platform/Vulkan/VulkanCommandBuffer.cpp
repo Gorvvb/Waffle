@@ -10,9 +10,6 @@
 
 namespace Waffle {
 
-	// =========================================================================
-	// VulkanGraphicsPipeline
-	// =========================================================================
 	VkPipeline VulkanGraphicsPipeline::Resolve(const VulkanVertexArray* vertexArray)
 	{
 		auto* ctx = VulkanContext::Get();
@@ -28,11 +25,10 @@ namespace Waffle {
 			(int)m_Desc.Blending, m_Desc.DepthTest, m_Desc.DepthWrite);
 	}
 
-		static void BindVertexBuffersAtCurrentSlice(VkCommandBuffer cmd, const VulkanVertexArray* va)
+	static void BindVertexBuffersAtCurrentSlice(VkCommandBuffer cmd, const VulkanVertexArray* va)
 	{
 		const auto& vertexBuffers = va->GetVertexBuffers();
-		if (vertexBuffers.empty())
-			return;
+		if (vertexBuffers.empty()) return;
 
 		std::vector<VkBuffer> buffers;
 		std::vector<VkDeviceSize> offsets;
@@ -42,6 +38,7 @@ namespace Waffle {
 		{
 			auto* vkvb = dynamic_cast<VulkanVertexBuffer*>(vb.get());
 			WF_CORE_ASSERT(vkvb, "Vertex array holds a non-Vulkan vertex buffer!");
+
 			// Dynamic vertex buffers are ring-sliced; the draw must read the
 			// slice its batch was uploaded to, not offset 0.
 			buffers.push_back(vkvb->GetVulkanBuffer());
@@ -50,9 +47,7 @@ namespace Waffle {
 		vkCmdBindVertexBuffers(cmd, 0, (uint32_t)buffers.size(), buffers.data(), offsets.data());
 	}
 
-// =========================================================================
 	// VulkanCommandBuffer - passes
-	// =========================================================================
 	void VulkanCommandBuffer::SetClearColor(const glm::vec4& color)
 	{
 		VkClearColorValue c{};
@@ -141,9 +136,7 @@ namespace Waffle {
 		}
 	}
 
-	// =========================================================================
 	// VulkanCommandBuffer - state
-	// =========================================================================
 	void VulkanCommandBuffer::BindPipeline(const Ref<GraphicsPipeline>& pipeline)
 	{
 		WF_CORE_ASSERT(pipeline, "BindPipeline - null pipeline!");
@@ -170,16 +163,10 @@ namespace Waffle {
 
 	void VulkanCommandBuffer::UpdateUniformBuffer(const Ref<UniformBuffer>& ubo, const void* data, uint64_t size, uint64_t offset)
 	{
-		// The Vulkan UBO advances an internal ring slice per update; its
-		// descriptor set is bound with dynamic offsets, so this recorded
-		// pass keeps reading the data written for it even when a later pass
-		// overwrites the "current" camera.
 		ubo->SetData(data, (uint32_t)size, (uint32_t)offset);
 	}
 
-	// =========================================================================
 	// VulkanCommandBuffer - draws
-	// =========================================================================
 	void VulkanCommandBuffer::EnsureRenderingActive()
 	{
 		auto* ctx = VulkanContext::Get();
@@ -301,5 +288,4 @@ namespace Waffle {
 		vkCmdSetViewport(cmd, 0, 1, &vp);
 		vkCmdSetScissor(cmd, 0, 1, &sc);
 	}
-
 }

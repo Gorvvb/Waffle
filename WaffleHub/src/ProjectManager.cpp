@@ -7,7 +7,7 @@
 #include <chrono>
 #include <ctime>
 
-#if defined(_WIN32)
+#if defined(WF_PLATFORM_WINDOWS)
 #include <windows.h>
 #include <shellapi.h>
 #endif
@@ -30,9 +30,6 @@ namespace Waffle {
 
 	void ProjectManager::Init()
 	{
-		// The manifest must live where the projects live. A CWD-relative
-		// path made launch context decide which manifest was read/written,
-		// so Remove/Add looked broken depending on how the Hub started.
 		s_ManifestPath = GetDefaultProjectsDirectory() / "projects_manifest.yaml";
 		std::filesystem::create_directories(s_ManifestPath.parent_path());
 		LoadManifest();
@@ -43,7 +40,7 @@ namespace Waffle {
 		s_Projects.clear();
 		if (!std::filesystem::exists(s_ManifestPath))
 		{
-			// Discover default projects if no manifest exists
+			// Discover default projects if no manifest exists.
 			std::filesystem::path defaultProj = GetDefaultProjectsDirectory() / "DefaultProject";
 			if (std::filesystem::exists(defaultProj))
 			{
@@ -68,10 +65,7 @@ namespace Waffle {
 
 					if (!entry.Path.empty())
 					{
-						// KEEP entries whose folder is (temporarily)
-						// unavailable - an unplugged drive must not
-						// permanently erase the project when the manifest
-						// is next saved.
+						// Keep entries that even if they are temporarily unavailable. Entry gets erased when project manifest gets saved next time.
 						entry.Missing = !std::filesystem::exists(entry.Path);
 						s_Projects.push_back(entry);
 					}
@@ -196,10 +190,9 @@ namespace Waffle {
 				std::filesystem::copy_options::recursive, ec);
 		}
 
-		// Copy imgui.ini into new project directory. The project is opened
-		// by the EDITOR, so it needs the EDITOR's current layout -
-		// which lives next to the editor executable. The template's copy
-		// is only a last resort and goes stale as the UI evolves.
+		// Copy imgui.ini into new project directory.
+		// The project is opened by the EDITOR, so it needs the EDITOR's current layout, which lives next to the editor executable.
+		// The template's copy, is only a last resort and goes stale as the UI evolves.
 		std::vector<std::filesystem::path> iniCandidates = {
 			GetEditorExecutablePath().parent_path() / "imgui.ini",
 			sourceTemplate / "imgui.ini",
@@ -224,12 +217,13 @@ namespace Waffle {
 				std::filesystem::copy_options::overwrite_existing, ec);
 		}
 
-		// Ensure Assets directory structure exists
+		// Ensure Assets directory structure exists.
+		// CONSIDER: Not forcing project file structure.
 		std::filesystem::create_directories(targetDir / "Assets" / "Scripts", ec);
 		std::filesystem::create_directories(targetDir / "Assets" / "Scenes", ec);
 		std::filesystem::create_directories(targetDir / "Assets" / "Audio", ec);
 
-		// Ensure a default sample scene with a Main Camera exists if missing
+		// Ensure that a default sample scene with a Main Camera exists if missing.
 		std::filesystem::path sampleScenePath = targetDir / "Assets" / "Scenes" / "SampleScene.waffle";
 		if (!std::filesystem::exists(sampleScenePath))
 		{
@@ -254,9 +248,7 @@ namespace Waffle {
 				<< "      BackgroundColor: [0.18, 0.18, 0.19, 1]\n";
 		}
 
-		// Write Assets/project.wfp - the file the RUNTIME (and the editor's
-		// project settings) actually read. The old Project.yaml was never
-		// consumed by anything.
+		// Write Assets/project.wfp which is the file that the RUNTIME (and the editor's project settings) actually read.
 		std::filesystem::path projWfp = targetDir / "Assets" / "project.wfp";
 		YAML::Emitter out;
 		out << YAML::BeginMap;
@@ -266,8 +258,7 @@ namespace Waffle {
 		out << YAML::Key << "Gravity" << YAML::Value << -9.81f;
 		out << YAML::Key << "Scenes" << YAML::Value << YAML::BeginSeq;
 
-		// Scene paths relative to the project root (not absolute, not
-		// machine-specific), sorted for deterministic ChangeScene indices.
+		// Scene paths relative to the project root (not absolute, not machine-specific), sorted for deterministic ChangeScene indices.
 		std::vector<std::string> sceneRelPaths;
 		std::error_code iterEc;
 		for (const auto& entry : std::filesystem::recursive_directory_iterator(targetDir, iterEc))
@@ -308,12 +299,12 @@ namespace Waffle {
 			return false;
 		}
 
-#if defined(_WIN32)
+#if defined(WF_PLATFORM_WINDOWS)
 		std::string exeStr = std::filesystem::absolute(editorExe).string();
 		std::string argsStr = "\"" + std::filesystem::absolute(projectPath).string() + "\"";
 		std::string workingDirStr = std::filesystem::absolute(editorExe).parent_path().string();
 
-		// Copy project imgui.ini into working directory so the editor launches with the project's layout
+		// Copy project imgui.ini into working directory so the editor launches with the project's layout.
 		std::filesystem::path projIni = projectPath / "imgui.ini";
 		if (std::filesystem::exists(projIni))
 		{
@@ -346,9 +337,7 @@ namespace Waffle {
 
 	std::filesystem::path ProjectManager::GetEditorExecutablePath()
 	{
-		// Resolve relative to the Hub executable FIRST - the working
-		// directory depends on how the Hub was started, which previously
-		// broke launch when only one build config existed.
+		// Resolve relative to the Hub executable first. The working directory depends on how the Hub was started.
 		std::filesystem::path hubDir;
 		{
 			char buffer[MAX_PATH] = {};
@@ -381,5 +370,4 @@ namespace Waffle {
 
 		return candidates[0];
 	}
-
 }

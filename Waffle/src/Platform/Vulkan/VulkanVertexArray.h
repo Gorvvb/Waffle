@@ -24,7 +24,7 @@ namespace Waffle {
 		virtual const std::vector<Ref<VertexBuffer>>& GetVertexBuffers() const override { return m_VertexBuffers; }
 		virtual const Ref<IndexBuffer>& GetIndexBuffer() const override { return m_IndexBuffer; }
 
-		// ---- Vulkan-specific pipeline input state ----------------------------
+		// Vulkan-specific pipeline input state
 		const std::vector<VkVertexInputBindingDescription>&   GetBindingDescriptions()   const { return m_BindingDescriptions; }
 		const std::vector<VkVertexInputAttributeDescription>& GetAttributeDescriptions() const { return m_AttributeDescriptions; }
 
@@ -50,5 +50,4 @@ namespace Waffle {
 
 		uint32_t m_BindingIndex = 0;
 	};
-
-} // namespace Waffle
+}

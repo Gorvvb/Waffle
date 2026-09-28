@@ -10,9 +10,7 @@ namespace Waffle {
 
 	void VulkanVertexArray::Bind() const
 	{
-		// No-op on Vulkan: vertex buffers are bound explicitly per draw by
-		// VulkanCommandBuffer::DrawIndexed/DrawLines; the vertex input
-		// layout feeds pipeline resolution from the draw's own state.
+		// No-op on Vulkan: vertex buffers are bound explicitly per draw.
 	}
 
 	void VulkanVertexArray::Unbind() const {}
@@ -84,9 +82,7 @@ namespace Waffle {
 		m_IndexBuffer   = indexBuffer;
 	}
 
-	// -------------------------------------------------------------------------
 	// Format mapping
-	// -------------------------------------------------------------------------
 	VkFormat VulkanVertexArray::ShaderDataTypeToVulkanFormat(ShaderDataType type)
 	{
 		switch (type)
@@ -105,5 +101,4 @@ namespace Waffle {
 			return VK_FORMAT_UNDEFINED;
 		}
 	}
-
-} // namespace Waffle
+}

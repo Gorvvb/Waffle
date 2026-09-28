@@ -7,9 +7,6 @@
 
 namespace Waffle {
 
-	// -------------------------------------------------------------------------
-	// Format helpers
-	// -------------------------------------------------------------------------
 	static bool IsDepthFormat(FramebufferTextureFormat fmt)
 	{
 		return fmt == FramebufferTextureFormat::DEPTH24STENCIL8;
@@ -26,10 +23,6 @@ namespace Waffle {
 		default: WF_CORE_ASSERT(false); return VK_FORMAT_UNDEFINED;
 		}
 	}
-
-	// =========================================================================
-	// Constructor / Destructor
-	// =========================================================================
 
 	VulkanFramebuffer::VulkanFramebuffer(const FramebufferSpecification& spec)
 		: m_Specification(spec)
@@ -49,9 +42,6 @@ namespace Waffle {
 		CleanupAttachments();
 	}
 
-	// =========================================================================
-	// Invalidate - create/recreate all attachments
-	// =========================================================================
 	void VulkanFramebuffer::Invalidate()
 	{
 		CleanupAttachments();
@@ -61,7 +51,6 @@ namespace Waffle {
 		uint32_t w = m_Specification.Width;
 		uint32_t h = m_Specification.Height;
 
-		// --- Color attachments ---
 		size_t numColor = m_ColorAttachmentSpecs.size();
 		m_ColorImages.resize(numColor);
 		m_ColorAllocations.resize(numColor);
@@ -70,9 +59,7 @@ namespace Waffle {
 		m_ColorImGuiDescriptorSets.resize(numColor, VK_NULL_HANDLE);
 		m_ColorFormats.resize(numColor);
 
-		// Track actual image layout so Bind() never issues a transition from
-		// the wrong source layout (e.g. after ReadPixel leaves an attachment
-		// in COLOR_ATTACHMENT_OPTIMAL rather than SHADER_READ_ONLY_OPTIMAL).
+		// Track actual layout so Bind() never transitions from the wrong source layout.
 		m_ColorCurrentLayouts.resize(numColor, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 
 		for (size_t i = 0; i < numColor; i++)
@@ -86,7 +73,7 @@ namespace Waffle {
 				VK_IMAGE_USAGE_TRANSFER_DST_BIT,
 				m_ColorImages[i], m_ColorAllocations[i], m_ColorImageViews[i]);
 
-			// Transition to shader-read layout (initial state for sampling)
+			// Transition to shader-read layout as initial state.
 			VkCommandBuffer cmd = ctx->BeginSingleTimeCommands();
 			VulkanUtils::TransitionImageLayout(cmd, m_ColorImages[i],
 				VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
@@ -115,7 +102,6 @@ namespace Waffle {
 			vkCreateSampler(dev, &samplerInfo, nullptr, &m_ColorSamplers[i]);
 		}
 
-		// --- Depth attachment ---
 		if (m_DepthAttachmentSpec.TextureFormat != FramebufferTextureFormat::None)
 		{
 			m_DepthFormat = WaffleFormatToVulkan(m_DepthAttachmentSpec.TextureFormat);
@@ -124,37 +110,28 @@ namespace Waffle {
 				m_DepthImage, m_DepthAllocation, m_DepthView);
 		}
 
-		// --- ImGui descriptor sets ---
 		RegisterImGuiDescriptorSets();
 
 		if (!m_ColorAttachmentSpecs.empty())
 			m_ColorFormat = WaffleFormatToVulkan(m_ColorAttachmentSpecs[0].TextureFormat);
 	}
 
-	// =========================================================================
-	// Bind - begin dynamic rendering for this framebuffer
-	// =========================================================================
 	void VulkanFramebuffer::Bind()
 	{
 		auto* ctx = VulkanContext::Get();
-		// Report the ACTUAL formats of this target: UNDEFINED depth means
-		// "no depth attachment" so pipelines are created without one.
+		// UNDEFINED depth means no depth attachment; pipelines are created accordingly.
 		ctx->SetActiveRenderingFormats(m_ColorFormats,
 			(m_DepthImage != VK_NULL_HANDLE) ? m_DepthFormat : VK_FORMAT_UNDEFINED);
 
 		VkCommandBuffer cmd = ctx->GetCurrentCommandBuffer();
 
-		// End any previously-active rendering (swap-chain or another FBO)
 		if (ctx->IsRenderingActive())
 		{
 			vkCmdEndRendering(cmd);
 			ctx->SetRenderingActive(false);
 		}
 
-		// Transition color attachments → COLOR_ATTACHMENT_OPTIMAL.
-		// Use the tracked layout as the source so we never issue a transition
-		// from the wrong layout (e.g. when ReadPixel left the image in
-		// COLOR_ATTACHMENT_OPTIMAL on the previous frame).
+		// Transition color attachments using tracked layout to avoid invalid barriers.
 		for (size_t i = 0; i < m_ColorImages.size(); i++)
 		{
 			if (m_ColorCurrentLayouts[i] != VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL)
@@ -169,7 +146,6 @@ namespace Waffle {
 			}
 		}
 
-		// Build attachment infos
 		std::vector<VkRenderingAttachmentInfo> colorAttachments(m_ColorImages.size());
 		for (size_t i = 0; i < m_ColorImages.size(); i++)
 		{
@@ -247,9 +223,6 @@ namespace Waffle {
 		m_IsRendering = true;
 	}
 
-	// =========================================================================
-	// Unbind - end dynamic rendering, transition attachments back to shader read
-	// =========================================================================
 	void VulkanFramebuffer::Unbind()
 	{
 		auto* ctx = VulkanContext::Get();
@@ -263,13 +236,10 @@ namespace Waffle {
 		}
 		else
 		{
-			// Unbind without a matching Bind: the images are already in
-			// SHADER_READ_ONLY_OPTIMAL - emitting the transition again is a
-			// layout-mismatch validation error.
+			// Images are already in SHADER_READ_ONLY_OPTIMAL; re-transitioning would be a validation error.
 			return;
 		}
 
-		// Transition color attachments → shader read
 		for (size_t i = 0; i < m_ColorImages.size(); i++)
 		{
 			VulkanUtils::TransitionImageLayout(cmd, m_ColorImages[i],
@@ -296,9 +266,6 @@ namespace Waffle {
 		vkCmdSetScissor(cmd, 0, 1, &sc);
 	}
 
-	// =========================================================================
-	// Resize
-	// =========================================================================
 	void VulkanFramebuffer::Resize(uint32_t width, uint32_t height)
 	{
 		m_Specification.Width = width;
@@ -306,9 +273,6 @@ namespace Waffle {
 		Invalidate();
 	}
 
-	// =========================================================================
-	// ReadPixel
-	// =========================================================================
 	int VulkanFramebuffer::ReadPixel(uint32_t attachmentIndex, int x, int y)
 	{
 		if (attachmentIndex >= m_ColorImages.size())
@@ -345,9 +309,7 @@ namespace Waffle {
 
 			cmd = ctx->BeginSingleTimeCommands();
 
-			// Outside a pass the attachment sits in its TRACKED layout
-			// (SHADER_READ_ONLY after Unbind) - the old hardcoded COLOR
-			// source emitted an invalid barrier every pick.
+			// Use tracked layout as source to avoid invalid barrier (e.g. SHADER_READ_ONLY after Unbind).
 			VkImageLayout sourceLayout = m_ColorCurrentLayouts[attachmentIndex];
 			VulkanUtils::TransitionImageLayout(cmd, m_ColorImages[attachmentIndex],
 				sourceLayout,
@@ -359,7 +321,6 @@ namespace Waffle {
 			m_ColorCurrentLayouts[attachmentIndex] = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
 		}
 
-		// Create 4-byte staging buffer via VMA
 		VkBuffer      staging;
 		VmaAllocation stagingAllocation;
 		VulkanUtils::CreateBuffer(allocator,
@@ -392,7 +353,6 @@ namespace Waffle {
 
 		if (wasRenderingActive)
 		{
-			// Transition back TRANSFER_SRC_OPTIMAL -> COLOR_ATTACHMENT_OPTIMAL
 			VulkanUtils::TransitionImageLayout(cmd, m_ColorImages[attachmentIndex],
 				VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
 				VK_ACCESS_2_TRANSFER_READ_BIT, VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
@@ -421,7 +381,7 @@ namespace Waffle {
 			};
 			vkBeginCommandBuffer(cmd, &beginInfo);
 
-			// Resume dynamic rendering with LOAD_OP_LOAD to preserve rendered contents
+			// Resume dynamic rendering with LOAD_OP_LOAD to preserve rendered content.
 			std::vector<VkRenderingAttachmentInfo> colorAttachments(m_ColorImages.size());
 			for (size_t i = 0; i < m_ColorImages.size(); i++)
 			{
@@ -467,11 +427,9 @@ namespace Waffle {
 
 			vkCmdBeginRendering(cmd, &renderingInfo);
 			ctx->SetRenderingActive(true);
-			// Layout is still COLOR_ATTACHMENT_OPTIMAL - already tracked above
 		}
 		else
 		{
-			// Transition back TRANSFER_SRC_OPTIMAL -> SHADER_READ_ONLY_OPTIMAL
 			VulkanUtils::TransitionImageLayout(cmd, m_ColorImages[attachmentIndex],
 				VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
 				VK_ACCESS_2_TRANSFER_READ_BIT, VK_ACCESS_2_SHADER_READ_BIT,
@@ -481,7 +439,6 @@ namespace Waffle {
 			ctx->EndSingleTimeCommands(cmd);
 		}
 
-		// Read result from host-mapped staging buffer
 		VmaAllocationInfo allocInfo{};
 		vmaGetAllocationInfo(allocator, stagingAllocation, &allocInfo);
 		int result = *reinterpret_cast<int32_t*>(allocInfo.pMappedData);
@@ -491,9 +448,6 @@ namespace Waffle {
 		return result;
 	}
 
-	// =========================================================================
-	// ClearAttachment
-	// =========================================================================
 	void VulkanFramebuffer::ClearAttachment(uint32_t attachmentIndex, int value)
 	{
 		if (attachmentIndex >= m_ColorImages.size())
@@ -552,9 +506,6 @@ namespace Waffle {
 		}
 	}
 
-	// =========================================================================
-	// GetImGuiAttachmentId
-	// =========================================================================
 	void* VulkanFramebuffer::GetImGuiAttachmentId(uint32_t index) const
 	{
 		WF_CORE_ASSERT(index < m_ColorImageViews.size());
@@ -575,10 +526,6 @@ namespace Waffle {
 		}
 		return (index < m_ColorImGuiDescriptorSets.size()) ? (void*)m_ColorImGuiDescriptorSets[index] : nullptr;
 	}
-
-	// =========================================================================
-	// Private helpers
-	// =========================================================================
 
 	void VulkanFramebuffer::CreateAttachment(uint32_t width, uint32_t height,
 		VkFormat format, VkImageUsageFlags usage,
@@ -658,5 +605,4 @@ namespace Waffle {
 			m_DepthView = VK_NULL_HANDLE;
 		}
 	}
-
-} // namespace Waffle
+}

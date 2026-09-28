@@ -10,16 +10,6 @@
 
 namespace Waffle {
 
-	// -------------------------------------------------------------------------
-	// VulkanUniformBuffer
-	// Host-visible UBO backed by a persistently-mapped VkBuffer.
-	// The buffer is a RING of slices: every SetData writes the next slice and
-	// the consuming shader descriptor sets are UNIFORM_BUFFER_DYNAMIC, bound
-	// with that slice's offset. This keeps multiple passes per frame correct
-	// under deferred execution - without the ring, the GPU would read the
-	// LAST pass's data for every pass (a single host-mapped UBO is written
-	// again before the frame's command buffer ever runs).
-	// -------------------------------------------------------------------------
 	class VulkanUniformBuffer : public UniformBuffer
 	{
 	public:
@@ -47,5 +37,4 @@ namespace Waffle {
 		VkDeviceSize         m_SliceStride    = 0;
 		uint32_t             m_NextSlice      = 0;
 	};
-
-} // namespace Waffle
+}

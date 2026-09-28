@@ -5,9 +5,7 @@
 
 namespace Waffle {
 
-	// =========================================================================
 	// VulkanVertexBuffer
-	// =========================================================================
 
 	VulkanVertexBuffer::VulkanVertexBuffer(uint32_t size)
 		: m_Size(size), m_HostVisible(true)
@@ -16,9 +14,6 @@ namespace Waffle {
 		auto* ctx = VulkanContext::Get();
 		VmaAllocator allocator = ctx->GetVmaAllocator();
 
-		// Ring of slices: each SetData writes the next slice so earlier
-		// recorded batches in the same frame are never overwritten before
-		// execution (see class comment).
 		m_SliceStride = size;
 
 		// Host-visible (dynamic) buffer - mapped persistently via VMA
@@ -72,8 +67,6 @@ namespace Waffle {
 		auto* ctx = VulkanContext::Get();
 		if (!ctx) return;
 
-		// In-flight frames may still be reading this buffer - free memory
-		// only once the GPU is done (every sibling resource does the same).
 		VkDevice dev = ctx->GetDevice();
 		if (dev != VK_NULL_HANDLE)
 			vkDeviceWaitIdle(dev);
@@ -91,14 +84,10 @@ namespace Waffle {
 	{
 		WF_CORE_ASSERT(m_HostVisible && m_MappedPtr, "SetData called on non-dynamic vertex buffer!");
 		WF_CORE_ASSERT(size <= m_Size, "SetData size exceeds vertex buffer capacity!");
-		// The previous frame (different slot, same shared buffer) may still
-		// be executing on the GPU - wait before overwriting the mapping.
+
 		if (auto* ctx = VulkanContext::Get())
 			ctx->WaitForFrameUploads(ctx->GetCurrentFrameIndex());
 
-		// Advance the ring. A slice is reused only after kSliceCount uploads
-		// (typically several frames apart) - by then every submission that
-		// could still be reading it has completed.
 		uint64_t sliceBase = (uint64_t)m_NextSlice * m_SliceStride;
 		m_NextSlice = (m_NextSlice + 1) % kSliceCount;
 		m_CurrentOffset = sliceBase;
@@ -106,9 +95,7 @@ namespace Waffle {
 		memcpy((uint8_t*)m_MappedPtr + sliceBase, data, size);
 	}
 
-	// =========================================================================
 	// VulkanIndexBuffer
-	// =========================================================================
 
 	VulkanIndexBuffer::VulkanIndexBuffer(uint32_t* indices, uint32_t count)
 		: m_Count(count)
@@ -162,4 +149,4 @@ namespace Waffle {
 	void VulkanIndexBuffer::Bind()   const {}
 	void VulkanIndexBuffer::Unbind() const {}
 
-} // namespace Waffle
+}

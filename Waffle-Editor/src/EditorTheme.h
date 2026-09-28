@@ -1,15 +1,5 @@
 #pragma once
 
-// ===========================================================================
-// EditorTheme - shared design system for editor panels.
-//
-// The global ImGui style (ImGuiLayer::SetDarkThemeColors) already carries
-// the base charcoal + waffle-amber palette; these helpers give panels a
-// consistent vocabulary on top of it: section labels, accent/ghost buttons,
-// toggle chips, info chips and empty states. Use them instead of ad-hoc
-// colors so the whole editor keeps one voice.
-// ===========================================================================
-
 #include <imgui/imgui.h>
 #include <string>
 
@@ -152,4 +142,4 @@ namespace Waffle::UI {
 		ImGui::TextColored(Theme::TextFaint, "%s", line2);
 	}
 
-} // namespace Waffle::UI
+}

@@ -11,12 +11,7 @@
 
 namespace Waffle {
 
-	// -------------------------------------------------------------------------
 	// VulkanFramebuffer
-	// Off-screen render target using Vulkan dynamic rendering.
-	// Owns VkImage/VkImageView for each attachment (color + depth).
-	// Bind() begins dynamic rendering; Unbind() ends it.
-	// -------------------------------------------------------------------------
 	class VulkanFramebuffer : public Framebuffer
 	{
 	public:
@@ -29,9 +24,6 @@ namespace Waffle {
 
 		void Invalidate();
 
-		// Whether Begin (Bind) clears the color attachments (LOAD_OP_CLEAR)
-		// or preserves their content (LOAD_OP_LOAD, e.g. additive bloom
-		// upsampling into existing mips). Reset to true by the framework.
 		void SetClearOnBegin(bool clear) { m_ClearOnBegin = clear; }
 
 		virtual void Bind()   override;
@@ -89,5 +81,4 @@ namespace Waffle {
 		bool m_ClearOnBegin = true;
 		bool m_IsRendering = false;
 	};
-
-} // namespace Waffle
+}

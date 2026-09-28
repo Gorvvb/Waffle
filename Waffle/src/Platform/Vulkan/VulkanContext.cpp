@@ -18,11 +18,9 @@
 
 namespace Waffle {
 
-	// -----------------------------------------------------------------------
 	// Fatal initialization failure. Dist builds have no console and asserts
 	// compile out, so surface the reason in a message box and exit cleanly -
 	// a silent white-screen crash is impossible to diagnose remotely.
-	// -----------------------------------------------------------------------
 	static void FailGracefully(const char* title, const char* message)
 	{
 		WF_CORE_CRITICAL("{0}: {1}", title, message);
@@ -30,14 +28,10 @@ namespace Waffle {
 		::ExitProcess(1);
 	}
 
-	// -----------------------------------------------------------------------
 	// Static instance
-	// -----------------------------------------------------------------------
 	VulkanContext* VulkanContext::s_Instance = nullptr;
 
-	// -----------------------------------------------------------------------
 	// Validation layers
-	// -----------------------------------------------------------------------
 	static const std::vector<const char*> s_ValidationLayers = {
 		"VK_LAYER_KHRONOS_validation"
 	};
@@ -54,9 +48,7 @@ namespace Waffle {
 	static constexpr bool s_EnableValidation = false;
 #endif
 
-	// -----------------------------------------------------------------------
 	// Debug messenger callback
-	// -----------------------------------------------------------------------
 	static VKAPI_ATTR VkBool32 VKAPI_CALL VulkanDebugCallback(
 		VkDebugUtilsMessageSeverityFlagBitsEXT      severity,
 		VkDebugUtilsMessageTypeFlagsEXT             /*type*/,
@@ -100,9 +92,7 @@ namespace Waffle {
 			func(instance, debugMessenger, pAllocator);
 	}
 
-	// -----------------------------------------------------------------------
 	// Constructor / Destructor
-	// -----------------------------------------------------------------------
 	VulkanContext::VulkanContext(GLFWwindow* windowHandle)
 		: m_WindowHandle(windowHandle)
 	{
@@ -164,9 +154,7 @@ namespace Waffle {
 		s_Instance = nullptr;
 	}
 
-	// -----------------------------------------------------------------------
 	// Init
-	// -----------------------------------------------------------------------
 	void VulkanContext::Init()
 	{
 		WF_PROFILE_FUNCTION();
@@ -235,9 +223,7 @@ namespace Waffle {
 		}());
 	}
 
-	// -----------------------------------------------------------------------
 	// SwapBuffers - end frame, submit, present, advance frame index
-	// -----------------------------------------------------------------------
 	void VulkanContext::SwapBuffers()
 	{
 		WF_PROFILE_FUNCTION();
@@ -377,13 +363,6 @@ namespace Waffle {
 			}
 		}
 
-		// Acquire next swap-chain image, recreating the swapchain until
-		// acquisition succeeds. Recreating invalidates the old image list, so
-		// m_CurrentImageIndex must never be carried across a recreation, and
-		// the frame's command buffer must ALWAYS be reset + begun afterwards -
-		// previously an early return on OUT_OF_DATE skipped the vkBegin, and
-		// the next frame recorded into a non-recording command buffer with a
-		// stale image index.
 		VkResult acquireResult;
 		do
 		{
@@ -396,10 +375,6 @@ namespace Waffle {
 				if (!RecreateSwapChain())
 					break; // window closing while minimised - stop acquiring
 
-				// The spec allows the semaphore to have been signaled even
-				// though acquisition returned OUT_OF_DATE. RecreateSwapChain
-				// waited for the device, so it is safe to replace the
-				// semaphore with a fresh, unsignaled one before retrying.
 				VkSemaphore oldSem = m_Frames[m_CurrentFrameIndex].ImageAvailableSemaphore;
 				VkSemaphoreCreateInfo sci{ VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO, nullptr, 0 };
 				VkSemaphore newSem = VK_NULL_HANDLE;
@@ -416,9 +391,6 @@ namespace Waffle {
 			}
 		} while (acquireResult == VK_ERROR_OUT_OF_DATE_KHR);
 
-		// Begin the next command buffer. This runs even when acquisition was
-		// aborted: a later frame must never record into a command buffer that
-		// was never begun.
 		vkResetCommandPool(m_Device, m_Frames[m_CurrentFrameIndex].CommandPool, 0);
 		VkCommandBufferBeginInfo beginInfo
 		{
@@ -428,16 +400,10 @@ namespace Waffle {
 		VkResult beginCmdRes = vkBeginCommandBuffer(m_Frames[m_CurrentFrameIndex].CommandBuffer, &beginInfo);
 		WF_CORE_ASSERT(beginCmdRes == VK_SUCCESS, "Failed to begin command buffer!");
 
-		// A newly acquired image carries no presented content - the FIRST
-		// BeginSwapChainRendering of the frame clears it. Re-begins within the
-		// frame (the runtime's empty ImGui pass after the game's present pass)
-		// must PRESERVE that content.
 		m_SwapchainClearedThisFrame = false;
 	}
 
-	// -----------------------------------------------------------------------
 	// Host-write barrier for persistently-mapped buffers
-	// -----------------------------------------------------------------------
 	void VulkanContext::WaitForFrameUploads(uint32_t targetFrameIndex)
 	{
 		if (m_Device == VK_NULL_HANDLE || m_TimelineSemaphore == VK_NULL_HANDLE)
@@ -467,19 +433,13 @@ namespace Waffle {
 		}
 	}
 
-	// -----------------------------------------------------------------------
 	// Dynamic rendering helpers
-	// -----------------------------------------------------------------------
 	void VulkanContext::BeginSwapChainRendering(VkClearColorValue clearColor,
 		VkClearDepthStencilValue clearDepth)
 	{
 		SetActiveRenderingFormats({ m_SwapChainImageFormat }, m_DepthFormat);
 		VkCommandBuffer cmd = GetCurrentCommandBuffer();
 
-		// Transition the swap-chain image to the color-attachment layout - only
-		// from UNDEFINED. A re-begin within the same frame (the runtime's empty
-		// ImGui pass after the game's present pass) must NOT discard the
-		// already-presented content.
 		if (!m_SwapchainImageInColor)
 		{
 			VulkanUtils::TransitionImageLayout(cmd,
@@ -560,9 +520,7 @@ namespace Waffle {
 		m_IsRenderingActive = false;
 	}
 
-	// -----------------------------------------------------------------------
 	// Descriptor-set slot management
-	// -----------------------------------------------------------------------
 	void VulkanContext::BindDescriptorSet(uint32_t set, VkDescriptorSet descriptorSet)
 	{
 		if (set >= m_BoundDescriptorSets.size())
@@ -576,9 +534,7 @@ namespace Waffle {
 		m_PendingDescriptorSetFrees.push_back({ set, m_CurrentFrameIndex });
 	}
 
-	// -----------------------------------------------------------------------
 	// Utilities
-	// -----------------------------------------------------------------------
 	VkCommandBuffer VulkanContext::GetCurrentCommandBuffer() const
 	{
 		return m_Frames[m_CurrentFrameIndex].CommandBuffer;
@@ -660,9 +616,7 @@ namespace Waffle {
 		EndSingleTimeCommands(cmd);
 	}
 
-	// =======================================================================
 	// Private init functions
-	// =======================================================================
 
 	void VulkanContext::CreateInstance()
 	{
@@ -673,8 +627,6 @@ namespace Waffle {
 				"graphics driver (it must support Vulkan 1.3) and try again.");
 		}
 
-		// Report what the installed loader supports - an old driver here is
-		// the most common reason a machine cannot run the engine (1.3+ required).
 		uint32_t instanceVersion = 0;
 		if (vkEnumerateInstanceVersion(&instanceVersion) != VK_SUCCESS)
 			instanceVersion = VK_API_VERSION_1_0;
@@ -824,9 +776,6 @@ namespace Waffle {
 			queueCreateInfos.push_back(queueInfo);
 		}
 
-		// Vulkan 1.3 feature chain using C++20 designated initializers.
-		// Nothing 1.4-specific is requested, so no Vulkan14Features struct is
-		// in the chain - a 1.3-capable device (most laptops) is sufficient.
 		VkPhysicalDeviceVulkan13Features features13
 		{
 			.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES,
@@ -1072,11 +1021,13 @@ namespace Waffle {
 			.semaphoreType = VK_SEMAPHORE_TYPE_TIMELINE,
 			.initialValue = m_FramesInFlight
 		};
+
 		VkSemaphoreCreateInfo timelineCreateInfo
 		{
 			.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO,
 			.pNext = &semaphoreTypeInfo
 		};
+
 		VkResult tsRes = vkCreateSemaphore(m_Device, &timelineCreateInfo, nullptr, &m_TimelineSemaphore);
 		WF_CORE_ASSERT(tsRes == VK_SUCCESS, "Failed to create timeline semaphore!");
 
@@ -1091,48 +1042,38 @@ namespace Waffle {
 		{
 			VkResult s1 = vkCreateSemaphore(m_Device, &semaphoreInfo, nullptr, &frame.ImageAvailableSemaphore);
 			VkResult f1 = vkCreateFence(m_Device, &fenceInfo, nullptr, &frame.InFlightFence);
-			WF_CORE_ASSERT(s1 == VK_SUCCESS && f1 == VK_SUCCESS,
-				"Failed to create Vulkan sync objects!");
+			WF_CORE_ASSERT(s1 == VK_SUCCESS && f1 == VK_SUCCESS, "Failed to create Vulkan sync objects!");
 		}
-	
-		// One render-finished semaphore per swapchain IMAGE: present(image i)
-		// waits it, so it may only be re-signaled after image i was re-acquired.
-		// Per-frame-slot semaphores get re-signaled while their previous
-		// presentation may still be pending (validation VUID-03868).
+
 		CreateSwapchainRenderFinishedSemaphores();
-		}
+	}
 	
-		void VulkanContext::CreateSwapchainRenderFinishedSemaphores()
+	void VulkanContext::CreateSwapchainRenderFinishedSemaphores()
+	{
+		VkSemaphoreCreateInfo semaphoreInfo{ .sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO };
+		m_SwapchainRenderFinished.assign(m_SwapChainImages.size(), VK_NULL_HANDLE);
+		for (auto& semaphore : m_SwapchainRenderFinished)
 		{
-			VkSemaphoreCreateInfo semaphoreInfo{ .sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO };
-			m_SwapchainRenderFinished.assign(m_SwapChainImages.size(), VK_NULL_HANDLE);
-			for (auto& semaphore : m_SwapchainRenderFinished)
-			{
-				VkResult r = vkCreateSemaphore(m_Device, &semaphoreInfo, nullptr, &semaphore);
-				WF_CORE_ASSERT(r == VK_SUCCESS, "Failed to create render-finished semaphore!");
-			}
+			VkResult r = vkCreateSemaphore(m_Device, &semaphoreInfo, nullptr, &semaphore);
+			WF_CORE_ASSERT(r == VK_SUCCESS, "Failed to create render-finished semaphore!");
 		}
+	}
 	
-		void VulkanContext::DestroySwapchainRenderFinishedSemaphores()
+	void VulkanContext::DestroySwapchainRenderFinishedSemaphores()
+	{
+		for (auto& semaphore : m_SwapchainRenderFinished)
 		{
-			for (auto& semaphore : m_SwapchainRenderFinished)
-			{
-				if (semaphore != VK_NULL_HANDLE)
-					vkDestroySemaphore(m_Device, semaphore, nullptr);
-			}
-			m_SwapchainRenderFinished.clear();
+			if (semaphore != VK_NULL_HANDLE)
+				vkDestroySemaphore(m_Device, semaphore, nullptr);
 		}
+		m_SwapchainRenderFinished.clear();
+	}
 
 	void VulkanContext::CreateDescriptorPool()
 	{
-		// Large general-purpose pool. Descriptor sets are allocated per bind
-		// (BindAndFlushDescriptors) and freed two frames later via the
-		// deferred queue, so live sets = draws/frame x framesInFlight; the
-		// quad shader alone consumes 32 sampler descriptors per set.
 		std::vector<VkDescriptorPoolSize> poolSizes = {
 			{ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,          8192 },
-			// Shader-owned UBO descriptors are dynamic (per-pass ring slices
-			// inside one buffer) - see VulkanUniformBuffer.
+			// Shader-owned UBO descriptors are dynamic (per-pass ring slices inside one buffer) - see VulkanUniformBuffer.
 			{ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC,  16384 },
 			{ VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,  65536 },
 			{ VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,           8192 },
@@ -1157,9 +1098,7 @@ namespace Waffle {
 		}
 	}
 
-	// -----------------------------------------------------------------------
 	// Swap chain recreation
-	// -----------------------------------------------------------------------
 	void VulkanContext::CleanupSwapChain()
 	{
 		for (auto view : m_SwapChainImageViews)
@@ -1169,17 +1108,14 @@ namespace Waffle {
 		DestroySwapchainRenderFinishedSemaphores();
 
 		vkDestroySwapchainKHR(m_Device, m_SwapChain, nullptr);
-		// Null the handle: a failed re-creation must not leave a stale
-		// (destroyed) swapchain that later code still submits to.
+		// Null the handle: a failed re-creation must not leave a stale (destroyed) swapchain that later code still submits to.
 		m_SwapChain = VK_NULL_HANDLE;
 		m_SwapChainImages.clear();
 	}
 
 	bool VulkanContext::RecreateSwapChain()
 	{
-		// Wait for the window to have a valid size (minimised case). Block on
-		// events rather than spinning, and bail out when the window is closing
-		// so shutting down while minimised can't hang here forever.
+		// Wait for the window to have a valid size (minimised case). Block on events rather than spinning, and bail out when the window is closing, so shutting down while minimised can't hang here forever.
 		int width = 0, height = 0;
 		glfwGetFramebufferSize(m_WindowHandle, &width, &height);
 		while (width == 0 || height == 0)
@@ -1224,15 +1160,9 @@ namespace Waffle {
 		return true;
 	}
 
-	// -----------------------------------------------------------------------
 	// Helper queries
-	// -----------------------------------------------------------------------
 	bool VulkanContext::IsDeviceSuitable(VkPhysicalDevice device) const
 	{
-		// The engine requires Vulkan 1.3 (dynamic rendering, synchronization2,
-		// timeline semaphores). Nothing 1.4-specific is used - demanding 1.4
-		// here rejected perfectly capable laptops, whose drivers commonly
-		// report exactly 1.3.
 		VkPhysicalDeviceProperties props;
 		vkGetPhysicalDeviceProperties(device, &props);
 		uint32_t deviceMajor = VK_API_VERSION_MAJOR(props.apiVersion);
@@ -1394,4 +1324,4 @@ namespace Waffle {
 		return extent;
 	}
 
-} // namespace Waffle
+}

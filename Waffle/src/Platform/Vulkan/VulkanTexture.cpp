@@ -11,10 +11,7 @@
 
 namespace Waffle {
 
-	// =========================================================================
 	// Constructors
-	// =========================================================================
-
 	VulkanTexture2D::VulkanTexture2D(uint32_t width, uint32_t height, TextureFilter filter)
 		: m_Width(width), m_Height(height), m_Channels(4)
 	{
@@ -112,9 +109,7 @@ namespace Waffle {
 		m_Allocation = VK_NULL_HANDLE;
 	}
 
-	// =========================================================================
 	// SetData
-	// =========================================================================
 	void VulkanTexture2D::SetData(void* data, uint32_t size)
 	{
 		WF_PROFILE_FUNCTION();
@@ -165,9 +160,7 @@ namespace Waffle {
 		vmaDestroyBuffer(allocator, stagingBuffer, stagingAllocation);
 	}
 
-	// =========================================================================
 	// Bind
-	// =========================================================================
 	void VulkanTexture2D::Bind(uint32_t slot) const
 	{
 		WF_PROFILE_FUNCTION();
@@ -227,10 +220,7 @@ namespace Waffle {
 		return otherVK && m_Image == otherVK->m_Image;
 	}
 
-	// =========================================================================
 	// Private helpers
-	// =========================================================================
-
 	void VulkanTexture2D::CreateTextureFromData(void* data, uint32_t width, uint32_t height, uint32_t channels)
 	{
 		auto* ctx = VulkanContext::Get();
@@ -338,5 +328,4 @@ namespace Waffle {
 				m_Sampler, m_ImageView, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 		}
 	}
-
-} // namespace Waffle
+}

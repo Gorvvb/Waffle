@@ -14,14 +14,6 @@
 
 namespace Waffle {
 
-	// -------------------------------------------------------------------------
-	// VulkanShader
-	// Loads GLSL source, compiles to Vulkan SPIR-V via shaderc (same cache
-	// pattern as OpenGLShader), creates VkShaderModules, reflects SPIR-V to
-	// discover push-constant ranges and descriptor-set layouts, and creates a
-	// VkPipelineLayout.  Graphics pipelines are created lazily and cached by
-	// the renderer API keyed on the bound vertex input description.
-	// -------------------------------------------------------------------------
 	class VulkanShader : public Shader
 	{
 	public:
@@ -38,7 +30,7 @@ namespace Waffle {
 		virtual void Bind()   const override;
 		virtual void Unbind() const override;
 
-		// ---- Uniform setters (implemented via push constants) ---------------
+		// Uniform setters (implemented via push constants)
 		virtual void SetInt(const std::string& name, int value) override;
 		virtual void SetIntArray(const std::string& name, int* values, uint32_t count) override;
 		virtual void SetFloat(const std::string& name, float value) override;
@@ -50,7 +42,7 @@ namespace Waffle {
 
 		virtual const std::string& GetName() const override { return m_Name; }
 
-		// ---- Vulkan-specific accessors (used by VulkanRendererAPI) ----------
+		// Vulkan-specific accessors (used by VulkanRendererAPI)
 		VkPipelineLayout GetPipelineLayout() const { return m_PipelineLayout; }
 
 		// Returns (or creates) a VkPipeline for the given vertex-array input
@@ -76,7 +68,7 @@ namespace Waffle {
 		uint32_t GetDescriptorSetLayoutCount() const { return (uint32_t)m_DescriptorSetLayouts.size(); }
 
 	private:
-		// ---- Compilation ---------------------------------------------------
+		// Compilation
 		void CompileOrGetVulkanSPIRV(const std::unordered_map<uint32_t, std::string>& sources);
 		void CreateShaderModules();
 		void ReflectAndCreateLayout();
@@ -89,10 +81,10 @@ namespace Waffle {
 		static void        EnsureCacheDirectoryExists();
 		static const char* StageToVulkanCacheExtension(uint32_t glStage);
 
-		// ---- Push-constant helpers -----------------------------------------
+		// Push-constant helpers
 		void WritePushConstant(const std::string& name, const void* data, uint32_t size);
 
-		// ---- Pipeline key --------------------------------------------------
+		// Pipeline key
 		struct PipelineKey
 		{
 			std::vector<VkVertexInputBindingDescription>   Bindings;
@@ -135,10 +127,6 @@ namespace Waffle {
 		};
 		std::vector<ReflectedDescriptor> m_ReflectedDescriptors;
 
-		// NOTE: descriptor sets are allocated fresh per bind in
-		// BindAndFlushDescriptors and freed through the context's deferred
-		// queue - see the comment there for why (update-while-bound).
-
 		// Push constant info (reflected)
 		struct PushConstantMember {
 			uint32_t offset;
@@ -151,5 +139,4 @@ namespace Waffle {
 		// Cached pipelines (lazy, keyed by vertex input + topology)
 		std::unordered_map<PipelineKey, VkPipeline, PipelineKeyHash> m_Pipelines;
 	};
-
-} // namespace Waffle
+}
