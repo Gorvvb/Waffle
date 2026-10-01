@@ -40,7 +40,7 @@ namespace Waffle {
 		friend class Entity;
 		friend class SceneHierarchyPanel;
 		friend class SceneSerializer;
-		friend class LuaScriptEngine;
+		friend class CSharpScriptEngine;
 	public:
 		Scene();
 		~Scene();
@@ -78,7 +78,7 @@ namespace Waffle {
 
 		void SetGravity(float g) { m_GravityY = g; }
 
-		// Show/hide an entity (DisabledComponent - same state Lua SetActive
+		// Show/hide an entity (DisabledComponent - same state script SetActive
 		// uses). Hidden entities skip rendering, scripts, physics and camera
 		// selection, in the editor and at runtime.
 		void SetEntityHidden(Entity entity, bool hidden);

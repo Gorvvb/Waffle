@@ -1,6 +1,6 @@
 #include "wfpch.h"
 #include "SceneSerializer.h"
-#include "Waffle/Scripting/LuaScriptEngine.h"
+#include "Waffle/Scripting/CSharpScriptEngine.h"
 #include "Waffle/Core/VFS.h"
 
 #include "Entity.h"
@@ -460,7 +460,7 @@ namespace Waffle {
 			{
 				// sc.Fields is an unordered_map - emit in sorted key order so
 				// the file is deterministic across loads and machines.
-				std::vector<const std::pair<const std::string, std::vector<LuaField>>*> sortedFields;
+				std::vector<const std::pair<const std::string, std::vector<ScriptField>>*> sortedFields;
 				sortedFields.reserve(sc.Fields.size());
 				for (const auto& entry : sc.Fields)
 					sortedFields.push_back(&entry);
@@ -479,10 +479,11 @@ namespace Waffle {
 						out << YAML::Key << "UserModified" << YAML::Value << field.UserModified;
 						switch (field.Type)
 						{
-						case LuaFieldType::Float:  out << YAML::Key << "Value" << YAML::Value << field.FloatVal;  break;
-						case LuaFieldType::Int:    out << YAML::Key << "Value" << YAML::Value << field.IntVal;    break;
-						case LuaFieldType::Bool:   out << YAML::Key << "Value" << YAML::Value << field.BoolVal;   break;
-						case LuaFieldType::String: out << YAML::Key << "Value" << YAML::Value << field.StringVal; break;
+						case ScriptFieldType::Float:  out << YAML::Key << "Value" << YAML::Value << field.FloatVal;  break;
+						case ScriptFieldType::Int:    out << YAML::Key << "Value" << YAML::Value << field.IntVal;    break;
+						case ScriptFieldType::Bool:   out << YAML::Key << "Value" << YAML::Value << field.BoolVal;   break;
+						case ScriptFieldType::String: out << YAML::Key << "Value" << YAML::Value << field.StringVal; break;
+						case ScriptFieldType::Vec2:   out << YAML::Key << "Value" << YAML::Value << field.FloatVal << YAML::Key << "Value2" << YAML::Value << field.FloatVal2; break;
 						}
 						out << YAML::EndMap;
 					}
@@ -774,17 +775,18 @@ namespace Waffle {
 					{
 						for (auto fieldNode : publicFields)
 						{
-							LuaField field;
+							ScriptField field;
 							std::string scriptPath = fieldNode["Script"].as<std::string>();
 							field.Name = fieldNode["Name"].as<std::string>();
-							field.Type = (LuaFieldType)fieldNode["Type"].as<int>();
+							field.Type = (ScriptFieldType)fieldNode["Type"].as<int>();
 							field.UserModified = fieldNode["UserModified"] ? fieldNode["UserModified"].as<bool>() : false;
 							switch (field.Type)
 							{
-							case LuaFieldType::Float:  field.FloatVal = fieldNode["Value"].as<float>();       break;
-							case LuaFieldType::Int:    field.IntVal = fieldNode["Value"].as<int>();         break;
-							case LuaFieldType::Bool:   field.BoolVal = fieldNode["Value"].as<bool>();        break;
-							case LuaFieldType::String: field.StringVal = fieldNode["Value"].as<std::string>(); break;
+							case ScriptFieldType::Float:  field.FloatVal = fieldNode["Value"].as<float>();       break;
+							case ScriptFieldType::Int:    field.IntVal = fieldNode["Value"].as<int>();         break;
+							case ScriptFieldType::Bool:   field.BoolVal = fieldNode["Value"].as<bool>();        break;
+							case ScriptFieldType::String: field.StringVal = fieldNode["Value"].as<std::string>(); break;
+							case ScriptFieldType::Vec2:   field.FloatVal = fieldNode["Value"].as<float>(); field.FloatVal2 = fieldNode["Value2"].as<float>(); break;
 							}
 							sc.Fields[scriptPath].push_back(field);
 						}
@@ -809,7 +811,7 @@ namespace Waffle {
 							}
 
 							if (std::filesystem::exists(fullPath))
-								LuaScriptEngine::ScrapeFieldsFromScript(fullPath, scriptPath, sc);
+								CSharpScriptEngine::ScrapeFieldsFromScript(fullPath, scriptPath, sc);
 						}
 				}
 
@@ -1637,17 +1639,18 @@ namespace Waffle {
 			{
 				for (auto fieldNode : publicFields)
 				{
-					LuaField field;
+					ScriptField field;
 					std::string scriptPath = fieldNode["Script"].as<std::string>();
 					field.Name = fieldNode["Name"].as<std::string>();
-					field.Type = (LuaFieldType)fieldNode["Type"].as<int>();
+					field.Type = (ScriptFieldType)fieldNode["Type"].as<int>();
 					field.UserModified = fieldNode["UserModified"] ? fieldNode["UserModified"].as<bool>() : false;
 					switch (field.Type)
 					{
-					case LuaFieldType::Float:  field.FloatVal = fieldNode["Value"].as<float>();       break;
-					case LuaFieldType::Int:    field.IntVal = fieldNode["Value"].as<int>();         break;
-					case LuaFieldType::Bool:   field.BoolVal = fieldNode["Value"].as<bool>();        break;
-					case LuaFieldType::String: field.StringVal = fieldNode["Value"].as<std::string>(); break;
+					case ScriptFieldType::Float:  field.FloatVal = fieldNode["Value"].as<float>();       break;
+					case ScriptFieldType::Int:    field.IntVal = fieldNode["Value"].as<int>();         break;
+					case ScriptFieldType::Bool:   field.BoolVal = fieldNode["Value"].as<bool>();        break;
+					case ScriptFieldType::String: field.StringVal = fieldNode["Value"].as<std::string>(); break;
+							case ScriptFieldType::Vec2:   field.FloatVal = fieldNode["Value"].as<float>(); field.FloatVal2 = fieldNode["Value2"].as<float>(); break;
 					}
 					sc.Fields[scriptPath].push_back(field);
 				}

@@ -84,6 +84,34 @@ if "!SHADERC_COPIED!"=="0" (
 )
 
 echo.
+echo [5b/7] Deploying embedded .NET runtime for C# scripting...
+set SCRIPTING_SRC=%ROOT_DIR%in\ScriptingRuntime
+if not exist "%SCRIPTING_SRC%\Waffle.Scripting.dll" (
+    echo        Building scripting assemblies...
+    python "%ROOT_DIR%\Scripts\BuildScripting.py"
+)
+if exist "%SCRIPTING_SRC%\Waffle.Scripting.dll" (
+    xcopy /E /I /Y "%SCRIPTING_SRC%" "%DIST_DIR%\Waffle-Editor\ScriptingRuntime" >nul
+    xcopy /E /I /Y "%SCRIPTING_SRC%" "%DIST_DIR%\Waffle-Runtime\ScriptingRuntime" >nul
+    set "DOTNET_DIR=%ProgramFiles%\dotnet"
+    if defined DOTNET_ROOT set "DOTNET_DIR=%DOTNET_ROOT%"
+    for /f "usebackq delims=" %%V in (`powershell -NoProfile -Command "(Get-ChildItem -LiteralPath '%DOTNET_DIR%\hostxr' -Directory | Sort-Object {[version]$_.Name} | Select-Object -Last 1).Name"`) do set FXR_VER=%%V
+    for /f "usebackq delims=" %%V in (`powershell -NoProfile -Command "(Get-ChildItem -LiteralPath '%DOTNET_DIR%\shared\Microsoft.NETCore.App' -Directory | Sort-Object {[version]$_.Name} | Select-Object -Last 1).Name"`) do set SHARED_VER=%%V
+    if defined FXR_VER (
+        xcopy /E /I /Y "%DOTNET_DIR%\hostxr\%FXR_VER%" "%DIST_DIR%\Waffle-Editor\hostxr\%FXR_VER%" >nul
+        xcopy /E /I /Y "%DOTNET_DIR%\hostxr\%FXR_VER%" "%DIST_DIR%\Waffle-Runtime\hostxr\%FXR_VER%" >nul
+        echo [OK] host fxr %FXR_VER% deployed
+    )
+    if defined SHARED_VER (
+        xcopy /E /I /Y "%DOTNET_DIR%\shared\Microsoft.NETCore.App\%SHARED_VER%" "%DIST_DIR%\Waffle-Editor\shared\Microsoft.NETCore.App\%SHARED_VER%" >nul
+        xcopy /E /I /Y "%DOTNET_DIR%\shared\Microsoft.NETCore.App\%SHARED_VER%" "%DIST_DIR%\Waffle-Runtime\shared\Microsoft.NETCore.App\%SHARED_VER%" >nul
+        echo [OK] .NET runtime %SHARED_VER% deployed
+    )
+) else (
+    echo [WARN] ScriptingRuntime not found and could not be built - C# scripting unavailable in this package.
+)
+
+echo.
 echo [6/7] Deploying Assets, Resources, Projects and Waffle Hub Shortcut...
 if exist "Waffle-Editor\Assets" (
     xcopy /E /I /Y "Waffle-Editor\Assets" "%DIST_DIR%\Waffle-Editor\Assets" >nul

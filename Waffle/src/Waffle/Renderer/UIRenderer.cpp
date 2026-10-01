@@ -5,7 +5,7 @@
 #include "Waffle/Scene/Entity.h"
 #include "Waffle/Renderer/Renderer2D.h"
 #include "Waffle/Renderer/Camera.h"
-#include "Waffle/Scripting/LuaScriptEngine.h"
+#include "Waffle/Scripting/CSharpScriptEngine.h"
 #include "Waffle/Core/Input.h"
 
 #include <glm/gtc/matrix_transform.hpp>
@@ -326,12 +326,12 @@ namespace Waffle {
 			return;
 
 		glm::vec2 mouse = Input::GetMousePosition(); // window-relative, Y down
-		glm::vec2 origin = LuaScriptEngine::HasGameViewport()
-			? LuaScriptEngine::GetGameViewportOrigin() : glm::vec2(0.0f);
+		glm::vec2 origin = CSharpScriptEngine::HasGameViewport()
+			? CSharpScriptEngine::GetGameViewportOrigin() : glm::vec2(0.0f);
 		glm::vec2 viewportMouse = mouse - origin;
 		glm::vec2 canvasMouse = (viewportMouse - layout.Offset) / layout.Scale;
 
-		bool blocked = LuaScriptEngine::IsGameplayMouseBlocked();
+		bool blocked = CSharpScriptEngine::IsGameplayMouseBlocked();
 		bool clicked = !blocked && Input::IsMouseButtonPressed(Mouse::ButtonLeft);
 
 		std::unordered_map<uint32_t, UIRect> cache;
@@ -355,7 +355,7 @@ namespace Waffle {
 			{
 				hoverConsumed = true;
 				if (clicked && !button.OnClick.empty())
-					LuaScriptEngine::CallUIHandler(button.OnClick, (uint32_t)(entt::entity)entity);
+					CSharpScriptEngine::CallUIHandler(button.OnClick, (uint32_t)(entt::entity)entity);
 			}
 		}
 	}

@@ -19,7 +19,7 @@ namespace Waffle {
 		static void RenderUI(Scene* scene);
 
 		// Runtime-only: updates button hover/press state and dispatches the
-		// OnClick Lua handler of the topmost button under the mouse.
+		// OnClick script handler of the topmost button under the mouse.
 		static void UpdateUIInteraction(Scene* scene);
 
 		// UI-pixels-per-screen-pixel of the last rendered frame; the editor

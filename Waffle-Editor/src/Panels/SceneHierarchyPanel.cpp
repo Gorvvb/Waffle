@@ -4,7 +4,7 @@
 #include "Waffle/Scene/SceneSerializer.h"
 #include "Waffle/Utils/PlatformUtils.h"
 
-#include "Waffle/Scripting/LuaScriptEngine.h"
+#include "Waffle/Scripting/CSharpScriptEngine.h"
 
 #include "../EditorTheme.h"
 
@@ -326,7 +326,7 @@ namespace Waffle {
 					auto& src = entity.GetComponent<SpriteRendererComponent>();
 					src.Texture = Texture2D::Create(path.string(), src.FilterMode);
 				}
-				else if (ext == ".lua")
+				else if (ext == ".cs")
 				{
 					if (!entity.HasComponent<ScriptComponent>())
 						entity.AddComponent<ScriptComponent>();
@@ -338,7 +338,7 @@ namespace Waffle {
 					sc.ScriptPaths.push_back(relStr);
 
 					// Scrape fields so they appear immediately without reload
-					LuaScriptEngine::ScrapeFieldsFromScript(fullPath, relStr, sc);
+					CSharpScriptEngine::ScrapeFieldsFromScript(fullPath, relStr, sc);
 				}
 				else if (ext == ".prefab")
 				{
@@ -726,27 +726,27 @@ namespace Waffle {
 					component.ScriptPaths.push_back("");
 				}
 
-				// Gather all .lua files for the dropdown from a CACHE -
+				// Gather all .cs files for the dropdown from a CACHE -
 				// this ran a full recursive asset-tree walk per scripted
 				// entity PER FRAME. Refresh every 2 seconds.
-				static std::vector<std::filesystem::path> s_LuaFileCache;
-				static float s_LuaFileCacheAge = 1e9f;
-				s_LuaFileCacheAge += ImGui::GetIO().DeltaTime;
-				if (s_LuaFileCacheAge >= 2.0f && std::filesystem::exists(g_AssetPath))
+				static std::vector<std::filesystem::path> s_ScriptFileCache;
+				static float s_ScriptFileCacheAge = 1e9f;
+				s_ScriptFileCacheAge += ImGui::GetIO().DeltaTime;
+				if (s_ScriptFileCacheAge >= 2.0f && std::filesystem::exists(g_AssetPath))
 				{
-					s_LuaFileCacheAge = 0.0f;
-					s_LuaFileCache.clear();
+					s_ScriptFileCacheAge = 0.0f;
+					s_ScriptFileCache.clear();
 					std::error_code itEc;
 					for (auto& entry : std::filesystem::recursive_directory_iterator(g_AssetPath, itEc))
 					{
 						if (itEc) break;
-						if (entry.is_regular_file(itEc) && entry.path().extension() == ".lua")
+						if (entry.is_regular_file(itEc) && entry.path().extension() == ".cs")
 						{
-							s_LuaFileCache.push_back(std::filesystem::relative(entry.path(), g_AssetPath));
+							s_ScriptFileCache.push_back(std::filesystem::relative(entry.path(), g_AssetPath));
 						}
 					}
 				}
-				const std::vector<std::filesystem::path>& luaFiles = s_LuaFileCache;
+				const std::vector<std::filesystem::path>& luaFiles = s_ScriptFileCache;
 
 				for (size_t i = 0; i < component.ScriptPaths.size(); i++)
 				{
@@ -754,7 +754,7 @@ namespace Waffle {
 					std::string label = "##Script" + std::to_string(i + 1);
 
 					std::string currentScript = component.ScriptPaths[i];
-					std::string filenameOnly = currentScript.empty() ? "None (Select .lua Script)" : std::filesystem::path(currentScript).filename().string();
+					std::string filenameOnly = currentScript.empty() ? "None (Select .cs Script)" : std::filesystem::path(currentScript).filename().string();
 
 					ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x - 120.0f);
 					if (ImGui::BeginCombo(label.c_str(), filenameOnly.c_str()))
@@ -779,7 +779,7 @@ namespace Waffle {
 
 								// Scrape fields immediately so they show in the inspector before Play
 								std::filesystem::path fullPath = std::filesystem::path(g_AssetPath) / fileStr;
-								LuaScriptEngine::ScrapeFieldsFromScript(fullPath, fileStr, component);
+								CSharpScriptEngine::ScrapeFieldsFromScript(fullPath, fileStr, component);
 							}
 							if (isSelected)
 								ImGui::SetItemDefaultFocus();
@@ -798,7 +798,7 @@ namespace Waffle {
 						{
 							const wchar_t* pathStr = (const wchar_t*)payload->Data;
 							std::filesystem::path path(pathStr); // relative to the asset root
-							if (path.extension() == ".lua")
+							if (path.extension() == ".cs")
 							{
 								// Keep the full asset-relative path - filename alone breaks scripts in subfolders
 								std::string relStr = path.string();
@@ -808,7 +808,7 @@ namespace Waffle {
 
 								// Scrape fields immediately so they show in the inspector before Play
 								std::filesystem::path fullPath = std::filesystem::path(g_AssetPath) / path;
-								LuaScriptEngine::ScrapeFieldsFromScript(fullPath, relStr, component);
+								CSharpScriptEngine::ScrapeFieldsFromScript(fullPath, relStr, component);
 							}
 						}
 
@@ -869,36 +869,74 @@ namespace Waffle {
 					ImGui::TextDisabled("%s", stem.c_str());
 					ImGui::Spacing();
 
+					// Live instance handle while playing (ScriptHandles is
+					// index-aligned with ScriptPaths).
+					int scriptIndex = (int)(std::find(component.ScriptPaths.begin(),
+						component.ScriptPaths.end(), scriptPath) - component.ScriptPaths.begin());
+					if (scriptIndex >= (int)component.ScriptPaths.size())
+						scriptIndex = -1;
+					int playHandle = -1;
+					if (CSharpScriptEngine::IsRuntimeRunning() && scriptIndex >= 0 && scriptIndex < (int)component.ScriptHandles.size())
+						playHandle = component.ScriptHandles[scriptIndex];
+
 					for (auto& field : fieldList)
 					{
 						ImGui::PushID((scriptPath + field.Name).c_str());
 
 						ImGui::Columns(2, nullptr, false);
 						ImGui::SetColumnWidth(0, 120.0f);
+
+						// Name cell (with [Tooltip] hint).
 						ImGui::Text("%s", field.Name.c_str());
+						if (!field.Tooltip.empty() && ImGui::IsItemHovered())
+							ImGui::SetTooltip("%s", field.Tooltip.c_str());
 						ImGui::NextColumn();
 						ImGui::SetNextItemWidth(-1);
 
+						// While playing, script-side values win until edited here.
+						ScriptField live;
+						if (playHandle >= 0 && CSharpScriptEngine::GetInstanceFieldValue(playHandle, field, live))
+							field = live;
+
 						switch (field.Type)
 						{
-						case LuaFieldType::Float:
-							ImGui::DragFloat("##v", &field.FloatVal, 0.1f);
+						case ScriptFieldType::Float:
+							if (field.HasRange)
+								ImGui::SliderFloat("##v", &field.FloatVal, field.RangeMin, field.RangeMax);
+							else
+								ImGui::DragFloat("##v", &field.FloatVal, 0.1f);
+							if (ImGui::IsItemEdited() && playHandle >= 0)
+								CSharpScriptEngine::SetInstanceFieldValue(playHandle, field);
 							if (ImGui::IsItemDeactivatedAfterEdit()) field.UserModified = true;
 							break;
-						case LuaFieldType::Int:
+						case ScriptFieldType::Vec2:
+							ImGui::DragFloat2("##v", &field.FloatVal, 0.1f);
+							if (ImGui::IsItemEdited() && playHandle >= 0)
+								CSharpScriptEngine::SetInstanceFieldValue(playHandle, field);
+							if (ImGui::IsItemDeactivatedAfterEdit()) field.UserModified = true;
+							break;
+						case ScriptFieldType::Int:
 							ImGui::DragInt("##v", &field.IntVal);
+							if (ImGui::IsItemEdited() && playHandle >= 0)
+								CSharpScriptEngine::SetInstanceFieldValue(playHandle, field);
 							if (ImGui::IsItemDeactivatedAfterEdit()) field.UserModified = true;
 							break;
-						case LuaFieldType::Bool:
+						case ScriptFieldType::Bool:
 							ImGui::Checkbox("##v", &field.BoolVal);
+							if (ImGui::IsItemEdited() && playHandle >= 0)
+								CSharpScriptEngine::SetInstanceFieldValue(playHandle, field);
 							if (ImGui::IsItemDeactivatedAfterEdit()) field.UserModified = true;
 							break;
-						case LuaFieldType::String:
+						case ScriptFieldType::String:
 						{
 							char buf[256] = {};
 							strncpy_s(buf, field.StringVal.c_str(), sizeof(buf) - 1);
 							if (ImGui::InputText("##v", buf, sizeof(buf)))
+							{
 								field.StringVal = buf;
+								if (playHandle >= 0)
+									CSharpScriptEngine::SetInstanceFieldValue(playHandle, field);
+							}
 							if (ImGui::IsItemDeactivatedAfterEdit()) field.UserModified = true;
 							break;
 						}

@@ -10,6 +10,7 @@
 #include "Waffle/Core/EventQueue.h"
 #include "Waffle/Renderer/Renderer.h"
 #include "Waffle/Core/Log.h"
+#include "Waffle/Scripting/CSharpScriptEngine.h"
 
 #include <GLFW/glfw3.h>
 
@@ -52,6 +53,10 @@ namespace Waffle {
 
 		m_ImGuiLayer = new ImGuiLayer;
 		PushOverlay(m_ImGuiLayer);
+
+		// Boot the .NET scripting runtime (CoreCLR). Failures are logged and
+		// non-fatal - the app runs, just without scripts.
+		CSharpScriptEngine::Init();
 	}
 
 	Application::~Application()
@@ -60,6 +65,8 @@ namespace Waffle {
 
 		// Detach and destroy layers in REVERSE order (top-to-bottom: overlays first down to base layers)
 		m_LayerStack.Clear();
+
+		CSharpScriptEngine::Shutdown();
 
 		Renderer::Shutdown();
 

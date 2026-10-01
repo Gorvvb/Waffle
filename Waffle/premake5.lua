@@ -45,8 +45,8 @@ project "Waffle"
 		"%{Includedir.entt}",
 		"%{Includedir.yaml_cpp}",
 		"%{Includedir.ImGuizmo}",
-		"%{Includedir.Lua}",
 		"%{Includedir.miniaudio}",
+		"%{Includedir.DotNetHost}",
 		"%{Includedir.VulkanSDK}"
 	}
 
@@ -56,7 +56,6 @@ project "Waffle"
 		"GLFW",
 		"GLAD",
 		"ImGui",
-		"Lua",
 		"opengl32.lib",
 		"yaml-cpp",
 		"%{Library.Vulkan}"

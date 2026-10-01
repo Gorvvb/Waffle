@@ -40,6 +40,9 @@ WaffleHub/Projects/DefaultProject/Exports/
 *.vcxproj.user
 *.csproj
 
+# C# scripting build intermediates
+**/obj/
+
 # Editor / IDE configuration
 .vscode/
 .idea/

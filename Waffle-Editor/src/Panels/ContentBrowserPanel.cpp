@@ -679,7 +679,7 @@ void main()
 						if (std::filesystem::exists(sheetPath))
 							OpenSpritesheetViewer(sheetPath);
 					}
-					else if (path.extension() == ".lua" || path.extension() == ".h" || path.extension() == ".cpp" || path.extension() == ".txt" || ext == ".glsl")
+					else if (path.extension() == ".cs" || path.extension() == ".h" || path.extension() == ".cpp" || path.extension() == ".txt" || ext == ".glsl")
 					{
 						PlatformUtils::OpenFileInEditor(path.string());
 					}
@@ -737,27 +737,43 @@ void main()
 					serializer.Serialize(scenePath.string());
 				}
 
-				if (ImGui::MenuItem("Lua Script"))
+				if (ImGui::MenuItem("C# Script"))
 				{
-					std::filesystem::path scriptPath = m_CurrentDirectory / "NewScript.lua";
+					std::filesystem::path scriptPath = m_CurrentDirectory / "NewScript.cs";
 					int counter = 1;
 					while (std::filesystem::exists(scriptPath))
 					{
-						scriptPath = m_CurrentDirectory / ("NewScript" + std::to_string(counter++) + ".lua");
+						scriptPath = m_CurrentDirectory / ("NewScript" + std::to_string(counter++) + ".cs");
 					}
 
-					std::ofstream scriptFile(scriptPath);
-					scriptFile << "-- Waffle Lua Script\n\n"
-							   << "function OnCreate(entity)\n"
-							   << "    -- Called when the script starts\n"
-							   << "end\n\n"
-							   << "function OnUpdate(entity, ts)\n"
-							   << "    -- Called every frame during gameplay\n"
-							   << "end\n\n"
-							   << "function OnDestroy(entity)\n"
-							   << "    -- Called when the script is destroyed\n"
-							   << "end\n";
-					scriptFile.close();
+					// The engine resolves script classes by file stem - keep the
+					// class name in sync when renaming the file.
+					// The engine resolves script classes by file stem - keep the
+					// class name in sync when renaming the file.
+					std::string className = scriptPath.stem().string();
+				// The engine resolves script classes by file stem - keep the
+				// class name in sync when renaming the file.
+				std::ofstream scriptFile(scriptPath);
+					scriptFile << "using Waffle;\n"
+					           << "\n"
+					           << "public class " << className << " : WaffleBehaviour\n"
+					           << "{\n"
+					           << "    void OnStart()\n"
+					           << "    {\n"
+					           << "        // Called when the script starts\n"
+					           << "    }\n"
+					           << "\n"
+					           << "    void OnUpdate(float dt)\n"
+					           << "    {\n"
+					           << "        // Called every frame during gameplay\n"
+					           << "    }\n"
+					           << "\n"
+					           << "    void OnDestroy()\n"
+					           << "    {\n"
+					           << "        // Called when the script is destroyed\n"
+					           << "    }\n"
+					           << "}\n";
+				scriptFile.close();
 				}
 
 				if (ImGui::MenuItem("Shader"))

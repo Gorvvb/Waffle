@@ -2,7 +2,7 @@
 #include "MiniAudioBackend.h"
 #include "Waffle/Core/Log.h"
 #include "Waffle/Core/VFS.h"
-#include "Waffle/Scripting/LuaScriptEngine.h"
+#include "Waffle/Scripting/CSharpScriptEngine.h"
 
 #define MINIAUDIO_IMPLEMENTATION
 #include <miniaudio.h>
@@ -42,7 +42,7 @@ namespace Waffle {
 			return p;
 
 		// 2. Relative to active project AssetPath
-		std::filesystem::path assetPath = LuaScriptEngine::GetAssetPath() / p;
+		std::filesystem::path assetPath = CSharpScriptEngine::GetAssetPath() / p;
 		if (VFS::Exists(assetPath))
 			return assetPath;
 

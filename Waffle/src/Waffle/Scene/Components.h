@@ -72,28 +72,35 @@ namespace Waffle {
 			: Parent(parent) {}
 	};
 
-	enum class LuaFieldType { Float, Int, Bool, String };
+	enum class ScriptFieldType { Float, Int, Bool, String, Vec2 };
 
-	struct LuaField
+	struct ScriptField
 	{
 		std::string  Name;
-		LuaFieldType Type = LuaFieldType::Float;
+		ScriptFieldType Type = ScriptFieldType::Float;
 		float        FloatVal = 0.f;
+		float        FloatVal2 = 0.f;  // Vec2 second component
 		int          IntVal = 0;
 		bool         BoolVal = false;
 		std::string  StringVal;
 
 		bool UserModified = false; // true = user changed this, don't overwrite from script
+
+		// Editor hints from [Range] / [Tooltip] attributes (scraped with the fields).
+		bool         HasRange = false;
+		float        RangeMin = 0.f;
+		float        RangeMax = 0.f;
+		std::string  Tooltip;
 	};
 
 	struct ScriptComponent
 	{
 		std::string              ClassName;
 		std::vector<std::string> ScriptPaths;
-		std::vector<std::string> ScriptTableKeys; // runtime only
+		std::vector<int>         ScriptHandles; // runtime only, aligned with ScriptPaths
 
 		// Key = script path, value = public fields for that script
-		std::unordered_map<std::string, std::vector<LuaField>> Fields;
+		std::unordered_map<std::string, std::vector<ScriptField>> Fields;
 
 		ScriptComponent() = default;
 		ScriptComponent(const ScriptComponent&) = default;

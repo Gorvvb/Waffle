@@ -3,7 +3,7 @@
 #include "Waffle/Core/VFS.h"
 #include "Waffle/Renderer/PostProcessing.h"
 #include "Waffle/Renderer/Renderer.h"
-#include "Waffle/Scripting/LuaScriptEngine.h"
+#include "Waffle/Scripting/CSharpScriptEngine.h"
 
 #include <yaml-cpp/yaml.h>
 #include <glm/gtc/matrix_transform.hpp>
@@ -42,6 +42,12 @@ namespace Waffle {
 						{
 							std::string path = node.as<std::string>();
 							std::replace(path.begin(), path.end(), '\\', '/');
+							// Older exports serialized project-root-relative paths with
+							// a leading separator - strip it so the scene resolves
+							// inside the export instead of falling back to the sorted
+							// scan (which loses the author's scene order).
+							if (!path.empty() && path.front() == '/')
+								path.erase(0, 1);
 							if (VFS::Exists(path))
 								m_SceneList.push_back(path);
 							else
@@ -52,8 +58,10 @@ namespace Waffle {
 					if (m_SceneList.empty() && project["StartScene"])
 					{
 						std::string startScene = project["StartScene"].as<std::string>();
-						std::replace(startScene.begin(), startScene.end(), '\\', '/');
-						if (VFS::Exists(startScene))
+							std::replace(startScene.begin(), startScene.end(), '\\', '/');
+							if (!startScene.empty() && startScene.front() == '/')
+								startScene.erase(0, 1);
+							if (VFS::Exists(startScene))
 							m_SceneList.push_back(startScene);
 					}
 
@@ -127,7 +135,7 @@ namespace Waffle {
 		m_CurrentSceneIndex = index;
 		// Scripts read this via GetCurrentSceneIndex - without it every
 		// ChangeScene computed from a stale index (stuck at 0).
-		LuaScriptEngine::SetCurrentSceneIndex(index);
+		CSharpScriptEngine::SetCurrentSceneIndex(index);
 	}
 
 	void RuntimeLayer::OnDetach()
@@ -181,9 +189,9 @@ namespace Waffle {
 
 			// Deferred Quit: tearing the scene down inside a click callback
 			// corrupts the registry, so it runs after the frame.
-			if (LuaScriptEngine::IsQuitRequested())
+			if (CSharpScriptEngine::IsQuitRequested())
 			{
-				LuaScriptEngine::ClearQuitRequest();
+				CSharpScriptEngine::ClearQuitRequest();
 				m_Scene->OnRuntimeStop();
 				Application::Get().Close();
 				return;

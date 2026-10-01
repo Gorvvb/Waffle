@@ -6,7 +6,7 @@
 #include "Waffle/Utils/PlatformUtils.h"
 #include "Waffle/Math/Math.h"
 
-#include "Waffle/Scripting/LuaScriptEngine.h"
+#include "Waffle/Scripting/CSharpScriptEngine.h"
 #include "Waffle/Audio/AudioEngine.h"
 #include "Waffle/Renderer/PostProcessing.h"
 #include "Waffle/Renderer/Renderer.h"
@@ -25,12 +25,6 @@ namespace Waffle {
 
 	extern std::filesystem::path g_AssetPath;
 
-	// 2D transform extraction for collider drawing. Math::DecomposeTransform
-	// turns a MIRRORED transform (negative X scale - what sprite flipping
-	// produces) into a phantom 180-degree rotation, which flips the collider
-	// offset to the wrong side. Physics bodies do not rotate on a render
-	// flip, so this reads position, true 2D rotation and axis lengths
-	// straight from the world matrix instead.
 	namespace
 	{
 		struct ColliderFrame
@@ -182,7 +176,7 @@ namespace Waffle {
 			[this](int target, bool active) { SetColliderEditMode(active, target); });
 
 		// Lua Quit() during play stops the game, never the editor.
-		LuaScriptEngine::SetQuitHandler([this]
+		CSharpScriptEngine::SetQuitHandler([this]
 		{
 			if (m_SceneState == SceneState::Play)
 				OnSceneStop();
@@ -286,7 +280,7 @@ namespace Waffle {
 		case SceneState::Edit:
 			m_ActiveScene->OnUpdateEditor(ts, m_EditorCamera);
 			// Unity-style OnDrawGizmos: scripts queue gizmos while editing.
-			LuaScriptEngine::OnEditorGizmos(m_ActiveScene.get());
+			CSharpScriptEngine::OnEditorGizmos(m_ActiveScene.get());
 			break;
 
 		case SceneState::Play:
@@ -302,7 +296,7 @@ namespace Waffle {
 					SceneSerializer serializer(nextScene);
 					if (serializer.Deserialize(m_SceneList[pending].string()))
 					{
-						LuaScriptEngine::SetCurrentSceneIndex(pending);
+						CSharpScriptEngine::SetCurrentSceneIndex(pending);
 						nextScene->SetName(m_SceneList[pending].stem().string());
 
 						m_ActiveScene = Scene::Copy(nextScene);
@@ -331,9 +325,9 @@ namespace Waffle {
 
 		// Deferred Lua Quit(): stop play AFTER the frame completed
 		// (never from inside the click callback - registry corruption).
-		if (m_SceneState == SceneState::Play && LuaScriptEngine::IsQuitRequested())
+		if (m_SceneState == SceneState::Play && CSharpScriptEngine::IsQuitRequested())
 		{
-			LuaScriptEngine::ClearQuitRequest();
+			CSharpScriptEngine::ClearQuitRequest();
 			OnSceneStop();
 		}
 
@@ -373,10 +367,7 @@ namespace Waffle {
 		return true;
 	}
 
-	// -------------------------------------------------------------------------
 	// ImGui
-	// -------------------------------------------------------------------------
-
 	void EditorLayer::OnImGuiRender()
 	{
 		// -- DockSpace setup -------------------------------------------------
@@ -602,16 +593,8 @@ namespace Waffle {
 			m_ViewportBounds[0] = { cursorScreenPos.x, cursorScreenPos.y };
 			m_ViewportBounds[1] = { cursorScreenPos.x + m_ViewportSize.x, cursorScreenPos.y + m_ViewportSize.y };
 
-			// Gameplay mouse coordinates and input arbitration are expressed
-			// against the game viewport rect in WINDOW-RELATIVE coordinates
-			// (the space Input::GetMousePosition/GLFW report). With
-			// ImGuiConfigFlags_ViewportsEnable, cursorScreenPos is in GLOBAL
-			// desktop space - subtract the host window's desktop position.
-			// (The entity-picking above is immune: it compares two
-			// ImGui-space values.) The exported runtime never calls this;
-			// there origin (0,0) + full window is already correct.
 			ImVec2 hostOrigin = ImGui::GetMainViewport()->Pos;
-			LuaScriptEngine::SetGameViewport(
+			CSharpScriptEngine::SetGameViewport(
 				{ m_ViewportBounds[0].x - hostOrigin.x, m_ViewportBounds[0].y - hostOrigin.y },
 				{ m_ViewportBounds[1].x - m_ViewportBounds[0].x,
 				  m_ViewportBounds[1].y - m_ViewportBounds[0].y });
@@ -727,7 +710,7 @@ namespace Waffle {
 							}
 						}
 					}
-					else if (ext == ".lua")
+					else if (ext == ".cs")
 					{
 						Entity target = m_HoveredEntity
 							? m_HoveredEntity
@@ -740,7 +723,7 @@ namespace Waffle {
 							std::string relStr =
 								std::filesystem::relative(path, g_AssetPath).string();
 							sc.ScriptPaths.push_back(relStr);
-							LuaScriptEngine::ScrapeFieldsFromScript(path, relStr, sc);
+							CSharpScriptEngine::ScrapeFieldsFromScript(path, relStr, sc);
 						}
 					}
 				}
@@ -777,7 +760,6 @@ namespace Waffle {
 						m_ViewportBounds[1].x - m_ViewportBounds[0].x,
 						m_ViewportBounds[1].y - m_ViewportBounds[0].y);
 
-					glm::vec3 wTrans, wRot, wScale;
 					ColliderFrame frame = GetColliderFrame(m_ActiveScene->GetWorldTransform(selectedEntity));
 
 					glm::vec2 offset;
@@ -1655,10 +1637,7 @@ namespace Waffle {
 		ImGui::EndPopup();
 	}
 
-	// -------------------------------------------------------------------------
 	// Events
-	// -------------------------------------------------------------------------
-
 	void EditorLayer::OnEvent(Waffle::Event& e)
 	{
 		m_CameraController.OnEvent(e);
@@ -1758,10 +1737,7 @@ namespace Waffle {
 		return false;
 	}
 
-	// -------------------------------------------------------------------------
 	// Overlay
-	// -------------------------------------------------------------------------
-
 	void EditorLayer::OnOverlayRender()
 	{
 		if (m_SceneState == SceneState::Play)
@@ -1840,14 +1816,14 @@ namespace Waffle {
 			}
 		}
 
-		// Lua debug gizmos (Gizmo.DrawRay / DrawLine / DrawWireCircle) -
+		// Debug gizmos (Gizmo.DrawRay / DrawLine / DrawWireCircle) -
 		// queued by scripts, drawn here and ONLY in the editor.
 		{
-			const auto& lines = LuaScriptEngine::GetPendingDebugLines();
+			const auto& lines = CSharpScriptEngine::GetPendingDebugLines();
 			for (const auto& l : lines)
 				Renderer2D::DrawLine(glm::vec3(l.A, 0.002f), glm::vec3(l.B, 0.002f), l.Color);
 
-			const auto& circles = LuaScriptEngine::GetPendingDebugCircles();
+			const auto& circles = CSharpScriptEngine::GetPendingDebugCircles();
 			for (const auto& c : circles)
 			{
 				glm::mat4 transform = glm::translate(glm::mat4(1.0f), glm::vec3(c.Center, 0.002f))
@@ -1975,7 +1951,7 @@ namespace Waffle {
 		m_ProjectName = projectPath.filename().string();
 		m_ProjectPath = std::filesystem::absolute(projectPath);
 		m_ContentBrowserPanel.SetAssetDirectory(assetsPath);
-		LuaScriptEngine::SetAssetPath(assetsPath);
+		CSharpScriptEngine::SetAssetPath(assetsPath);
 		SetActiveAssetDirectory(assetsPath);
 
 		std::error_code ec;
@@ -2122,10 +2098,7 @@ namespace Waffle {
 		RebuildSceneList();
 	}
 
-	// -------------------------------------------------------------------------
 	// Scene management
-	// -------------------------------------------------------------------------
-
 	void EditorLayer::NewScene()
 	{
 		// A fresh scene replaces the runtime one - stop playback first or the
@@ -2280,10 +2253,7 @@ namespace Waffle {
 		m_SceneList = std::move(merged);
 	}
 
-	// -------------------------------------------------------------------------
 	// Project settings persistence
-	// -------------------------------------------------------------------------
-
 	static std::filesystem::path GetEditorConfigPath()
 	{
 #if defined(WF_PLATFORM_WINDOWS)
@@ -2494,7 +2464,7 @@ namespace Waffle {
 				break;
 			}
 		}
-		LuaScriptEngine::SetCurrentSceneIndex(currentIndex);
+		CSharpScriptEngine::SetCurrentSceneIndex(currentIndex);
 
 		m_ActiveScene = Scene::Copy(m_EditorScene);
 		m_ActiveScene->SetGravity(m_ProjectGravity);

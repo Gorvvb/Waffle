@@ -2,6 +2,7 @@
 #include "AssetPacker.h"
 #include "Waffle/Core/Log.h"
 #include "Waffle/Renderer/PostProcessing.h"
+#include "Waffle/Scripting/CSharpScriptEngine.h"
 
 #if defined(WF_PLATFORM_WINDOWS)
 	#include <windows.h>
@@ -507,6 +508,13 @@ static std::filesystem::path FindRuntimeExecutable()
 	return "";
 }
 
+	static std::string GetModuleFileNameA_()
+	{
+		char buffer[MAX_PATH] = {};
+		GetModuleFileNameA(nullptr, buffer, MAX_PATH);
+		return buffer;
+	}
+
 	bool ProjectExporter::ExportProject(const ExportOptions& options, std::string& outErrorMessage)
 	{
 		outErrorMessage.clear();
@@ -668,6 +676,8 @@ static std::filesystem::path FindRuntimeExecutable()
 				break;
 			}
 		}
+		if (!std::filesystem::exists(targetFonts / "OpenSans", ec))
+			WF_CORE_WARN("ProjectExporter: no fonts staged into the export - UI text will be invisible! (looked for an fonts/OpenSans folder next to the editor)");
 
 		// 6. Ensure shader cache exists in export Assets/cache
 		std::filesystem::path targetCache = targetAssets / "cache";
@@ -685,7 +695,8 @@ static std::filesystem::path FindRuntimeExecutable()
 			}
 		}
 
-		// 7. Copy extra .lua scripts outside Assets/ into targetAssets/Scripts.
+
+		// 7. Copy extra .cs scripts outside Assets/ into targetAssets/Scripts.
 		// Preserve the project-relative directory structure - a flat copy
 		// silently overwrites same-named scripts from different folders.
 		if (std::filesystem::exists(activeProjectPath))
@@ -703,7 +714,7 @@ static std::filesystem::path FindRuntimeExecutable()
 
 				std::string ext = entry.path().extension().string();
 				for (auto& c : ext) c = (char)tolower((unsigned char)c);
-				if (ext != ".lua")
+				if (ext != ".cs")
 					continue;
 
 				std::error_code relEc;
@@ -730,6 +741,121 @@ static std::filesystem::path FindRuntimeExecutable()
 				std::filesystem::create_directories(dest.parent_path(), ec);
 				std::filesystem::copy_file(entry.path(), dest,
 					std::filesystem::copy_options::overwrite_existing, ec);
+			}
+		}
+
+		// 7b. Stage the embedded .NET runtime so exported games run with no
+		// SDK or .NET install on the player machine: the self-contained
+		// layout the engine host resolves next to the exe
+		// (<exe dir>/host/fxr + shared/Microsoft.NETCore.App), plus the
+		// ScriptingRuntime contract folder.
+		{
+			// Locate the dev dotnet root the same way the engine host does.
+			std::filesystem::path dotnetRoot;
+			if (const char* pf = std::getenv("ProgramFiles"); pf && *pf)
+				dotnetRoot = std::filesystem::path(pf) / "dotnet";
+			if (const char* env = std::getenv("DOTNET_ROOT"); env && *env)
+				dotnetRoot = env;
+
+			std::error_code stageEc;
+			std::filesystem::path fxrDir = dotnetRoot / "host" / "fxr";
+			std::filesystem::path sharedDir = dotnetRoot / "shared" / "Microsoft.NETCore.App";
+			if (!dotnetRoot.empty() && std::filesystem::exists(fxrDir, stageEc) && std::filesystem::exists(sharedDir, stageEc))
+			{
+				// Highest-versioned host fxr + shared runtime.
+				auto highestVersion = [](const std::filesystem::path& dir)
+				{
+					std::filesystem::path best;
+					unsigned long long bestVer[4] = { 0, 0, 0, 0 };
+					std::error_code itEc;
+					for (auto& entry : std::filesystem::directory_iterator(dir, itEc))
+					{
+						if (!entry.is_directory(itEc))
+							continue;
+						unsigned long long v[4] = { 0, 0, 0, 0 };
+						int index = 0, valid = 0;
+						for (char c : entry.path().filename().string())
+						{
+							if (c == '.') { if (++index > 3) break; continue; }
+							if (c < '0' || c > '9') { valid = 0; break; }
+							valid = 1;
+							v[index] = v[index] * 10 + (c - '0');
+						}
+						if (!valid || index == 0)
+							continue;
+						bool greater = false;
+						for (int i = 0; i < 4; i++)
+						{
+							if (v[i] != bestVer[i]) { greater = v[i] > bestVer[i]; break; }
+						}
+						if (best.empty() || greater)
+						{
+							std::copy(std::begin(v), std::end(v), std::begin(bestVer));
+							best = entry.path();
+						}
+					}
+					return best;
+				};
+
+				std::filesystem::path fxrVersion = highestVersion(fxrDir);
+				std::filesystem::path sharedVersion = highestVersion(sharedDir);
+				if (!fxrVersion.empty() && !sharedVersion.empty())
+				{
+					// std::filesystem::copy does NOT create missing intermediate
+					// parents - without these the copies fail silently into ec.
+					std::filesystem::create_directories(exportsDir / "host" / "fxr", stageEc);
+					std::filesystem::create_directories(exportsDir / "shared" / "Microsoft.NETCore.App", stageEc);
+					std::filesystem::copy(fxrVersion, exportsDir / "host" / "fxr" / fxrVersion.filename(),
+						std::filesystem::copy_options::overwrite_existing | std::filesystem::copy_options::recursive, stageEc);
+					std::filesystem::copy(sharedVersion, exportsDir / "shared" / "Microsoft.NETCore.App" / sharedVersion.filename(),
+						std::filesystem::copy_options::overwrite_existing | std::filesystem::copy_options::recursive, stageEc);
+				}
+				else
+				{
+					WF_CORE_WARN("ProjectExporter: .NET runtime not found under '{0}' - the export will only run on machines with .NET installed!",
+						dotnetRoot.string());
+				}
+			}
+
+			// ScriptingRuntime contract folder: search next to the editor exe
+			// (packaged layout) then the repo dev layout (bin/ScriptingRuntime).
+			std::filesystem::path editorExe = std::filesystem::path(GetModuleFileNameA_()).parent_path();
+			std::vector<std::filesystem::path> candidates = {
+				editorExe / "ScriptingRuntime",
+				editorExe / ".." / ".." / "ScriptingRuntime",
+			};
+			for (const auto& candidate : candidates)
+			{
+				std::error_code candEc;
+				std::filesystem::path dir = std::filesystem::weakly_canonical(candidate, candEc);
+				if (std::filesystem::exists(dir / "Waffle.Scripting.dll", candEc))
+				{
+					std::filesystem::copy(dir, exportsDir / "ScriptingRuntime",
+						std::filesystem::copy_options::overwrite_existing | std::filesystem::copy_options::recursive, stageEc);
+					break;
+				}
+			}
+
+			// Stage the compiled game scripts where the engine's packed-export
+			// fallback looks for them: packed exports have no physical
+			// Assets/Scripts folder to compile, so GameScripts.dll must sit
+			// beside ScriptingRuntime.
+			std::filesystem::path scriptDll = activeProjectPath / "Assets" / "cache" / "Scripting" / "GameScripts.dll";
+			if (std::filesystem::exists(scriptDll, stageEc))
+			{
+				std::filesystem::path gameScriptsDir = exportsDir / "ScriptingRuntime" / "GameScripts";
+				std::filesystem::create_directories(gameScriptsDir, stageEc);
+				std::filesystem::copy_file(scriptDll, gameScriptsDir / "GameScripts.dll",
+					std::filesystem::copy_options::overwrite_existing, stageEc);
+				std::filesystem::path scriptPdb = scriptDll;
+				scriptPdb.replace_extension(".pdb");
+				if (std::filesystem::exists(scriptPdb, stageEc))
+					std::filesystem::copy_file(scriptPdb, gameScriptsDir / "GameScripts.pdb",
+						std::filesystem::copy_options::overwrite_existing, stageEc);
+			}
+			else
+			{
+				WF_CORE_WARN("ProjectExporter: no compiled GameScripts.dll in Assets/cache/Scripting - the exported game will have NO scripts! Open the project in the editor and press Play once to compile them.");
 			}
 		}
 
@@ -853,6 +979,12 @@ static std::filesystem::path FindRuntimeExecutable()
 		fout.close();
 
 		// 11. Pack all exported assets into game.wpack
+		// Compile the game scripts first so the staged GameScripts.dll (and
+		// the copy inside the pack) are current. Non-fatal: a failed compile
+		// falls back to the last good assembly, and the staging below warns
+		// when there is nothing to ship.
+		CSharpScriptEngine::CompileProjectScripts();
+
 		AssetPackerOptions packOptions;
 		packOptions.SourceDirectory = targetAssets;
 		packOptions.OutputWpackPath = exportsDir / "game.wpack";

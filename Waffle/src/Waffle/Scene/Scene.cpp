@@ -3,7 +3,7 @@
 
 #include "Components.h"
 #include "ScriptableEntity.h"
-#include "Waffle/Scripting/LuaScriptEngine.h"
+#include "Waffle/Scripting/CSharpScriptEngine.h"
 #include "Waffle/Audio/AudioEngine.h"
 #include "Waffle/Renderer/Renderer2D.h"
 #include "Waffle/Renderer/UIRenderer.h"
@@ -450,7 +450,7 @@ namespace Waffle {
 			}
 		}
 
-		LuaScriptEngine::OnRuntimeStart(this);
+		CSharpScriptEngine::OnRuntimeStart(this);
 	}
 
 	// Creates the Box2D body + fixtures for an entity. Safe to call for entities
@@ -584,7 +584,7 @@ namespace Waffle {
 			}
 		});
 
-		LuaScriptEngine::OnRuntimeStop(this);
+		CSharpScriptEngine::OnRuntimeStop(this);
 		AudioEngine::StopAllSounds();
 
 		// Tilemap collider bodies are scene-owned static bodies.
@@ -622,7 +622,7 @@ namespace Waffle {
 
 				// Update scripts
 				{
-					LuaScriptEngine::OnRuntimeUpdate(this, ts);
+					CSharpScriptEngine::OnRuntimeUpdate(this, ts);
 
 					// Snapshot: OnCreate can create/destroy scripted entities
 					// and reallocate the pool under a live view iterator.
@@ -700,7 +700,7 @@ namespace Waffle {
 
 						// Dispatch collision/trigger Lua callbacks AFTER the step -
 						// they are queued during Step and must never run inside it.
-						LuaScriptEngine::DrainCollisionEvents(this);
+						CSharpScriptEngine::DrainCollisionEvents(this);
 					}
 				}
 
@@ -948,9 +948,9 @@ namespace Waffle {
 		}
 
 		// Scene change - checked after render so the current frame still draws
-		int pending = LuaScriptEngine::GetPendingSceneChange();
+		int pending = CSharpScriptEngine::GetPendingSceneChange();
 		if (pending != -1)
-			LuaScriptEngine::ClearPendingSceneChange();
+			CSharpScriptEngine::ClearPendingSceneChange();
 		return pending;
 	}
 
