@@ -44,7 +44,6 @@ namespace Waffle {
 		glm::vec2 A;
 		glm::vec2 B;
 		glm::vec4 Color;
-		uint32_t Entity = 0xFFFFFFFF; // owning script's entity (0xFFFFFFFF = unknown)
 	};
 
 	struct DebugDrawCircle
@@ -52,7 +51,6 @@ namespace Waffle {
 		glm::vec2 Center;
 		float Radius;
 		glm::vec4 Color;
-		uint32_t Entity = 0xFFFFFFFF;
 	};
 
 	class LuaScriptEngine
@@ -173,7 +171,6 @@ namespace Waffle {
 		static std::vector<DebugDrawCircle>  s_DebugCircles;
 
 		static bool s_EditorGizmoPass;
-		static uint32_t s_CurrentGizmoEntity; // entity whose script is queueing gizmos
 		static std::unordered_map<std::string, std::filesystem::file_time_type> s_EditorGizmoEnvTimes;
 
 		// Current frame delta time (exposed to Lua via GetDeltaTime())

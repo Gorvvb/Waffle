@@ -52,7 +52,6 @@ namespace Waffle {
 	std::vector<DebugDrawCircle> LuaScriptEngine::s_DebugCircles;
 
 	bool LuaScriptEngine::s_EditorGizmoPass = false;
-	uint32_t LuaScriptEngine::s_CurrentGizmoEntity = 0xFFFFFFFF;
 	// tableKey -> script mtime at load; drives hot reload of OnDrawGizmos
 	// environments while editing.
 	std::unordered_map<std::string, std::filesystem::file_time_type> LuaScriptEngine::s_EditorGizmoEnvTimes;
@@ -86,7 +85,6 @@ namespace Waffle {
 		draw.A = { x, y };
 		draw.B = { x + dx * dist, y + dy * dist };
 		draw.Color = GizmoColorFromArgs(L, 6);
-		draw.Entity = LuaScriptEngine::s_CurrentGizmoEntity;
 		LuaScriptEngine::s_DebugLines.push_back(draw);
 		return 0;
 	}
@@ -98,7 +96,6 @@ namespace Waffle {
 		draw.A = { (float)luaL_checknumber(L, 1), (float)luaL_checknumber(L, 2) };
 		draw.B = { (float)luaL_checknumber(L, 3), (float)luaL_checknumber(L, 4) };
 		draw.Color = GizmoColorFromArgs(L, 5);
-		draw.Entity = LuaScriptEngine::s_CurrentGizmoEntity;
 		LuaScriptEngine::s_DebugLines.push_back(draw);
 		return 0;
 	}
@@ -110,7 +107,6 @@ namespace Waffle {
 		draw.Center = { (float)luaL_checknumber(L, 1), (float)luaL_checknumber(L, 2) };
 		draw.Radius = (float)luaL_checknumber(L, 3);
 		draw.Color = GizmoColorFromArgs(L, 4);
-		draw.Entity = LuaScriptEngine::s_CurrentGizmoEntity;
 		LuaScriptEngine::s_DebugCircles.push_back(draw);
 		return 0;
 	}
@@ -2751,6 +2747,7 @@ if Global == nil then Global = {} end
 		for (auto entityID : view)
 		{
 			if (!scene->m_Registry.valid(entityID)) continue;
+			if (scene->m_Registry.all_of<DisabledComponent>(entityID)) continue; // hidden entity: no gizmos
 
 			Entity entity{ entityID, scene };
 			auto& sc = entity.GetComponent<ScriptComponent>();
@@ -2791,11 +2788,9 @@ if Global == nil then Global = {} end
 				}
 
 				uint32_t id = (uint32_t)entityID;
-				s_CurrentGizmoEntity = id;
 				CallEnvFunction(s_LuaState, tableKey, "OnDrawGizmos", 1, [&]() {
 					lua_pushnumber(s_LuaState, id);
 					});
-				s_CurrentGizmoEntity = 0xFFFFFFFF;
 			}
 		}
 
@@ -3025,7 +3020,6 @@ void LuaScriptEngine::OnRuntimeStart(Scene* scene)
 
 			for (const auto& tableKey : sc.ScriptTableKeys)
 			{
-				s_CurrentGizmoEntity = id;
 				CallEnvFunction(s_LuaState, tableKey, "OnUpdate", 2, [&]() {
 					lua_pushnumber(s_LuaState, id);
 					lua_pushnumber(s_LuaState, tsf);

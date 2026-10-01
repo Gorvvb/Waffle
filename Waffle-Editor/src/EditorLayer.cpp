@@ -25,6 +25,42 @@ namespace Waffle {
 
 	extern std::filesystem::path g_AssetPath;
 
+	// 2D transform extraction for collider drawing. Math::DecomposeTransform
+	// turns a MIRRORED transform (negative X scale - what sprite flipping
+	// produces) into a phantom 180-degree rotation, which flips the collider
+	// offset to the wrong side. Physics bodies do not rotate on a render
+	// flip, so this reads position, true 2D rotation and axis lengths
+	// straight from the world matrix instead.
+	namespace
+	{
+		struct ColliderFrame
+		{
+			glm::vec3 Position;
+			float Rotation = 0.0f;
+			float ExtX = 1.0f;
+			float ExtY = 1.0f;
+		};
+
+		ColliderFrame GetColliderFrame(const glm::mat4& world)
+		{
+			glm::vec2 xCol(world[0].x, world[0].y);
+			glm::vec2 yCol(world[1].x, world[1].y);
+
+			ColliderFrame frame;
+			frame.Position = glm::vec3(world[3]);
+			frame.ExtX = glm::length(xCol);
+			frame.ExtY = glm::length(yCol);
+
+			float det2d = xCol.x * yCol.y - xCol.y * yCol.x;
+			if (det2d < 0.0f)
+				frame.Rotation = std::atan2(-yCol.x, yCol.y); // mirrored: rotation lives on the Y axis
+			else
+				frame.Rotation = std::atan2(xCol.y, xCol.x);
+			return frame;
+		}
+	}
+
+
 	// Path relative to projectRoot with forward slashes when the path lives
 	// inside it (portable, shareable), otherwise the full path. Used for
 	// every path written INTO project files.
@@ -742,7 +778,7 @@ namespace Waffle {
 						m_ViewportBounds[1].y - m_ViewportBounds[0].y);
 
 					glm::vec3 wTrans, wRot, wScale;
-					Math::DecomposeTransform(m_ActiveScene->GetWorldTransform(selectedEntity), wTrans, wRot, wScale);
+					ColliderFrame frame = GetColliderFrame(m_ActiveScene->GetWorldTransform(selectedEntity));
 
 					glm::vec2 offset;
 					glm::vec2 sizeVec;
@@ -760,10 +796,10 @@ namespace Waffle {
 					}
 
 					glm::mat4 colliderMatrix =
-						glm::translate(glm::mat4(1.0f), wTrans)
-						* glm::rotate(glm::mat4(1.0f), wRot.z, glm::vec3(0.0f, 0.0f, 1.0f))
+						glm::translate(glm::mat4(1.0f), frame.Position)
+						* glm::rotate(glm::mat4(1.0f), frame.Rotation, glm::vec3(0.0f, 0.0f, 1.0f))
 						* glm::translate(glm::mat4(1.0f), glm::vec3(offset, 0.0f))
-						* glm::scale(glm::mat4(1.0f), wScale * glm::vec3(sizeVec, 1.0f));
+						* glm::scale(glm::mat4(1.0f), glm::vec3(frame.ExtX * sizeVec.x, frame.ExtY * sizeVec.y, 1.0f));
 
 					bool snap = Input::IsKeyPressed(Key::LeftControl);
 					float snapValues[3] = { 0.1f, 0.1f, 0.1f };
@@ -788,10 +824,10 @@ namespace Waffle {
 
 						// Undo the body rotation so the offset stays
 						// body-local, exactly like the physics setup does.
-						glm::vec2 delta = glm::vec2(translation.x, translation.y) - glm::vec2(wTrans);
+						glm::vec2 delta = glm::vec2(translation.x, translation.y) - glm::vec2(frame.Position);
 						glm::vec2 localOffset(
-							cosf(-wRot.z) * delta.x - sinf(-wRot.z) * delta.y,
-							sinf(-wRot.z) * delta.x + cosf(-wRot.z) * delta.y);
+							cosf(-frame.Rotation) * delta.x - sinf(-frame.Rotation) * delta.y,
+							sinf(-frame.Rotation) * delta.x + cosf(-frame.Rotation) * delta.y);
 
 						if (editBox)
 						{
@@ -801,8 +837,8 @@ namespace Waffle {
 							else
 							{
 								bc2d.Size = glm::vec2(
-									std::max(scale.x / (2.0f * wScale.x), 0.01f),
-									std::max(scale.y / (2.0f * wScale.y), 0.01f));
+									std::max(scale.x / (2.0f * frame.ExtX), 0.01f),
+									std::max(scale.y / (2.0f * frame.ExtY), 0.01f));
 							}
 						}
 						else
@@ -812,7 +848,7 @@ namespace Waffle {
 								cc2d.Offset = localOffset;
 							else
 							{
-								cc2d.Radius = std::max(std::max(scale.x, scale.y) / (2.0f * wScale.x), 0.01f);
+								cc2d.Radius = std::max(std::max(scale.x / frame.ExtX, scale.y / frame.ExtY) * 0.5f, 0.01f);
 							}
 						}
 					}
@@ -1776,8 +1812,7 @@ namespace Waffle {
 		// while its collider is being edited with the gizmo).
 		if (Entity sel = m_SceneHierarchyPanel.GetSelectedEntity())
 		{
-			glm::vec3 wTrans, wRot, wScale;
-			Math::DecomposeTransform(m_ActiveScene->GetWorldTransform(sel), wTrans, wRot, wScale);
+			ColliderFrame frame = GetColliderFrame(m_ActiveScene->GetWorldTransform(sel));
 			glm::vec4 colliderColor = m_ColliderEditMode
 				? glm::vec4(1.0f, 0.85f, 0.1f, 1.0f)
 				: glm::vec4(0.0f, 1.0f, 0.0f, 1.0f);
@@ -1786,10 +1821,10 @@ namespace Waffle {
 			{
 				auto& bc2d = sel.GetComponent<BoxCollider2DComponent>();
 				glm::mat4 transform =
-					glm::translate(glm::mat4(1.0f), wTrans + glm::vec3(0.0f, 0.0f, 0.001f))
-					* glm::rotate(glm::mat4(1.0f), wRot.z, glm::vec3(0.0f, 0.0f, 1.0f))
+					glm::translate(glm::mat4(1.0f), frame.Position + glm::vec3(0.0f, 0.0f, 0.001f))
+					* glm::rotate(glm::mat4(1.0f), frame.Rotation, glm::vec3(0.0f, 0.0f, 1.0f))
 					* glm::translate(glm::mat4(1.0f), glm::vec3(bc2d.Offset, 0.0f))
-					* glm::scale(glm::mat4(1.0f), wScale * glm::vec3(bc2d.Size * 2.0f, 1.0f));
+					* glm::scale(glm::mat4(1.0f), glm::vec3(frame.ExtX * bc2d.Size.x * 2.0f, frame.ExtY * bc2d.Size.y * 2.0f, 1.0f));
 				Renderer2D::DrawRect(transform, colliderColor);
 			}
 
@@ -1797,39 +1832,24 @@ namespace Waffle {
 			{
 				auto& cc2d = sel.GetComponent<CircleCollider2DComponent>();
 				glm::mat4 transform =
-					glm::translate(glm::mat4(1.0f), wTrans + glm::vec3(0.0f, 0.0f, 0.001f))
-					* glm::rotate(glm::mat4(1.0f), wRot.z, glm::vec3(0.0f, 0.0f, 1.0f))
+					glm::translate(glm::mat4(1.0f), frame.Position + glm::vec3(0.0f, 0.0f, 0.001f))
+					* glm::rotate(glm::mat4(1.0f), frame.Rotation, glm::vec3(0.0f, 0.0f, 1.0f))
 					* glm::translate(glm::mat4(1.0f), glm::vec3(cc2d.Offset, 0.0f))
-					* glm::scale(glm::mat4(1.0f), wScale * glm::vec3(cc2d.Radius * 2.0f));
+					* glm::scale(glm::mat4(1.0f), glm::vec3(frame.ExtX * cc2d.Radius * 2.0f, frame.ExtY * cc2d.Radius * 2.0f, 1.0f));
 				Renderer2D::DrawCircle(transform, colliderColor, 0.01f);
 			}
 		}
 
 		// Lua debug gizmos (Gizmo.DrawRay / DrawLine / DrawWireCircle) -
-		// queued by scripts, drawn here and ONLY in the editor. Each entity
-		// can hide its own gizmos with the "Show Gizmos" inspector toggle.
+		// queued by scripts, drawn here and ONLY in the editor.
 		{
-			auto gizmosVisible = [&](uint32_t entityId) -> bool
-			{
-				if (entityId == 0xFFFFFFFFu || !m_ActiveScene)
-					return true;
-				Entity owner{ (entt::entity)entityId, m_ActiveScene.get() };
-				if (!owner || !owner.HasComponent<TagComponent>())
-					return true;
-				return owner.GetComponent<TagComponent>().ShowGizmos;
-			};
-
 			const auto& lines = LuaScriptEngine::GetPendingDebugLines();
 			for (const auto& l : lines)
-			{
-				if (!gizmosVisible(l.Entity)) continue;
 				Renderer2D::DrawLine(glm::vec3(l.A, 0.002f), glm::vec3(l.B, 0.002f), l.Color);
-			}
 
 			const auto& circles = LuaScriptEngine::GetPendingDebugCircles();
 			for (const auto& c : circles)
 			{
-				if (!gizmosVisible(c.Entity)) continue;
 				glm::mat4 transform = glm::translate(glm::mat4(1.0f), glm::vec3(c.Center, 0.002f))
 					* glm::scale(glm::mat4(1.0f), glm::vec3(c.Radius * 2.0f, c.Radius * 2.0f, 1.0f));
 				Renderer2D::DrawCircle(transform, c.Color, 0.02f);

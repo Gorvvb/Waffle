@@ -480,20 +480,22 @@ namespace Waffle {
 			ImGui::Text("Tag");
 			ImGui::SameLine();
 
-			// Gizmo visibility dot (before the name): amber = this entity's
-			// gizmos show in the viewport, hollow = hidden. Pure editor
-			// state, click to toggle.
+			// Visibility dot (before the name): amber = entity visible in
+			// the viewport and game, hollow = hidden. Toggles the entity's
+			// DisabledComponent - the same state Lua SetActive controls -
+			// so it persists in scenes and applies at runtime.
+			bool entityHidden = entity.HasComponent<DisabledComponent>();
 			ImVec2 dotPos = ImGui::GetCursorScreenPos();
 			float dotHeight = ImGui::GetFrameHeight();
-			ImGui::PushID("EntityGizmoDot");
+			ImGui::PushID("EntityVisibilityDot");
 			ImGui::InvisibleButton("##dot", ImVec2(dotWidth, dotHeight));
 			bool dotHovered = ImGui::IsItemHovered();
 			if (ImGui::IsItemClicked(ImGuiMouseButton_Left))
-				tagComponent.ShowGizmos = !tagComponent.ShowGizmos;
+				m_Context->SetEntityHidden(entity, !entityHidden);
 
 			ImDrawList* dotDrawList = ImGui::GetWindowDrawList();
 			ImVec2 dotCenter(dotPos.x + dotWidth * 0.5f, dotPos.y + dotHeight * 0.5f);
-			if (tagComponent.ShowGizmos)
+			if (!entityHidden)
 			{
 				dotDrawList->AddCircleFilled(dotCenter, 4.5f, IM_COL32(255, 190, 60, 255));
 				dotDrawList->AddCircle(dotCenter, 4.5f, IM_COL32(120, 85, 10, 255));
@@ -505,9 +507,9 @@ namespace Waffle {
 			if (dotHovered)
 			{
 				dotDrawList->AddCircle(dotCenter, 7.0f, IM_COL32(255, 255, 255, 60));
-				ImGui::SetTooltip(tagComponent.ShowGizmos
-					? "Gizmos visible - click to hide"
-					: "Gizmos hidden - click to show");
+				ImGui::SetTooltip(entityHidden
+					? "Entity hidden - click to show"
+					: "Entity visible - click to hide");
 			}
 			ImGui::PopID();
 

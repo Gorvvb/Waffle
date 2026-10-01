@@ -208,6 +208,11 @@ namespace Waffle {
 			out << YAML::Key << "Tag" << YAML::Value << tag;
 
 			out << YAML::EndMap; // TagComponent
+
+			// Hidden (SetActive / hierarchy dot) entities stay hidden in the
+			// editor, at runtime and in exported games.
+			if (entity.HasComponent<DisabledComponent>())
+				out << YAML::Key << "Disabled" << YAML::Value << true;
 		}
 
 		if (entity.HasComponent<TransformComponent>())
@@ -732,6 +737,8 @@ namespace Waffle {
 				WF_CORE_TRACE("Deserialized entity with ID = {0}, name = {1}", uuid, name);
 
 				Entity deserializedEntity = m_Scene->CreateEntityWithUUID(uuid, name);
+				if (entity["Disabled"] && entity["Disabled"].as<bool>(false))
+					m_Scene->SetEntityHidden(deserializedEntity, true);
 
 				auto relationshipComponent = entity["RelationshipComponent"];
 				if (relationshipComponent)
@@ -1280,8 +1287,11 @@ namespace Waffle {
 	// Component parsing shared by the prefab root and its embedded children.
 	// RelationshipComponent is intentionally NOT handled here - hierarchy is
 	// rebuilt from the serialized UUIDs after all entities exist.
-	static void DeserializePrefabComponents(Entity& deserializedEntity, const YAML::Node& entityNode)
+	static void DeserializePrefabComponents(Scene* scene, Entity& deserializedEntity, const YAML::Node& entityNode)
 	{
+		if (entityNode["Disabled"] && entityNode["Disabled"].as<bool>(false))
+			scene->SetEntityHidden(deserializedEntity, true);
+
 
 		auto transformComponent = entityNode["TransformComponent"];
 		if (transformComponent)
@@ -1689,7 +1699,7 @@ namespace Waffle {
 			if (rootUUID)
 				spawned[rootUUID] = root;
 
-			DeserializePrefabComponents(root, entityNode);
+			DeserializePrefabComponents(scene, root, entityNode);
 
 			if (x != 0.0f || y != 0.0f)
 			{
@@ -1717,7 +1727,7 @@ namespace Waffle {
 						spawned[childUUID] = child;
 						childNodes.push_back({ childUUID, en });
 					}
-					DeserializePrefabComponents(child, en);
+					DeserializePrefabComponents(scene, child, en);
 				}
 			}
 

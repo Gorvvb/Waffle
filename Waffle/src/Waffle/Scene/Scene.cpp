@@ -98,6 +98,20 @@ namespace Waffle {
 		}
 	}
 
+	// entt returns void from emplace for empty components, so component
+	// add/remove for DisabledComponent goes through here instead of
+	// Entity::AddComponent.
+	void Scene::SetEntityHidden(Entity entity, bool hidden)
+	{
+		if (!entity)
+			return;
+
+		if (hidden)
+			m_Registry.emplace<DisabledComponent>(entity);
+		else
+			m_Registry.remove<DisabledComponent>(entity);
+	}
+
 	Ref<Scene> Scene::Copy(Ref<Scene> other)
 	{
 		Ref<Scene> newScene = CreateRef<Scene>();
@@ -117,10 +131,6 @@ namespace Waffle {
 			UUID uuid = srcSceneRegistry.get<IDComponent>(e).ID;
 			const auto& name = srcSceneRegistry.get<TagComponent>(e).Tag;
 			Entity newEntity = newScene->CreateEntityWithUUID(uuid, name);
-			// Editor-only gizmo visibility must survive the edit -> play copy
-			// (hidden in the editor means hidden during play).
-			newEntity.GetComponent<TagComponent>().ShowGizmos =
-				srcSceneRegistry.get<TagComponent>(e).ShowGizmos;
 			enttMap[uuid] = (entt::entity)newEntity;
 		}
 

@@ -78,6 +78,11 @@ namespace Waffle {
 
 		void SetGravity(float g) { m_GravityY = g; }
 
+		// Show/hide an entity (DisabledComponent - same state Lua SetActive
+		// uses). Hidden entities skip rendering, scripts, physics and camera
+		// selection, in the editor and at runtime.
+		void SetEntityHidden(Entity entity, bool hidden);
+
 		Entity GetPrimaryCameraEntity();
 
 		const std::string& GetName() const { return m_Name; }
