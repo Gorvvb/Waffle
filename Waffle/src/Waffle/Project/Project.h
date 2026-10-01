@@ -1,7 +1,6 @@
 #pragma once
 
 #include "Waffle/Core/Ref.h"
-#include "Waffle/Renderer/PostProcessing.h"
 #include <filesystem>
 #include <string>
 #include <vector>
@@ -18,8 +17,6 @@ namespace Waffle {
 		std::vector<std::string> SceneList;
 		glm::vec2 Gravity = { 0.0f, -9.81f };
 		std::string CustomIconPath;
-
-		PostProcessingSettings PostProcessing;
 
 		// Non-serialized runtime properties
 		std::string ProjectDirectory;

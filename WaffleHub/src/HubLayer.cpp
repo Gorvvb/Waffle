@@ -129,7 +129,7 @@ namespace Waffle {
 			}
 		}
 		if (std::filesystem::exists(logoPath))
-			m_LogoTexture = Texture2D::Create(logoPath.string());
+			m_LogoTexture = Texture2D::Create(logoPath.string(), TextureFilter::Linear);
 
 		WF_CORE_INFO("HubLayer: Attached Waffle Hub Launcher UI layer.");
 	}
@@ -203,7 +203,15 @@ namespace Waffle {
 		ImGui::PopStyleColor();
 
 		if (m_ShowRemoveModal)
-			UI_RemoveModal();
+		{
+			// Must be opened in THIS window scope - the same scope the
+			// modal's BeginPopupModal uses. Opening it inside the content
+			// child (where the Remove buttons live) registers it under a
+			// different ID and the modal never appears.
+			ImGui::OpenPopup("##RemoveProject");
+			m_ShowRemoveModal = false;
+		}
+		UI_RemoveModal();
 
 		ImGui::End();
 
@@ -249,6 +257,14 @@ namespace Waffle {
 		const float tabW = 118.0f, tabH = 34.0f;
 		const float totalW = 3.0f * tabW + 2.0f * 8.0f;
 
+		ImGui::SameLine();
+		ImGui::SetCursorPosX(ImGui::GetWindowWidth() - ImGui::GetStyle().WindowPadding.x - totalW - 4.0f);
+
+		// All three tabs share one explicit Y: SameLine alone aligns to the
+		// previous LINE, which left the first tab a line-spacing lower than
+		// the other two.
+		const float tabY = ImGui::GetCursorPosY() + 8.0f;
+
 		auto TabButton = [&](const char* label, HubTab tab)
 		{
 			bool active = (m_CurrentTab == tab);
@@ -266,19 +282,16 @@ namespace Waffle {
 				ImGui::PushStyleColor(ImGuiCol_ButtonHovered, HubStyle::PanelAlt);
 				ImGui::PushStyleVar(ImGuiStyleVar_FrameBorderSize, 0.0f);
 			}
+			ImGui::SetCursorPosY(tabY);
 			if (ImGui::Button(label, ImVec2(tabW, tabH)))
 				m_CurrentTab = tab;
 			ImGui::PopStyleVar();
 			ImGui::PopStyleColor(3);
+			ImGui::SameLine(0.0f, 8.0f);
 		};
 
-		ImGui::SameLine();
-		ImGui::SetCursorPosX(ImGui::GetWindowWidth() - ImGui::GetStyle().WindowPadding.x - totalW - 4.0f);
-		ImGui::SetCursorPosY(ImGui::GetCursorPosY() + 8.0f);
 		TabButton("Projects", HubTab::Projects);
-		ImGui::SameLine(0.0f, 8.0f);
 		TabButton("New Project", HubTab::NewProject);
-		ImGui::SameLine(0.0f, 8.0f);
 		TabButton("Settings", HubTab::Settings);
 
 		ImGui::Dummy(ImVec2(0.0f, 16.0f));
@@ -415,15 +428,6 @@ namespace Waffle {
 			ImGui::PopID();
 
 			ImGui::Spacing();
-		}
-
-		// The popup must be OPENED at window scope - the same ID scope the
-		// modal's BeginPopupModal uses (opening it inside a per-card PushID
-		// registers it under a different id and BeginPopupModal never matches).
-		if (m_ShowRemoveModal)
-		{
-			ImGui::OpenPopup("##RemoveProject");
-			m_ShowRemoveModal = false;
 		}
 	}
 

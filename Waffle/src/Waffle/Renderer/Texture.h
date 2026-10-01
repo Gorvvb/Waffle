@@ -52,7 +52,9 @@ namespace Waffle {
 	class Texture2D : public Texture
 	{
 	public:
-		static Ref<Texture2D> Create(uint32_t width, uint32_t height, TextureFilter filter = TextureFilter::Linear);
-		static Ref<Texture2D> Create(const std::string& path, TextureFilter filter = TextureFilter::Linear);
+		// Nearest is the engine-wide default - this is a 2D pixel-art
+		// engine; smooth filtering is opt-in per use site.
+		static Ref<Texture2D> Create(uint32_t width, uint32_t height, TextureFilter filter = TextureFilter::Nearest);
+		static Ref<Texture2D> Create(const std::string& path, TextureFilter filter = TextureFilter::Nearest);
 	};
 }

@@ -48,22 +48,22 @@ namespace Waffle {
 		});
 
 		// Toolbar icons
-		m_IconPlay = Texture2D::Create("Resources/Icons/PlayButton.png");
-		m_IconStop = Texture2D::Create("Resources/Icons/StopButton.png");
-		m_IconPause = Texture2D::Create("Resources/Icons/PauseButton.png");
-		m_IconStep = Texture2D::Create("Resources/Icons/StepButton.png");
-		m_IconPauseInactive = Texture2D::Create("Resources/Icons/PauseButtonInactive.png");
-		m_IconStepInactive = Texture2D::Create("Resources/Icons/StepButtonInactive.png");
+		m_IconPlay = Texture2D::Create("Resources/Icons/PlayButton.png", TextureFilter::Linear);
+		m_IconStop = Texture2D::Create("Resources/Icons/StopButton.png", TextureFilter::Linear);
+		m_IconPause = Texture2D::Create("Resources/Icons/PauseButton.png", TextureFilter::Linear);
+		m_IconStep = Texture2D::Create("Resources/Icons/StepButton.png", TextureFilter::Linear);
+		m_IconPauseInactive = Texture2D::Create("Resources/Icons/PauseButtonInactive.png", TextureFilter::Linear);
+		m_IconStepInactive = Texture2D::Create("Resources/Icons/StepButtonInactive.png", TextureFilter::Linear);
 
 		// Gizmo icons
-		m_IconNoGizmo = Texture2D::Create("Resources/Icons/Gizmos/NoGizmo.png");
-		m_IconTransformGizmo = Texture2D::Create("Resources/Icons/Gizmos/TransformGizmo.png");
-		m_IconRotationGizmo = Texture2D::Create("Resources/Icons/Gizmos/RotationGizmo.png");
-		m_IconScaleGizmo = Texture2D::Create("Resources/Icons/Gizmos/ScaleGizmo.png");
-		m_IconNoGizmoActive = Texture2D::Create("Resources/Icons/Gizmos/NoGizmoActive.png");
-		m_IconTransformGizmoActive = Texture2D::Create("Resources/Icons/Gizmos/TransformGizmoActive.png");
-		m_IconRotationGizmoActive = Texture2D::Create("Resources/Icons/Gizmos/RotationGizmoActive.png");
-		m_IconScaleGizmoActive = Texture2D::Create("Resources/Icons/Gizmos/ScaleGizmoActive.png");
+		m_IconNoGizmo = Texture2D::Create("Resources/Icons/Gizmos/NoGizmo.png", TextureFilter::Linear);
+		m_IconTransformGizmo = Texture2D::Create("Resources/Icons/Gizmos/TransformGizmo.png", TextureFilter::Linear);
+		m_IconRotationGizmo = Texture2D::Create("Resources/Icons/Gizmos/RotationGizmo.png", TextureFilter::Linear);
+		m_IconScaleGizmo = Texture2D::Create("Resources/Icons/Gizmos/ScaleGizmo.png", TextureFilter::Linear);
+		m_IconNoGizmoActive = Texture2D::Create("Resources/Icons/Gizmos/NoGizmoActive.png", TextureFilter::Linear);
+		m_IconTransformGizmoActive = Texture2D::Create("Resources/Icons/Gizmos/TransformGizmoActive.png", TextureFilter::Linear);
+		m_IconRotationGizmoActive = Texture2D::Create("Resources/Icons/Gizmos/RotationGizmoActive.png", TextureFilter::Linear);
+		m_IconScaleGizmoActive = Texture2D::Create("Resources/Icons/Gizmos/ScaleGizmoActive.png", TextureFilter::Linear);
 
 		// Framebuffer
 		FramebufferSpecification fbSpec;
@@ -105,6 +105,9 @@ namespace Waffle {
 
 		m_ContentBrowserPanel.SetOpenSceneCallback(
 			[this](const std::filesystem::path& path) { OpenScene(path); });
+
+		m_ContentBrowserPanel.SetOpenPrefabCallback(
+			[this](const std::filesystem::path& path) { OpenPrefabForEditing(path); });
 
 		// Lua Quit() during play stops the game, never the editor.
 		LuaScriptEngine::SetQuitHandler([this]
@@ -166,6 +169,11 @@ namespace Waffle {
 		WF_PROFILE_FUNCTION();
 
 		m_fps = ts;
+
+		// Deferred prefab-scene release: safe spot between frames, before any
+		// command buffer recording starts (see m_PrefabScenePendingRelease).
+		if (m_PrefabScenePendingRelease)
+			m_PrefabScenePendingRelease = nullptr;
 
 		// Resize framebuffer if viewport changed
 		if (FramebufferSpecification spec = m_Framebuffer->GetSpecification();
@@ -573,10 +581,19 @@ namespace Waffle {
 			}
 
 			void* textureID = m_Framebuffer->GetImGuiAttachmentId();
-			if (PostProcessing::GetSettings().EnablePostProcessing)
+			// Post-processing is per camera: the viewport preview uses the
+			// primary camera's CameraComponent::PostProcessing settings.
+			m_ViewportPostSettings = PostProcessingSettings();
+			if (m_ActiveScene)
+			{
+				Entity primaryCam = m_ActiveScene->GetPrimaryCameraEntity();
+				if (primaryCam && primaryCam.HasComponent<CameraComponent>())
+					m_ViewportPostSettings = primaryCam.GetComponent<CameraComponent>().PostProcessing;
+			}
+			if (m_ViewportPostSettings.EnablePostProcessing)
 			{
 				Ref<Framebuffer> processed = PostProcessing::Process(m_Framebuffer, 0,
-					(uint32_t)m_ViewportSize.x, (uint32_t)m_ViewportSize.y);
+					(uint32_t)m_ViewportSize.x, (uint32_t)m_ViewportSize.y, m_ViewportPostSettings);
 				if (processed)
 					textureID = processed->GetImGuiAttachmentId(0);
 			}
@@ -1158,37 +1175,8 @@ namespace Waffle {
 		}
 		UI::EndPropertyGrid();
 
-		// -- Post-Processing -----------------------------------------------
-		ImGui::SeparatorText("Post-Processing");
-		auto& ppSettings = PostProcessing::GetSettings();
-		UI::BeginPropertyGrid();
-		if (UI::PropertyCheckbox("Enable Post Processing", ppSettings.EnablePostProcessing)) SaveProjectSettings();
-
-		if (ppSettings.EnablePostProcessing)
-		{
-			if (UI::PropertyCheckbox("Enable Bloom", ppSettings.EnableBloom)) SaveProjectSettings();
-			if (ppSettings.EnableBloom)
-			{
-				if (UI::PropertyFloat("Bloom Threshold", ppSettings.BloomThreshold, 0.05f, 0.0f, 2.0f)) SaveProjectSettings();
-				if (UI::PropertyFloat("Bloom Intensity", ppSettings.BloomIntensity, 0.05f, 0.0f, 5.0f)) SaveProjectSettings();
-				if (UI::DrawColorEdit3("Bloom Color", ppSettings.BloomColor)) SaveProjectSettings();
-			}
-
-			if (UI::PropertyCheckbox("Enable Vignette", ppSettings.EnableVignette)) SaveProjectSettings();
-			if (ppSettings.EnableVignette)
-			{
-				if (UI::PropertyFloat("Vignette Intensity", ppSettings.VignetteIntensity, 0.02f, 0.0f, 1.0f)) SaveProjectSettings();
-				if (UI::PropertyFloat("Vignette Smoothness", ppSettings.VignetteSmoothness, 0.02f, 0.0f, 1.0f)) SaveProjectSettings();
-				if (UI::DrawColorEdit3("Vignette Color", ppSettings.VignetteColor)) SaveProjectSettings();
-			}
-
-			if (UI::PropertyCheckbox("Enable Tonemapping", ppSettings.EnableTonemapping)) SaveProjectSettings();
-			if (UI::PropertyFloat("Exposure", ppSettings.Exposure, 0.05f, 0.1f, 5.0f)) SaveProjectSettings();
-			if (UI::PropertyFloat("Contrast", ppSettings.Contrast, 0.05f, 0.1f, 3.0f)) SaveProjectSettings();
-			if (UI::PropertyFloat("Saturation", ppSettings.Saturation, 0.05f, 0.0f, 3.0f)) SaveProjectSettings();
-			if (UI::DrawColorEdit3("Color Tint", ppSettings.ColorGradingTint)) SaveProjectSettings();
-		}
-		UI::EndPropertyGrid();
+		// Post-processing moved out of project settings - it is now edited
+		// per camera in the CameraComponent inspector.
 
 		// -- Scene Order ---------------------------------------------------
 		ImGui::SeparatorText("Scene Order");
@@ -1881,46 +1869,8 @@ namespace Waffle {
 						}
 					}
 
-					auto ppNode = project["PostProcessing"];
-					if (ppNode)
-					{
-						auto& pp = PostProcessing::GetSettings();
-						if (ppNode["EnablePostProcessing"]) pp.EnablePostProcessing = ppNode["EnablePostProcessing"].as<bool>();
-						if (ppNode["EnableBloom"]) pp.EnableBloom = ppNode["EnableBloom"].as<bool>();
-						if (ppNode["BloomThreshold"]) pp.BloomThreshold = ppNode["BloomThreshold"].as<float>();
-						if (ppNode["BloomIntensity"]) pp.BloomIntensity = ppNode["BloomIntensity"].as<float>();
-						if (ppNode["BloomColor"])
-						{
-							pp.BloomColor.r = ppNode["BloomColor"][0].as<float>();
-							pp.BloomColor.g = ppNode["BloomColor"][1].as<float>();
-							pp.BloomColor.b = ppNode["BloomColor"][2].as<float>();
-						}
-
-						if (ppNode["EnableVignette"]) pp.EnableVignette = ppNode["EnableVignette"].as<bool>();
-						if (ppNode["VignetteIntensity"]) pp.VignetteIntensity = ppNode["VignetteIntensity"].as<float>();
-						if (ppNode["VignetteSmoothness"]) pp.VignetteSmoothness = ppNode["VignetteSmoothness"].as<float>();
-						if (ppNode["VignetteColor"])
-						{
-							pp.VignetteColor.r = ppNode["VignetteColor"][0].as<float>();
-							pp.VignetteColor.g = ppNode["VignetteColor"][1].as<float>();
-							pp.VignetteColor.b = ppNode["VignetteColor"][2].as<float>();
-						}
-
-						if (ppNode["EnableTonemapping"]) pp.EnableTonemapping = ppNode["EnableTonemapping"].as<bool>();
-						if (ppNode["Exposure"]) pp.Exposure = ppNode["Exposure"].as<float>();
-						if (ppNode["Contrast"]) pp.Contrast = ppNode["Contrast"].as<float>();
-						if (ppNode["Saturation"]) pp.Saturation = ppNode["Saturation"].as<float>();
-						if (ppNode["ColorGradingTint"])
-						{
-							pp.ColorGradingTint.r = ppNode["ColorGradingTint"][0].as<float>();
-							pp.ColorGradingTint.g = ppNode["ColorGradingTint"][1].as<float>();
-							pp.ColorGradingTint.b = ppNode["ColorGradingTint"][2].as<float>();
-						}
-					}
-					else
-					{
-						PostProcessing::GetSettings() = PostProcessingSettings(); // Default off
-					}
+					// Post-processing lives on the scene's cameras now
+					// (CameraComponent::PostProcessing) - nothing to load here.
 				}
 			}
 			catch (...) {}
@@ -2008,6 +1958,9 @@ namespace Waffle {
 		// A fresh scene replaces the runtime one - stop playback first or the
 		// next OnUpdate would run OnUpdateRuntime on a scene that never had
 		// OnRuntimeStart (null physics world).
+		if (m_InPrefabEditMode)
+			ClosePrefabEditor(true);
+
 		if (m_SceneState != SceneState::Edit)
 			OnSceneStop();
 
@@ -2033,6 +1986,9 @@ namespace Waffle {
 
 	void EditorLayer::OpenScene(const std::filesystem::path& path)
 	{
+		if (m_InPrefabEditMode)
+			ClosePrefabEditor(true);
+
 		if (m_SceneState != SceneState::Edit)
 			OnSceneStop();
 
@@ -2062,6 +2018,15 @@ namespace Waffle {
 
 	void EditorLayer::SaveScene()
 	{
+		// Ctrl+S while editing a prefab saves the prefab file.
+		if (m_InPrefabEditMode)
+		{
+			Entity root = m_PrefabScene ? m_PrefabScene->GetEntityByUUID(m_PrefabRootUUID) : Entity();
+			if (root)
+				SceneSerializer::SerializeEntityToPrefab(root, m_PrefabEditPath.string());
+			return;
+		}
+
 		// Always serialize the editor scene. m_ActiveScene is the runtime copy
 		// while playing - saving it would bake physics-moved transforms and
 		// runtime state into the file.
@@ -2186,25 +2151,7 @@ namespace Waffle {
 			out << p.string();
 		out << YAML::EndSeq;
 
-		const auto& pp = PostProcessing::GetSettings();
-		out << YAML::Key << "PostProcessing" << YAML::Value << YAML::BeginMap;
-		out << YAML::Key << "EnablePostProcessing" << YAML::Value << pp.EnablePostProcessing;
-		out << YAML::Key << "EnableBloom" << YAML::Value << pp.EnableBloom;
-		out << YAML::Key << "BloomThreshold" << YAML::Value << pp.BloomThreshold;
-		out << YAML::Key << "BloomIntensity" << YAML::Value << pp.BloomIntensity;
-		out << YAML::Key << "BloomColor" << YAML::Value << YAML::Flow << YAML::BeginSeq << pp.BloomColor.r << pp.BloomColor.g << pp.BloomColor.b << YAML::EndSeq;
-
-		out << YAML::Key << "EnableVignette" << YAML::Value << pp.EnableVignette;
-		out << YAML::Key << "VignetteIntensity" << YAML::Value << pp.VignetteIntensity;
-		out << YAML::Key << "VignetteSmoothness" << YAML::Value << pp.VignetteSmoothness;
-		out << YAML::Key << "VignetteColor" << YAML::Value << YAML::Flow << YAML::BeginSeq << pp.VignetteColor.r << pp.VignetteColor.g << pp.VignetteColor.b << YAML::EndSeq;
-
-		out << YAML::Key << "EnableTonemapping" << YAML::Value << pp.EnableTonemapping;
-		out << YAML::Key << "Exposure" << YAML::Value << pp.Exposure;
-		out << YAML::Key << "Contrast" << YAML::Value << pp.Contrast;
-		out << YAML::Key << "Saturation" << YAML::Value << pp.Saturation;
-		out << YAML::Key << "ColorGradingTint" << YAML::Value << YAML::Flow << YAML::BeginSeq << pp.ColorGradingTint.r << pp.ColorGradingTint.g << pp.ColorGradingTint.b << YAML::EndSeq;
-		out << YAML::EndMap;
+		// Post-processing lives on the scene's cameras (CameraComponent).
 
 		out << YAML::EndMap;
 		out << YAML::EndMap;
@@ -2317,6 +2264,14 @@ namespace Waffle {
 	{
 		if (!m_EditorScene) return;
 
+		// Play runs the persisted scene - a prefab being edited is not one.
+		// The Back button saves & returns to the scene, then Play works.
+		if (m_InPrefabEditMode)
+		{
+			WF_WARN("Exit prefab edit mode (Back) before entering play mode");
+			return;
+		}
+
 		m_SceneState = SceneState::Play;
 		RebuildSceneList();
 
@@ -2354,6 +2309,86 @@ namespace Waffle {
 		// The hovered entity belongs to the runtime scene that was just
 		// dropped - keep it around and the next HasComponent() reads freed memory.
 		m_HoveredEntity = Entity();
+	}
+
+	// Prefab edit mode ------------------------------------------------------
+	// Double-clicking a .prefab in the Content Browser deserializes it into a
+	// temporary scene that becomes the editor context; Back (in the hierarchy
+	// header) serializes the root back into the .prefab file and restores the
+	// real scene. Original scene state stays untouched in m_EditorScene.
+
+	void EditorLayer::OpenPrefabForEditing(const std::filesystem::path& prefabPath)
+	{
+		if (m_SceneState != SceneState::Edit)
+			OnSceneStop();
+
+		if (prefabPath.extension().string() != ".prefab")
+			return;
+
+		Ref<Scene> prefabScene = CreateRef<Scene>();
+		prefabScene->OnViewportResize(
+			(uint32_t)m_ViewportSize.x, (uint32_t)m_ViewportSize.y);
+
+		Entity root = SceneSerializer::DeserializePrefabToEntity(
+			prefabScene.get(), prefabPath.string());
+		if (!root)
+		{
+			WF_WARN("Could not open prefab '{0}' for editing", prefabPath.filename().string());
+			return;
+		}
+
+		m_PrefabScene = prefabScene;
+		m_PrefabEditPath = prefabPath;
+		m_PrefabRootUUID = root.GetUUID();
+		m_InPrefabEditMode = true;
+
+		m_ActiveScene = m_PrefabScene;
+		m_SceneHierarchyPanel.SetContext(m_ActiveScene);
+		m_ContentBrowserPanel.SetContext(m_ActiveScene);
+		m_AnimationEditorPanel.SetContext(m_ActiveScene);
+		m_HoveredEntity = Entity();
+
+		m_SceneHierarchyPanel.SetPrefabEditMode(true, prefabPath.stem().string(),
+			m_EditorScene ? m_EditorScene->GetName() : std::string(),
+			[this] { ClosePrefabEditor(true); });
+
+		UpdateWindowTitle();
+	}
+
+	void EditorLayer::ClosePrefabEditor(bool save)
+	{
+		if (!m_InPrefabEditMode)
+			return;
+
+		if (save && m_PrefabScene)
+		{
+			Entity root = m_PrefabScene->GetEntityByUUID(m_PrefabRootUUID);
+			if (root)
+			{
+				SceneSerializer::SerializeEntityToPrefab(root, m_PrefabEditPath.string());
+				WF_INFO("Saved prefab '{0}'", m_PrefabEditPath.filename().string());
+			}
+			else
+			{
+				WF_CORE_ERROR("Prefab editor: root entity is gone - '{0}' not saved",
+					m_PrefabEditPath.filename().string());
+			}
+		}
+
+		m_InPrefabEditMode = false;
+		m_PrefabScenePendingRelease = m_PrefabScene;
+		m_PrefabScene = nullptr;
+		m_PrefabEditPath.clear();
+		m_PrefabRootUUID = 0;
+
+		m_ActiveScene = m_EditorScene;
+		m_SceneHierarchyPanel.SetContext(m_ActiveScene);
+		m_ContentBrowserPanel.SetContext(m_ActiveScene);
+		m_AnimationEditorPanel.SetContext(m_ActiveScene);
+		m_HoveredEntity = Entity();
+
+		m_SceneHierarchyPanel.SetPrefabEditMode(false);
+		UpdateWindowTitle();
 	}
 
 	void EditorLayer::OnScenePause()

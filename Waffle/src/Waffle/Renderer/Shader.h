@@ -2,6 +2,7 @@
 
 	#include <string>
 	#include <unordered_map>
+	#include <filesystem>
 	#include <glm/glm.hpp>
 
 	#include "Waffle/Core/Ref.h"
@@ -15,6 +16,10 @@
 
 			virtual void Bind() const = 0;
 			virtual void Unbind() const = 0;
+
+			// False when construction failed (unreadable/unparseable file) -
+			// such a shader must not be used for rendering.
+			virtual bool IsValid() const = 0;
 
 			virtual void SetInt(const std::string& name, int value) = 0;
 			virtual void SetIntArray(const std::string& name, int* values, uint32_t count) = 0;
@@ -42,18 +47,38 @@
 			static Ref<Shader> Create(const std::string& name, const std::string& vertexSource, const std::string& fragmentSource);
 		};
 
+	// Central shader registry. All engine and user shaders load through it:
+	// it caches by file path, recompiles when the file's timestamp changes
+	// (live reload while the editor runs), and keeps the last working shader
+	// if a recompile fails. Must be Clear()ed before the graphics context is
+	// destroyed (Renderer::Shutdown).
 	class ShaderLibrary
 	{
-	private:
-		std::unordered_map<std::string, Ref<Shader>> m_Shaders;
 	public:
-		void Add(const std::string& name, const Ref<Shader>& shader);
-		void Add(const Ref<Shader>& shader);
-		Ref<Shader> Load(const std::string& name, const std::string& filepath);
+		static ShaderLibrary& Get();
+
+		// Returns the cached shader for `filepath`, compiling on first use and
+		// recompiling when the file changed. Returns nullptr if the file does
+		// not exist or failed to compile (and remembers the failure so it is
+		// not retried every frame).
 		Ref<Shader> Load(const std::string& filepath);
 
-		Ref<Shader> Get(const std::string& name);
-
+		Ref<Shader> Get(const std::string& name) const;
 		bool Exists(const std::string& name) const;
+
+		// Registers an already-created shader under its own name.
+		void Add(const Ref<Shader>& shader);
+
+		// Releases every shader - call from Renderer::Shutdown while the
+		// graphics context is still alive.
+		void Clear();
+
+	private:
+		struct Entry
+		{
+			Ref<Shader> Shader;
+			std::filesystem::file_time_type LastWrite{};
+		};
+		std::unordered_map<std::string, Entry> m_Shaders;
 	};
-}
+	}

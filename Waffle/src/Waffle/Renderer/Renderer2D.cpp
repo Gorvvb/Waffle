@@ -36,9 +36,9 @@ namespace Waffle {
 			float quadAspect = scale.x / scale.y;
 			float sx = 1.0f, sy = 1.0f;
 			if (spriteAspect > quadAspect)
-				sy = quadAspect / spriteAspect;   // sprite wider: shrink height
+				sy = quadAspect / spriteAspect; // sprite wider: shrink height
 			else
-				sx = spriteAspect / quadAspect;   // sprite taller: shrink width
+				sx = spriteAspect / quadAspect; // sprite taller: shrink width
 			return transform * glm::scale(glm::mat4(1.0f), glm::vec3(sx, sy, 1.0f));
 		}
 
@@ -86,7 +86,7 @@ namespace Waffle {
 		float Thickness;
 		float Fade;
 
-		// Editor-only
+		// Editor only
 		int EntityID;
 	};
 
@@ -95,7 +95,7 @@ namespace Waffle {
 		glm::vec3 Position;
 		glm::vec4 Color;
 
-		// Editor-only
+		// Editor only
 		int EntityID;
 	};
 
@@ -105,9 +105,8 @@ namespace Waffle {
 		static const uint32_t MaxVertices = MaxQuads * 4;
 		static const uint32_t MaxIndices = MaxQuads * 6;
 
-		// Hard upper bound (TextureSlots array capacity). The usable count is
-		// clamped to the device limit in Init() - some GPUs expose only 16
-		// texture image units and a u_Textures[32] array fails to link there.
+		// Hard upper bound (TextureSlots array capacity).
+		// The usable count is clamped to the device limit in Init(), some GPUs expose only 16 texture image units and a u_Textures[32] array fails to link there.
 		static const uint32_t MaxTextureSlotCapacity = 32;
 		uint32_t MaxTextureSlots = MaxTextureSlotCapacity;
 
@@ -154,9 +153,25 @@ namespace Waffle {
 			uint32_t ElementOffset = 0;
 			uint32_t ElementCount = 0;
 			uint32_t TextureCount = 0;
+			// Non-null for quads drawn with a custom shader (see
+			// SpriteRendererComponent::CustomShaderPath). Entries only merge
+			// while this matches, which keeps one batch per shader.
+			Ref<Shader> Shader;
 		};
 
 		std::vector<RenderCommandEntry> Commands;
+
+		// Pipelines for custom quad shaders, keyed by shader pointer. The
+		// entry keeps a Ref to the shader it was built from, so a stale entry
+		// (shader reloaded -> new Ref) is detected by comparing pointers and
+		// the old VkPipeline stays alive until Shutdown instead of dying
+		// under in-flight command buffers.
+		struct CustomPipelineEntry
+		{
+			Ref<Shader> Shader;
+			Ref<GraphicsPipeline> Pipeline;
+		};
+		std::unordered_map<Shader*, CustomPipelineEntry> CustomQuadPipelines;
 
 		Renderer2D::Statistics Stats;
 		Frustum2D ActiveFrustum;
@@ -171,11 +186,12 @@ namespace Waffle {
 
 	static Renderer2DData s_Data;
 
-	static void RecordQuadCommand(uint32_t indexCount)
+	static void RecordQuadCommand(uint32_t indexCount, const Ref<Shader>& shader = nullptr)
 	{
-		if (s_Data.Commands.empty() || s_Data.Commands.back().Type != Renderer2DData::PrimitiveType::Quad)
+		if (s_Data.Commands.empty() || s_Data.Commands.back().Type != Renderer2DData::PrimitiveType::Quad
+			|| s_Data.Commands.back().Shader != shader)
 		{
-			s_Data.Commands.push_back({ Renderer2DData::PrimitiveType::Quad, s_Data.QuadIndexCount - indexCount, 0, s_Data.TextureSlotIndex });
+			s_Data.Commands.push_back({ Renderer2DData::PrimitiveType::Quad, s_Data.QuadIndexCount - indexCount, 0, s_Data.TextureSlotIndex, shader });
 		}
 		s_Data.Commands.back().ElementCount += indexCount;
 		s_Data.Commands.back().TextureCount = s_Data.TextureSlotIndex;
@@ -271,6 +287,24 @@ namespace Waffle {
 		uint32_t whiteTextureData = 0xffffffff;
 		s_Data.WhiteTexture->SetData(&whiteTextureData, sizeof(uint32_t));
 
+		s_Data.TextureSlots[0] = s_Data.WhiteTexture;
+
+		s_Data.QuadVertexPositions[0] = { -0.5f, -0.5f, 0.0f, 1.0f };
+		s_Data.QuadVertexPositions[1] = {  0.5f, -0.5f, 0.0f, 1.0f };
+		s_Data.QuadVertexPositions[2] = {  0.5f,  0.5f, 0.0f, 1.0f };
+		s_Data.QuadVertexPositions[3] = { -0.5f,  0.5f, 0.0f, 1.0f };
+
+		s_Data.CameraUniformBuffer = UniformBuffer::Create(sizeof(Renderer2DData::CameraData), 0);
+	}
+
+	// Deferred from Init(): compiles the built-in shaders and creates their
+	// pipelines on first BeginScene. Apps that never render a 2D scene (the
+	// Hub launcher, headless tools) then never touch shader files at all.
+	void Renderer2D::InitShaders()
+	{
+		if (s_Data.QuadShader)
+			return;
+
 		// Clamp the batcher to this device's sampler limit and publish it as
 		// WF_MAX_TEXTURE_SLOTS BEFORE creating shaders, so u_Textures[] is
 		// declared with a size this GPU can actually link.
@@ -285,12 +319,15 @@ namespace Waffle {
 		for (int32_t i = 0; i < (int32_t)s_Data.MaxTextureSlots; i++)
 			samplers[i] = i;
 
-		s_Data.QuadShader = Shader::Create("assets/shaders/2DQuadShader.glsl");
+		// Built-ins load through the central ShaderLibrary like any user
+		// shader (which also gives them hot reload for free).
+		s_Data.QuadShader = ShaderLibrary::Get().Load("assets/shaders/2DQuadShader.glsl");
+		WF_CORE_ASSERT(s_Data.QuadShader && s_Data.QuadShader->IsValid(), "Failed to load 2DQuadShader!");
 		s_Data.QuadShader->Bind();
 		s_Data.QuadShader->SetIntArray("u_Textures", samplers.data(), s_Data.MaxTextureSlots);
 
-		s_Data.CircleShader = Shader::Create("assets/shaders/2DCircleShader.glsl");
-		s_Data.LineShader = Shader::Create("assets/shaders/2DLineShader.glsl");
+		s_Data.CircleShader = ShaderLibrary::Get().Load("assets/shaders/2DCircleShader.glsl");
+		s_Data.LineShader = ShaderLibrary::Get().Load("assets/shaders/2DLineShader.glsl");
 
 		// Explicit pipelines - the backend no longer derives state from
 		// "whatever shader/VAO is bound" at draw time.
@@ -308,15 +345,25 @@ namespace Waffle {
 		pipelineDesc.Shader = s_Data.LineShader;
 		pipelineDesc.Topology = GraphicsPipeline::Topology::Lines;
 		s_Data.LinePipeline = GraphicsPipeline::Create(pipelineDesc);
+	}
 
-		s_Data.TextureSlots[0] = s_Data.WhiteTexture;
+	// Resolves (or creates) the pipeline for a custom quad shader - same
+	// fixed state as QuadPipeline, only the shader differs.
+	static Ref<GraphicsPipeline> GetOrCreateCustomQuadPipeline(const Ref<Shader>& shader)
+	{
+		auto it = s_Data.CustomQuadPipelines.find(shader.get());
+		if (it != s_Data.CustomQuadPipelines.end() && it->second.Shader == shader)
+			return it->second.Pipeline;
 
-		s_Data.QuadVertexPositions[0] = { -0.5f, -0.5f, 0.0f, 1.0f };
-		s_Data.QuadVertexPositions[1] = {  0.5f, -0.5f, 0.0f, 1.0f };
-		s_Data.QuadVertexPositions[2] = {  0.5f,  0.5f, 0.0f, 1.0f };
-		s_Data.QuadVertexPositions[3] = { -0.5f,  0.5f, 0.0f, 1.0f };
+		GraphicsPipeline::Desc desc;
+		desc.Blending   = GraphicsPipeline::BlendMode::SrcAlpha;
+		desc.DepthTest  = true;
+		desc.DepthWrite = true;
+		desc.Shader     = shader;
 
-		s_Data.CameraUniformBuffer = UniformBuffer::Create(sizeof(Renderer2DData::CameraData), 0);
+		Ref<GraphicsPipeline> pipeline = GraphicsPipeline::Create(desc);
+		s_Data.CustomQuadPipelines[shader.get()] = { shader, pipeline };
+		return pipeline;
 	}
 
 	void Renderer2D::Shutdown()
@@ -351,14 +398,18 @@ namespace Waffle {
 		s_Data.LinePipeline = nullptr;
 
 		s_Data.CameraUniformBuffer = nullptr;
+		s_Data.CustomQuadPipelines.clear();
 		for (auto& slot : s_Data.TextureSlots)
 			slot = nullptr;
 		s_Data.Commands.clear();
+
+		ShaderLibrary::Get().Clear();
 	}
 
 	void Renderer2D::BeginScene(const OrthographicCamera& camera)
 	{
 		WF_PROFILE_FUNCTION();
+		InitShaders();
 
 		s_Data.CameraBuffer.ViewProjection = camera.GetViewProjectionMatrix();
 		Renderer::GetCommandBuffer()->UpdateUniformBuffer(s_Data.CameraUniformBuffer,
@@ -371,6 +422,7 @@ namespace Waffle {
 	void Renderer2D::BeginScene(const Camera& camera, const glm::mat4& transform)
 	{
 		WF_PROFILE_FUNCTION();
+		InitShaders();
 
 		s_Data.CameraBuffer.ViewProjection = camera.GetProjection() * glm::inverse(transform);
 		Renderer::GetCommandBuffer()->UpdateUniformBuffer(s_Data.CameraUniformBuffer,
@@ -383,6 +435,7 @@ namespace Waffle {
 	void Renderer2D::BeginScene(const EditorCamera& camera)
 	{
 		WF_PROFILE_FUNCTION();
+		InitShaders();
 
 		s_Data.CameraBuffer.ViewProjection = camera.GetViewProjection();
 		Renderer::GetCommandBuffer()->UpdateUniformBuffer(s_Data.CameraUniformBuffer,
@@ -461,7 +514,7 @@ namespace Waffle {
 			case Renderer2DData::PrimitiveType::Quad:
 			{
 				cmd->BindTextures(0, s_Data.TextureSlots.data(), command.TextureCount);
-				cmd->BindPipeline(s_Data.QuadPipeline);
+				cmd->BindPipeline(command.Shader ? GetOrCreateCustomQuadPipeline(command.Shader) : s_Data.QuadPipeline);
 				cmd->DrawIndexed(s_Data.QuadVertexArray, command.ElementCount, command.ElementOffset);
 				s_Data.Stats.DrawCalls++;
 				break;
@@ -587,14 +640,14 @@ namespace Waffle {
 		}
 	}
 
-	void Renderer2D::DrawSprite(const glm::mat4& transform, SpriteRendererComponent& src, int entityID)
+	void Renderer2D::DrawSprite(const glm::mat4& transform, SpriteRendererComponent& src, int entityID, const Ref<Shader>& customShader)
 	{
 		if (src.Texture)
 		{
-			DrawQuad(transform, src.Texture, src.TilingFactor, src.Color, entityID, src.AspectMode);
+			DrawQuad(transform, src.Texture, src.TilingFactor, src.Color, entityID, src.AspectMode, customShader);
 		}
 		else
-			DrawQuad(transform, src.Color, entityID);
+			DrawQuad(transform, src.Color, entityID, customShader);
 	}
 
 	void Renderer2D::DrawCircle(const glm::mat4& transform, const glm::vec4& color, float thickness /*= 1.0f*/, float fade /*= 0.005f*/, int entityID /*= -1*/)
@@ -695,7 +748,7 @@ namespace Waffle {
 		DrawQuad(transform, texture, tilingFactor, tintColor);
 	}
 
-	void Renderer2D::DrawQuad(const glm::mat4& transform, const glm::vec4& color, int entityID)
+	void Renderer2D::DrawQuad(const glm::mat4& transform, const glm::vec4& color, int entityID, const Ref<Shader>& customShader)
 	{
 		WF_PROFILE_FUNCTION();
 
@@ -737,7 +790,7 @@ namespace Waffle {
 		}
 
 		s_Data.QuadIndexCount += 6;
-		RecordQuadCommand(6);
+		RecordQuadCommand(6, customShader);
 
 		s_Data.Stats.QuadCount++;
 	}
@@ -839,7 +892,7 @@ namespace Waffle {
 		s_Data.Stats.QuadCount++;
 	}
 
-	void Renderer2D::DrawQuad(const glm::mat4& transformIn, const Ref<Texture2D>& texture, const glm::vec2& tilingFactor, const glm::vec4& tintColor, int entityID, SpriteAspectMode aspectMode)
+	void Renderer2D::DrawQuad(const glm::mat4& transformIn, const Ref<Texture2D>& texture, const glm::vec2& tilingFactor, const glm::vec4& tintColor, int entityID, SpriteAspectMode aspectMode, const Ref<Shader>& customShader)
 	{
 		WF_PROFILE_FUNCTION();
 
@@ -932,7 +985,7 @@ namespace Waffle {
 		}
 
 		s_Data.QuadIndexCount += 6;
-		RecordQuadCommand(6);
+		RecordQuadCommand(6, customShader);
 
 		s_Data.Stats.QuadCount++;
 	}

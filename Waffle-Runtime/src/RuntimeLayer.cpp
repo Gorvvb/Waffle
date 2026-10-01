@@ -57,42 +57,8 @@ namespace Waffle {
 							m_SceneList.push_back(startScene);
 					}
 
-					auto ppNode = project["PostProcessing"];
-					if (ppNode)
-					{
-						auto& pp = PostProcessing::GetSettings();
-						if (ppNode["EnablePostProcessing"]) pp.EnablePostProcessing = ppNode["EnablePostProcessing"].as<bool>();
-						if (ppNode["EnableBloom"]) pp.EnableBloom = ppNode["EnableBloom"].as<bool>();
-						if (ppNode["BloomThreshold"]) pp.BloomThreshold = ppNode["BloomThreshold"].as<float>();
-						if (ppNode["BloomIntensity"]) pp.BloomIntensity = ppNode["BloomIntensity"].as<float>();
-						if (ppNode["BloomColor"])
-						{
-							pp.BloomColor.r = ppNode["BloomColor"][0].as<float>();
-							pp.BloomColor.g = ppNode["BloomColor"][1].as<float>();
-							pp.BloomColor.b = ppNode["BloomColor"][2].as<float>();
-						}
-
-						if (ppNode["EnableVignette"]) pp.EnableVignette = ppNode["EnableVignette"].as<bool>();
-						if (ppNode["VignetteIntensity"]) pp.VignetteIntensity = ppNode["VignetteIntensity"].as<float>();
-						if (ppNode["VignetteSmoothness"]) pp.VignetteSmoothness = ppNode["VignetteSmoothness"].as<float>();
-						if (ppNode["VignetteColor"])
-						{
-							pp.VignetteColor.r = ppNode["VignetteColor"][0].as<float>();
-							pp.VignetteColor.g = ppNode["VignetteColor"][1].as<float>();
-							pp.VignetteColor.b = ppNode["VignetteColor"][2].as<float>();
-						}
-
-						if (ppNode["EnableTonemapping"]) pp.EnableTonemapping = ppNode["EnableTonemapping"].as<bool>();
-						if (ppNode["Exposure"]) pp.Exposure = ppNode["Exposure"].as<float>();
-						if (ppNode["Contrast"]) pp.Contrast = ppNode["Contrast"].as<float>();
-						if (ppNode["Saturation"]) pp.Saturation = ppNode["Saturation"].as<float>();
-						if (ppNode["ColorGradingTint"])
-						{
-							pp.ColorGradingTint.r = ppNode["ColorGradingTint"][0].as<float>();
-							pp.ColorGradingTint.g = ppNode["ColorGradingTint"][1].as<float>();
-							pp.ColorGradingTint.b = ppNode["ColorGradingTint"][2].as<float>();
-						}
-					}
+					// Post-processing settings live on each scene's camera
+					// (CameraComponent::PostProcessing) - read per frame below.
 				}
 			}
 			catch (const std::exception& e)
@@ -185,12 +151,17 @@ namespace Waffle {
 		CommandBuffer* cmd = Renderer::GetCommandBuffer();
 
 		Entity primaryCam = m_Scene->GetPrimaryCameraEntity();
-		glm::vec4 clearColor = primaryCam
-			? primaryCam.GetComponent<CameraComponent>().BackgroundColor
-			: glm::vec4{ 0.1f, 0.1f, 0.1f, 1.0f };
+		glm::vec4 clearColor{ 0.1f, 0.1f, 0.1f, 1.0f };
+		PostProcessingSettings postSettings;
+		if (primaryCam)
+		{
+			const auto& cc = primaryCam.GetComponent<CameraComponent>();
+			clearColor = cc.BackgroundColor;
+			postSettings = cc.PostProcessing;
+		}
 		cmd->SetClearColor(clearColor);
 
-		if (PostProcessing::GetSettings().EnablePostProcessing)
+		if (postSettings.EnablePostProcessing)
 		{
 			if (width == 0 || height == 0) return;
 
@@ -217,7 +188,7 @@ namespace Waffle {
 				return;
 			}
 
-			PostProcessing::ProcessAndPresent(m_Framebuffer, 0, width, height);
+			PostProcessing::ProcessAndPresent(m_Framebuffer, 0, width, height, postSettings);
 
 			if (pendingScene != -1)
 				LoadScene(pendingScene);

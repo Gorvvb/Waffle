@@ -6,6 +6,7 @@
 #include "Waffle/Renderer/Texture.h"
 #include "Waffle/Renderer/SubTexture2D.h"
 #include "Waffle/Renderer/Font.h"
+#include "Waffle/Renderer/PostProcessing.h"
 
 #include <string>
 #include <vector>
@@ -123,6 +124,12 @@ namespace Waffle {
 		TextureFilter FilterMode = TextureFilter::Linear;
 		SpriteAspectMode AspectMode = SpriteAspectMode::Stretch;
 
+		// Optional custom .glsl replacing the built-in quad shader for this
+		// sprite. Must use the same vertex layout / u_Textures binding as
+		// 2DQuadShader.glsl (see the Content Browser's shader template).
+		// Resolved per frame through the ShaderLibrary (hot reloads on edit).
+		std::string CustomShaderPath;
+
 		int SortingLayer = 0;
 		int SortingOrder = 0;
 
@@ -156,6 +163,12 @@ namespace Waffle {
 		std::string BackgroundImagePath = "";
 		glm::vec2 BackgroundTilingFactor = { 1.0f, 1.0f };
 		TextureFilter BackgroundFilterMode = TextureFilter::Linear;
+
+		// Post-processing applied to whatever this camera renders (bloom,
+		// vignette, tonemapping, color grading). Previously a single global
+		// project setting - per-camera settings allow different looks per
+		// scene/viewport.
+		PostProcessingSettings PostProcessing;
 
 		CameraComponent() = default;
 		CameraComponent(const CameraComponent&) = default;

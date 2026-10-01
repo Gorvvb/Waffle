@@ -7,6 +7,7 @@
 #include "Waffle/Audio/AudioEngine.h"
 #include "Waffle/Renderer/Renderer2D.h"
 #include "Waffle/Renderer/UIRenderer.h"
+#include "Waffle/Renderer/Shader.h"
 #include "Waffle/Math/Math.h"
 
 #include <glm/glm.hpp>
@@ -23,6 +24,21 @@
 #include "box2d/b2_circle_shape.h"
 
 namespace Waffle {
+
+	// Resolves a sprite's optional custom shader (SpriteRendererComponent::
+	// CustomShaderPath). Paths resolve like texture paths (asset-relative),
+	// and the ShaderLibrary hot-reloads the shader when the file changes.
+	static Ref<Shader> ResolveCustomShader(const SpriteRendererComponent& src)
+	{
+		if (src.CustomShaderPath.empty())
+			return nullptr;
+
+		std::filesystem::path resolved = ResolveTexturePath(src.CustomShaderPath);
+		if (resolved.empty())
+			return nullptr;
+
+		return ShaderLibrary::Get().Load(resolved.string());
+	}
 
 	static b2BodyType Rigid2DTypeToBox2DBody(Rigidbody2DComponent::BodyType bodyType)
 	{
@@ -891,7 +907,7 @@ namespace Waffle {
 						continue;
 						}
 					}
-					Renderer2D::DrawSprite(item.WorldTransform, sprite, (int)item.EntityID);
+					Renderer2D::DrawSprite(item.WorldTransform, sprite, (int)item.EntityID, ResolveCustomShader(sprite));
 				}
 				else if (item.Type == RenderItem::ItemType::Tilemap)
 				{
@@ -1097,7 +1113,7 @@ namespace Waffle {
 						continue;
 					}
 				}
-				Renderer2D::DrawSprite(item.WorldTransform, sprite, (int)item.EntityID);
+				Renderer2D::DrawSprite(item.WorldTransform, sprite, (int)item.EntityID, ResolveCustomShader(sprite));
 			}
 			else if (item.Type == RenderItem::ItemType::Tilemap)
 			{

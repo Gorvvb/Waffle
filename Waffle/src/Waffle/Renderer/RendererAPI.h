@@ -11,7 +11,9 @@ namespace Waffle {
 	public:
 		enum class API
 		{
-			None = 0, OpenGL = 1, Vulkan = 2,
+			None = 0,
+			OpenGL = 1,
+			Vulkan = 2
 		};
 	public:
 		virtual ~RendererAPI() = default;
@@ -22,9 +24,6 @@ namespace Waffle {
 		virtual void SetClearColor(const glm::vec4& color) = 0;
 		virtual void Clear() = 0;
 
-		// Device sampler-array limit (per fragment stage). Batching code must
-		// not exceed this - a u_Textures[32] array fails to link on GPUs that
-		// only expose 16 texture image units.
 		virtual uint32_t GetMaxTextureSlots() const = 0;
 
 		inline static API GetAPI() { return s_API; }

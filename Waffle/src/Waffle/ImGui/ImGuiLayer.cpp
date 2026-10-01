@@ -246,7 +246,16 @@ namespace Waffle {
 
 	void ImGuiLayer::BeginTextureSamplerPassthrough(ImDrawList* drawList)
 	{
-		if (s_IsVulkan) return;
+		// Vulkan: the backend samples every texture with its own Linear
+		// sampler unless a draw callback switches it - request NEAREST for
+		// these pixel-art draws. GL: unbind the forced-nearest sampler so the
+		// texture's own filter applies.
+		if (s_IsVulkan)
+		{
+			if (ImGui::GetPlatformIO().DrawCallback_SetSamplerNearest)
+				drawList->AddCallback(ImGui::GetPlatformIO().DrawCallback_SetSamplerNearest, nullptr);
+			return;
+		}
 
 		drawList->AddCallback([](const ImDrawList*, const ImDrawCmd*) {
 			glBindSampler(0, 0);
@@ -255,8 +264,6 @@ namespace Waffle {
 
 	void ImGuiLayer::EndTextureSamplerPassthrough(ImDrawList* drawList)
 	{
-		if (s_IsVulkan) return;
-
 		drawList->AddCallback(ImDrawCallback_ResetRenderState, nullptr);
 	}
 

@@ -174,6 +174,25 @@ namespace Waffle {
 
 	}
 
+	// Shared by the scene and prefab loaders - per-camera post-processing.
+	static void DeserializePostProcessing(const YAML::Node& node, PostProcessingSettings& pp)
+	{
+		if (node["EnablePostProcessing"]) pp.EnablePostProcessing = node["EnablePostProcessing"].as<bool>(false);
+		if (node["EnableBloom"])          pp.EnableBloom = node["EnableBloom"].as<bool>(false);
+		if (node["BloomThreshold"])       pp.BloomThreshold = node["BloomThreshold"].as<float>(0.8f);
+		if (node["BloomIntensity"])       pp.BloomIntensity = node["BloomIntensity"].as<float>(1.0f);
+		if (node["BloomColor"])           pp.BloomColor = node["BloomColor"].as<glm::vec3>();
+		if (node["EnableVignette"])       pp.EnableVignette = node["EnableVignette"].as<bool>(false);
+		if (node["VignetteIntensity"])    pp.VignetteIntensity = node["VignetteIntensity"].as<float>(0.4f);
+		if (node["VignetteSmoothness"])   pp.VignetteSmoothness = node["VignetteSmoothness"].as<float>(0.6f);
+		if (node["VignetteColor"])        pp.VignetteColor = node["VignetteColor"].as<glm::vec3>();
+		if (node["EnableTonemapping"])    pp.EnableTonemapping = node["EnableTonemapping"].as<bool>(false);
+		if (node["Exposure"])             pp.Exposure = node["Exposure"].as<float>(1.0f);
+		if (node["Contrast"])             pp.Contrast = node["Contrast"].as<float>(1.0f);
+		if (node["Saturation"])           pp.Saturation = node["Saturation"].as<float>(1.0f);
+		if (node["ColorGradingTint"])     pp.ColorGradingTint = node["ColorGradingTint"].as<glm::vec3>();
+	}
+
 	static void SerializeEntity(YAML::Emitter& out, Entity entity)
 	{
 		WF_CORE_ASSERT(entity.HasComponent<IDComponent>());
@@ -235,6 +254,28 @@ namespace Waffle {
 			out << YAML::Key << "BackgroundTilingFactor" << YAML::Value << cameraComponent.BackgroundTilingFactor;
 			out << YAML::Key << "BackgroundFilterMode" << YAML::Value << static_cast<int>(cameraComponent.BackgroundFilterMode);
 
+			// Per-camera post-processing (was a single global project setting).
+			{
+				const auto& pp = cameraComponent.PostProcessing;
+				out << YAML::Key << "PostProcessing" << YAML::Value;
+				out << YAML::BeginMap; // PostProcessing
+				out << YAML::Key << "EnablePostProcessing" << YAML::Value << pp.EnablePostProcessing;
+				out << YAML::Key << "EnableBloom" << YAML::Value << pp.EnableBloom;
+				out << YAML::Key << "BloomThreshold" << YAML::Value << pp.BloomThreshold;
+				out << YAML::Key << "BloomIntensity" << YAML::Value << pp.BloomIntensity;
+				out << YAML::Key << "BloomColor" << YAML::Value << pp.BloomColor;
+				out << YAML::Key << "EnableVignette" << YAML::Value << pp.EnableVignette;
+				out << YAML::Key << "VignetteIntensity" << YAML::Value << pp.VignetteIntensity;
+				out << YAML::Key << "VignetteSmoothness" << YAML::Value << pp.VignetteSmoothness;
+				out << YAML::Key << "VignetteColor" << YAML::Value << pp.VignetteColor;
+				out << YAML::Key << "EnableTonemapping" << YAML::Value << pp.EnableTonemapping;
+				out << YAML::Key << "Exposure" << YAML::Value << pp.Exposure;
+				out << YAML::Key << "Contrast" << YAML::Value << pp.Contrast;
+				out << YAML::Key << "Saturation" << YAML::Value << pp.Saturation;
+				out << YAML::Key << "ColorGradingTint" << YAML::Value << pp.ColorGradingTint;
+				out << YAML::EndMap; // PostProcessing
+			}
+
 			out << YAML::EndMap; // CameraComponent
 		}
 
@@ -248,6 +289,9 @@ namespace Waffle {
 
 			if (spriteRendererComponent.Texture)
 				out << YAML::Key << "TexturePath" << YAML::Value << GetNormalizedAssetPath(spriteRendererComponent.Texture->GetPath());
+
+			if (!spriteRendererComponent.CustomShaderPath.empty())
+				out << YAML::Key << "ShaderPath" << YAML::Value << GetNormalizedAssetPath(spriteRendererComponent.CustomShaderPath);
 
 			out << YAML::Key << "FilterMode" << YAML::Value << static_cast<int>(spriteRendererComponent.FilterMode);
 			out << YAML::Key << "TilingFactor" << YAML::Value << spriteRendererComponent.TilingFactor;
@@ -843,6 +887,9 @@ namespace Waffle {
 							}
 						}
 					}
+
+					if (cameraComponent["PostProcessing"])
+						DeserializePostProcessing(cameraComponent["PostProcessing"], cc.PostProcessing);
 				}
 
 				auto spriteRendererComponent = entity["SpriteRendererComponent"];
@@ -867,6 +914,9 @@ namespace Waffle {
 							src.Texture = Texture2D::Create(resolved.string(), src.FilterMode);
 						}
 					}
+
+					if (spriteRendererComponent["ShaderPath"])
+						src.CustomShaderPath = spriteRendererComponent["ShaderPath"].as<std::string>();
 
 					if (spriteRendererComponent["FilterMode"])
 					{
@@ -1293,6 +1343,9 @@ namespace Waffle {
 						cc.BackgroundImage = Texture2D::Create(resolved.string(), cc.BackgroundFilterMode);
 				}
 			}
+
+			if (cameraComponent["PostProcessing"])
+				DeserializePostProcessing(cameraComponent["PostProcessing"], cc.PostProcessing);
 		}
 
 		auto spriteRendererComponent = entityNode["SpriteRendererComponent"];
@@ -1313,6 +1366,9 @@ namespace Waffle {
 					src.Texture = Texture2D::Create(resolved.string(), src.FilterMode);
 				}
 			}
+
+			if (spriteRendererComponent["ShaderPath"])
+				src.CustomShaderPath = spriteRendererComponent["ShaderPath"].as<std::string>();
 
 			if (spriteRendererComponent["FilterMode"])
 			{

@@ -9,235 +9,14 @@
 
 namespace Waffle {
 
-	// =========================================================================
-	// Shaders
-	// One GLSL source per stage for BOTH backends: samplers carry Vulkan
+	// All post shaders live in Assets/shaders as regular .glsl files
+	// (PostComposite.glsl, BloomDownsample.glsl, BloomUpsample.glsl) - one
+	// GLSL source per stage for BOTH backends: samplers carry Vulkan
 	// set/binding decorations (GL ignores `set`, honours `binding` as the
 	// texture unit), and per-pass parameters live in a std140 UBO at
 	// binding 2 (Vulkan: set 0 / binding 2 - a ring-sliced UniformBuffer, so
 	// every recorded pass keeps its own parameter set; see CommandBuffer::
 	// UpdateUniformBuffer).
-	// =========================================================================
-
-	static const char* g_VertexShaderSource = R"(
-#version 460 core
-
-layout(location = 0) in vec2 a_Position;
-layout(location = 1) in vec2 a_TexCoord;
-
-layout(location = 0) out vec2 v_TexCoord;
-
-void main()
-{
-    v_TexCoord = a_TexCoord;
-    gl_Position = vec4(a_Position, 0.0, 1.0);
-}
-)";
-
-	static const char* g_DownsampleShaderSource = R"(
-#version 460 core
-
-layout(location = 0) out vec4 o_Color;
-
-layout(location = 0) in vec2 v_TexCoord;
-
-layout (set = 1, binding = 0) uniform sampler2D u_SrcTexture;
-
-layout(std140, binding = 2) uniform Params
-{
-    vec2 u_TexelSize;
-    int u_MipLevel;
-    float u_Threshold;
-};
-
-vec3 DownsampleBox13(sampler2D tex, vec2 uv, vec2 texelSize)
-{
-    vec3 a = texture(tex, uv + vec2(-2.0,  2.0) * texelSize).rgb;
-    vec3 b = texture(tex, uv + vec2( 0.0,  2.0) * texelSize).rgb;
-    vec3 c = texture(tex, uv + vec2( 2.0,  2.0) * texelSize).rgb;
-
-    vec3 d = texture(tex, uv + vec2(-2.0,  0.0) * texelSize).rgb;
-    vec3 e = texture(tex, uv).rgb;
-    vec3 f = texture(tex, uv + vec2( 2.0,  0.0) * texelSize).rgb;
-
-    vec3 g = texture(tex, uv + vec2(-2.0, -2.0) * texelSize).rgb;
-    vec3 h = texture(tex, uv + vec2( 0.0, -2.0) * texelSize).rgb;
-    vec3 i = texture(tex, uv + vec2( 2.0, -2.0) * texelSize).rgb;
-
-    vec3 j = texture(tex, uv + vec2(-1.0,  1.0) * texelSize).rgb;
-    vec3 k = texture(tex, uv + vec2( 1.0,  1.0) * texelSize).rgb;
-    vec3 l = texture(tex, uv + vec2(-1.0, -1.0) * texelSize).rgb;
-    vec3 m = texture(tex, uv + vec2( 1.0, -1.0) * texelSize).rgb;
-
-    vec3 color = e * 0.125;
-    color += (a + c + g + i) * 0.03125;
-    color += (b + d + f + h) * 0.0625;
-    color += (j + k + l + m) * 0.125;
-
-    return color;
-}
-
-vec3 Prefilter(vec3 color, float threshold)
-{
-    float brightness = max(color.r, max(color.g, color.b));
-    float knee = threshold * 0.5;
-    float soft = brightness - threshold + knee;
-    soft = clamp(soft, 0.0, 2.0 * knee);
-    soft = soft * soft / (4.0 * knee + 0.00001);
-    float contribution = max(soft, brightness - threshold);
-    contribution /= max(brightness, 0.00001);
-    return color * max(contribution, 0.0);
-}
-
-void main()
-{
-    vec3 color = DownsampleBox13(u_SrcTexture, v_TexCoord, u_TexelSize);
-    if (u_MipLevel == 0)
-    {
-        color = Prefilter(color, u_Threshold);
-    }
-    o_Color = vec4(color, 1.0);
-}
-)";
-
-	static const char* g_UpsampleShaderSource = R"(
-#version 460 core
-
-layout(location = 0) out vec4 o_Color;
-
-layout(location = 0) in vec2 v_TexCoord;
-
-layout (set = 1, binding = 0) uniform sampler2D u_SrcTexture;
-
-layout(std140, binding = 2) uniform Params
-{
-    vec2 u_TexelSize;
-    float u_FilterRadius;
-};
-
-vec3 UpsampleTent9(sampler2D tex, vec2 uv, vec2 texelSize, float radius)
-{
-    vec4 d = texelSize.xyxy * vec4(1.0, 1.0, -1.0, 0.0) * radius;
-
-    vec3 s;
-    s  = texture(tex, uv - d.xy).rgb;
-    s += texture(tex, uv - d.wy).rgb * 2.0;
-    s += texture(tex, uv + d.zy).rgb;
-
-    s += texture(tex, uv + d.zw).rgb * 2.0;
-    s += texture(tex, uv       ).rgb * 4.0;
-    s += texture(tex, uv + d.xw).rgb * 2.0;
-
-    s += texture(tex, uv + d.zy).rgb;
-    s += texture(tex, uv + d.wy).rgb * 2.0;
-    s += texture(tex, uv + d.xy).rgb;
-
-    return s * (1.0 / 16.0);
-}
-
-void main()
-{
-    vec3 color = UpsampleTent9(u_SrcTexture, v_TexCoord, u_TexelSize, u_FilterRadius);
-    o_Color = vec4(color, 1.0);
-}
-)";
-
-	static const char* g_CompositeShaderSource = R"(
-#version 460 core
-
-layout(location = 0) out vec4 o_Color;
-
-layout(location = 0) in vec2 v_TexCoord;
-
-layout (set = 1, binding = 0) uniform sampler2D u_ScreenTexture;
-layout (set = 1, binding = 1) uniform sampler2D u_BloomTexture;
-
-// Member ORDER must match CompositeParams in PostProcessing.cpp exactly:
-// std140 assigns offsets positionally (4-byte scalars first, then vec3s at
-// 16-byte alignment). The old interleaved order made every setting read
-// from the wrong offset - which greyed out the whole frame and silently
-// disabled the vignette.
-layout(std140, binding = 2) uniform Params
-{
-    bool u_EnablePostProcessing;
-    bool u_EnableBloom;
-    bool u_EnableVignette;
-    bool u_EnableTonemapping;
-
-    float u_BloomIntensity;
-    vec3 u_BloomColor;
-
-    float u_VignetteIntensity;
-    float u_VignetteSmoothness;
-    vec3 u_VignetteColor;
-
-    float u_Exposure;
-    float u_Contrast;
-    float u_Saturation;
-    vec3 u_ColorGradingTint;
-};
-
-vec3 ACESFilm(vec3 x)
-{
-    float a = 2.51;
-    float b = 0.03;
-    float c = 2.43;
-    float d = 0.59;
-    float e = 0.14;
-    return clamp((x * (a * x + b)) / (x * (c * x + d) + e), 0.0, 1.0);
-}
-
-void main()
-{
-    vec4 texColor = texture(u_ScreenTexture, v_TexCoord);
-    vec3 color = texColor.rgb;
-
-    if (!u_EnablePostProcessing)
-    {
-        o_Color = texColor;
-        return;
-    }
-
-    if (u_EnableBloom)
-    {
-        vec3 bloom = texture(u_BloomTexture, v_TexCoord).rgb;
-        color += bloom * u_BloomIntensity * u_BloomColor;
-    }
-
-    if (u_Exposure > 0.001)
-        color *= u_Exposure;
-
-    color *= u_ColorGradingTint;
-
-    if (u_Contrast > 0.01 && abs(u_Contrast - 1.0) > 0.001)
-    {
-        color = (color - vec3(0.5)) * u_Contrast + vec3(0.5);
-    }
-
-    if (abs(u_Saturation - 1.0) > 0.001)
-    {
-        float luminance = dot(color, vec3(0.2126, 0.7152, 0.0722));
-        color = mix(vec3(luminance), color, u_Saturation);
-    }
-
-    if (u_EnableTonemapping)
-    {
-        color = ACESFilm(color);
-    }
-
-    if (u_EnableVignette)
-    {
-        vec2 uv = v_TexCoord - vec2(0.5);
-        float dist = length(uv);
-        // Defined edges only (edge0 < edge1): the old call passed reversed
-        // edges, which is undefined behavior per the GLSL spec.
-        float vignette = 1.0 - smoothstep(u_VignetteSmoothness, u_VignetteSmoothness + u_VignetteIntensity, dist);
-        color = mix(u_VignetteColor, color, vignette);
-    }
-
-    o_Color = vec4(color, texColor.a);
-}
-)";
 
 	// std140 mirrors of the Params blocks. Field order and padding must
 	// match the GLSL exactly (bool == 4 bytes, vec3 aligned to 16).
@@ -373,10 +152,19 @@ void main()
 		uint32_t indices[6] = { 0, 1, 2, 3, 4, 5 };
 		s_Data.QuadVertexArray->SetIndexBuffer(IndexBuffer::Create(indices, 6));
 
-		// Shaders (compiled from memory on both backends).
-		s_Data.CompositeShader  = Shader::Create("PostComposite",  g_VertexShaderSource, g_CompositeShaderSource);
-		s_Data.DownsampleShader = Shader::Create("PostDownsample", g_VertexShaderSource, g_DownsampleShaderSource);
-		s_Data.UpsampleShader   = Shader::Create("PostUpsample",   g_VertexShaderSource, g_UpsampleShaderSource);
+		// Shaders load through the central ShaderLibrary (path resolution +
+		// hot reload) like every other shader in the engine.
+		s_Data.CompositeShader  = ShaderLibrary::Get().Load("assets/shaders/PostComposite.glsl");
+		s_Data.DownsampleShader = ShaderLibrary::Get().Load("assets/shaders/BloomDownsample.glsl");
+		s_Data.UpsampleShader   = ShaderLibrary::Get().Load("assets/shaders/BloomUpsample.glsl");
+
+		// A failed load (missing/corrupt file) must leave the chain disabled
+		// rather than crash later on null pipelines.
+		if (!s_Data.CompositeShader || !s_Data.DownsampleShader || !s_Data.UpsampleShader)
+		{
+			WF_CORE_ERROR("PostProcessing: shader resources unavailable - post chain disabled.");
+			return;
+		}
 
 		GraphicsPipeline::Desc desc;
 		desc.DepthTest = false;   // fullscreen passes over colour-only targets
@@ -441,21 +229,27 @@ void main()
 	// Post chain
 	// =========================================================================
 
-	Ref<Framebuffer> PostProcessing::Process(const Ref<Framebuffer>& src, uint32_t attachmentIndex, uint32_t width, uint32_t height)
+	Ref<Framebuffer> PostProcessing::Process(const Ref<Framebuffer>& src, uint32_t attachmentIndex, uint32_t width, uint32_t height, const PostProcessingSettings& settings)
 	{
 		WF_PROFILE_FUNCTION();
 
 		if (!src || width == 0 || height == 0)
 			return nullptr;
 
+		// The composite shader would pass the frame through unchanged anyway;
+		// skipping the chain entirely saves the extra blit.
+		if (!settings.EnablePostProcessing)
+			return nullptr;
+
 		EnsureResources();
 		EnsureSizes(width, height);
+
+		if (!s_Data.CompositePipeline)
+			return nullptr;
 
 		CommandBuffer* cmd = Renderer::GetCommandBuffer();
 		if (!cmd)
 			return nullptr;
-
-		const auto& settings = s_Settings;
 
 		// -----------------------------------------------------------------
 		// 1. Bloom multi-pass downsample & upsample chain
@@ -536,11 +330,11 @@ void main()
 		return s_Data.OutputFramebuffer;
 	}
 
-	void PostProcessing::ProcessAndPresent(const Ref<Framebuffer>& src, uint32_t attachmentIndex, uint32_t width, uint32_t height)
+	void PostProcessing::ProcessAndPresent(const Ref<Framebuffer>& src, uint32_t attachmentIndex, uint32_t width, uint32_t height, const PostProcessingSettings& settings)
 	{
 		WF_PROFILE_FUNCTION();
 
-		Ref<Framebuffer> processed = Process(src, attachmentIndex, width, height);
+		Ref<Framebuffer> processed = Process(src, attachmentIndex, width, height, settings);
 		if (!processed)
 			return;
 

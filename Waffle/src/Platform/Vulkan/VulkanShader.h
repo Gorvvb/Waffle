@@ -29,6 +29,7 @@ namespace Waffle {
 
 		virtual void Bind()   const override;
 		virtual void Unbind() const override;
+		virtual bool IsValid() const override { return m_VertModule != VK_NULL_HANDLE && m_FragModule != VK_NULL_HANDLE; }
 
 		// Uniform setters (implemented via push constants)
 		virtual void SetInt(const std::string& name, int value) override;

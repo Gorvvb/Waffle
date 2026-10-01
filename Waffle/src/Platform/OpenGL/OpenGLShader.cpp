@@ -92,7 +92,7 @@ namespace Waffle {
 	}
 
 	OpenGLShader::OpenGLShader(const std::string& filepath)
-		: m_FilePath(filepath)
+		: m_FilePath(filepath), m_RendererID(0)
 	{
 		WF_PROFILE_FUNCTION();
 
@@ -100,6 +100,12 @@ namespace Waffle {
 
 		std::string source = ReadFile(filepath);
 		auto shaderSources = PreProcess(source);
+
+		if (shaderSources.empty())
+		{
+			WF_CORE_ERROR("OpenGLShader: no #type sections found in '{0}' - shader is invalid.", filepath);
+			return;
+		}
 
 		{
 			Timer timer;
@@ -119,7 +125,7 @@ namespace Waffle {
 	}
 
 	OpenGLShader::OpenGLShader(const std::string& name, const std::string& vertexSource, const std::string& fragmentSource)
-		: m_Name(name)
+		: m_Name(name), m_RendererID(0)
 	{
 		WF_PROFILE_FUNCTION();
 

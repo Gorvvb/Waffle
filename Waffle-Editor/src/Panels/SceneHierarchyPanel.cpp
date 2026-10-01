@@ -39,10 +39,28 @@ namespace Waffle {
 
 		if (m_Context)
 		{
-			std::string sceneName = m_Context->GetName();
-			if (sceneName.empty())
-				sceneName = "Untitled";
-			ImGui::Text("Active Scene: %s", sceneName.c_str());
+			if (m_PrefabEditMode)
+			{
+				// Prefab edit mode banner: Back button + prefab/scene context.
+				if (ImGui::Button("< Back"))
+				{
+					if (m_OnPrefabBack)
+						m_OnPrefabBack();
+				}
+				if (ImGui::IsItemHovered())
+					ImGui::SetTooltip("Save the prefab and return to the scene");
+
+				std::string source = m_PrefabSourceSceneName.empty() ? "Untitled" : m_PrefabSourceSceneName;
+				ImGui::TextColored(ImVec4(0.95f, 0.62f, 0.25f, 1.0f), "Editing Prefab: %s", m_PrefabName.c_str());
+				ImGui::TextDisabled("Scene: %s  (changes apply on Back / Ctrl+S)", source.c_str());
+			}
+			else
+			{
+				std::string sceneName = m_Context->GetName();
+				if (sceneName.empty())
+					sceneName = "Untitled";
+				ImGui::Text("Active Scene: %s", sceneName.c_str());
+			}
 			ImGui::TextDisabled("Right-click to create objects");
 			ImGui::Separator();
 
@@ -626,6 +644,38 @@ namespace Waffle {
 					component.BackgroundImage->SetFilter(component.BackgroundFilterMode);
 			}
 			UI::EndPropertyGrid();
+
+			ImGui::SeparatorText("Post-Processing");
+			ImGui::TextDisabled("Applies when this camera renders (primary view)");
+			auto& pp = component.PostProcessing;
+			UI::BeginPropertyGrid();
+			if (UI::PropertyCheckbox("Enable Post Processing", pp.EnablePostProcessing)) {}
+
+			if (pp.EnablePostProcessing)
+			{
+				if (UI::PropertyCheckbox("Enable Bloom", pp.EnableBloom)) {}
+				if (pp.EnableBloom)
+				{
+					UI::PropertyFloat("Bloom Threshold", pp.BloomThreshold, 0.05f, 0.0f, 2.0f);
+					UI::PropertyFloat("Bloom Intensity", pp.BloomIntensity, 0.05f, 0.0f, 5.0f);
+					UI::DrawColorEdit3("Bloom Color", pp.BloomColor);
+				}
+
+				if (UI::PropertyCheckbox("Enable Vignette", pp.EnableVignette)) {}
+				if (pp.EnableVignette)
+				{
+					UI::PropertyFloat("Vignette Intensity", pp.VignetteIntensity, 0.02f, 0.0f, 1.0f);
+					UI::PropertyFloat("Vignette Smoothness", pp.VignetteSmoothness, 0.02f, 0.0f, 1.0f);
+					UI::DrawColorEdit3("Vignette Color", pp.VignetteColor);
+				}
+
+				if (UI::PropertyCheckbox("Enable Tonemapping", pp.EnableTonemapping)) {}
+				UI::PropertyFloat("Exposure", pp.Exposure, 0.05f, 0.1f, 5.0f);
+				UI::PropertyFloat("Contrast", pp.Contrast, 0.05f, 0.1f, 3.0f);
+				UI::PropertyFloat("Saturation", pp.Saturation, 0.05f, 0.0f, 3.0f);
+				UI::DrawColorEdit3("Color Tint", pp.ColorGradingTint);
+			}
+			UI::EndPropertyGrid();
 		});
 
 		DrawComponent<ScriptComponent>("Script", entity, [](auto& component)
@@ -834,7 +884,14 @@ namespace Waffle {
 
 			if (component.Texture)
 			{
+				// Pixel art preview: switch the backend to its NEAREST
+				// sampler for this draw (Vulkan ignores the texture's own
+				// filter inside ImGui).
+				ImDrawList* previewDl = ImGui::GetWindowDrawList();
+				if (ImGui::GetPlatformIO().DrawCallback_SetSamplerNearest)
+					previewDl->AddCallback(ImGui::GetPlatformIO().DrawCallback_SetSamplerNearest, nullptr);
 				ImGui::ImageButton("##SpriteTexturePreview", (ImTextureID)component.Texture->GetImGuiTextureId(), { 64, 64 }, { 0, 1 }, { 1, 0 });
+				previewDl->AddCallback(ImDrawCallback_ResetRenderState, nullptr);
 			}
 			else
 			{
@@ -847,7 +904,19 @@ namespace Waffle {
 				{
 					const wchar_t* path = (const wchar_t*)payload->Data;
 					std::filesystem::path texturePath = std::filesystem::path(g_AssetPath) / path;
-					component.Texture = Texture2D::Create(texturePath.string(), component.FilterMode);
+					std::string dropExt = texturePath.extension().string();
+					for (auto& c : dropExt) c = (char)tolower(c);
+					if (dropExt == ".glsl")
+					{
+						// A shader file assigns the sprite's custom shader.
+						std::filesystem::path rel = std::filesystem::relative(texturePath, std::filesystem::path(g_AssetPath));
+						component.CustomShaderPath = rel.string();
+						for (auto& c : component.CustomShaderPath) { if (c == '\\') c = '/'; }
+					}
+					else
+					{
+						component.Texture = Texture2D::Create(texturePath.string(), component.FilterMode);
+					}
 				}
 				if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("SPRITESHEET_FRAME_ITEM"))
 				{
@@ -925,6 +994,22 @@ namespace Waffle {
 				}
 			ImGui::EndCombo();
 			}
+
+			// Optional custom shader (relative to Assets, e.g.
+			// "shaders/MyShader.glsl"). Also set by dropping a .glsl file on
+			// the sprite texture slot above.
+			char shaderBuf[256];
+			snprintf(shaderBuf, sizeof(shaderBuf), "%s", component.CustomShaderPath.c_str());
+			ImGui::InputTextWithHint("##CustomShader", "Custom shader (drop .glsl)", shaderBuf, sizeof(shaderBuf));
+			if (ImGui::IsItemDeactivatedAfterEdit())
+				component.CustomShaderPath = shaderBuf;
+			ImGui::SameLine();
+			if (ImGui::Button("X##ClearShader") && !component.CustomShaderPath.empty())
+			{
+				component.CustomShaderPath.clear();
+			}
+			if (ImGui::IsItemHovered())
+				ImGui::SetTooltip("Clear custom shader");
 		});
 
 		DrawComponent<CircleRendererComponent>("Circle Renderer (2D)", entity, [](auto& component)

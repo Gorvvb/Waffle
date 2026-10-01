@@ -2,7 +2,7 @@
 setlocal enabledelayedexpansion
 
 echo =========================================================================
-echo               Waffle Engine 1.0 Release Packaging Script
+echo               Waffle Engine 1.0 Dist Packaging Script
 echo =========================================================================
 
 pushd %~dp0\..\
@@ -16,12 +16,13 @@ echo [1/7] Cleaning previous distribution folder...
 if exist "%DIST_DIR%" rmdir /s /q "%DIST_DIR%"
 if exist "%ZIP_FILE%" del /q "%ZIP_FILE%"
 mkdir "%DIST_DIR%"
+copy /Y "%ROOT_DIR%\LICENSE" "%DIST_DIR%\LICENSE" >nul
 
 echo.
-echo [2/7] Building Waffle solution in Release configuration (x64)...
-call "C:\Program Files\Microsoft Visual Studio\18\Community\MSBuild\Current\Bin\MSBuild.exe" Waffle.slnx /p:Configuration=Release /p:Platform=x64 /nologo /verbosity:minimal
+echo [2/7] Building Waffle solution in Dist configuration (x64)...
+call "C:\Program Files\Microsoft Visual Studio\18\Community\MSBuild\Current\Bin\MSBuild.exe" Waffle.slnx /p:Configuration=Dist /p:Platform=x64 /nologo /verbosity:minimal
 if %ERRORLEVEL% NEQ 0 (
-    echo [ERROR] MSBuild Release build failed!
+    echo [ERROR] MSBuild Dist build failed!
     popd
     PAUSE
     exit /b %ERRORLEVEL%
@@ -34,22 +35,22 @@ mkdir "%DIST_DIR%\Waffle-Editor"
 mkdir "%DIST_DIR%\Waffle-Runtime"
 
 echo.
-echo [4/7] Deploying Release executables...
+echo [4/7] Deploying Dist executables...
 set MISSING=0
-if not exist "bin\Release-windows-x86_64\WaffleHub\WaffleHub.exe" set MISSING=1
-if not exist "bin\Release-windows-x86_64\Waffle-Editor\Waffle-Editor.exe" set MISSING=1
-if not exist "bin\Release-windows-x86_64\Waffle-Runtime\Waffle-Runtime.exe" set MISSING=1
+if not exist "bin\Dist-windows-x86_64\WaffleHub\WaffleHub.exe" set MISSING=1
+if not exist "bin\Dist-windows-x86_64\Waffle-Editor\Waffle-Editor.exe" set MISSING=1
+if not exist "bin\Dist-windows-x86_64\Waffle-Runtime\Waffle-Runtime.exe" set MISSING=1
 if "%MISSING%"=="1" (
-    echo [ERROR] Release executables not found. Build the solution in Release configuration first:
-    echo         MSBuild Waffle.slnx /p:Configuration=Release /p:Platform=x64
+    echo [ERROR] Dist executables not found. Build the solution in Dist configuration first:
+    echo         MSBuild Waffle.slnx /p:Configuration=Dist /p:Platform=x64
     popd
     PAUSE
     exit /b 1
 )
-copy /Y "bin\Release-windows-x86_64\WaffleHub\WaffleHub.exe" "%DIST_DIR%\WaffleHub\WaffleHub.exe" >nul
-copy /Y "bin\Release-windows-x86_64\Waffle-Editor\Waffle-Editor.exe" "%DIST_DIR%\Waffle-Editor\Waffle-Editor.exe" >nul
+copy /Y "bin\Dist-windows-x86_64\WaffleHub\WaffleHub.exe" "%DIST_DIR%\WaffleHub\WaffleHub.exe" >nul
+copy /Y "bin\Dist-windows-x86_64\Waffle-Editor\Waffle-Editor.exe" "%DIST_DIR%\Waffle-Editor\Waffle-Editor.exe" >nul
 copy /Y "Waffle-Editor\imgui.ini" "%DIST_DIR%\Waffle-Editor\imgui.ini" >nul
-copy /Y "bin\Release-windows-x86_64\Waffle-Runtime\Waffle-Runtime.exe" "%DIST_DIR%\Waffle-Runtime\Waffle-Runtime.exe" >nul
+copy /Y "bin\Dist-windows-x86_64\Waffle-Runtime\Waffle-Runtime.exe" "%DIST_DIR%\Waffle-Runtime\Waffle-Runtime.exe" >nul
 
 echo.
 echo [4b] Deploying VC++ runtime DLLs so the tools run on clean machines...
@@ -114,7 +115,7 @@ rem directory, then the console window closes by itself.
 
 (
     echo =========================================================================
-    echo                      Waffle Engine 1.0.0 Release
+    echo                      Waffle Engine 1.0.0 Dist
     echo =========================================================================
     echo.
     echo Quick Start:
@@ -137,7 +138,7 @@ powershell -NoProfile -Command "Compress-Archive -Path '%DIST_DIR%\*' -Destinati
 
 echo.
 echo =========================================================================
-echo   SUCCESS! Waffle Engine 1.0 Release package generated at:
+echo   SUCCESS! Waffle Engine 1.0 Dist package generated at:
 echo   %ZIP_FILE%
 echo =========================================================================
 

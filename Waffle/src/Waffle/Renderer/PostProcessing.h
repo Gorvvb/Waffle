@@ -35,27 +35,28 @@ namespace Waffle {
 	// CommandBuffer so it runs identically on OpenGL and Vulkan. Operates on
 	// framebuffers, never on raw texture IDs - backend handles must not
 	// cross this boundary (that was the original GL/Vulkan ID corruption bug).
+	//
+	// Settings live on the camera (CameraComponent) - each camera that renders
+	// passes its own settings to Process/ProcessAndPresent.
 	class PostProcessing
 	{
 	public:
 		static void Init();
 		static void Shutdown();
 
-		static PostProcessingSettings& GetSettings() { return s_Settings; }
-
 		// Runs the post chain over `src`'s color attachment and returns the
 		// framebuffer holding the result (for display inside an ImGui image).
-		static Ref<Framebuffer> Process(const Ref<Framebuffer>& src, uint32_t attachmentIndex, uint32_t width, uint32_t height);
+		// Returns nullptr when settings.EnablePostProcessing is off - callers
+		// should present the source framebuffer directly then.
+		static Ref<Framebuffer> Process(const Ref<Framebuffer>& src, uint32_t attachmentIndex, uint32_t width, uint32_t height, const PostProcessingSettings& settings);
 
 		// Process + present the result to the screen (swapchain / default
 		// framebuffer). Runtime path.
-		static void ProcessAndPresent(const Ref<Framebuffer>& src, uint32_t attachmentIndex, uint32_t width, uint32_t height);
+		static void ProcessAndPresent(const Ref<Framebuffer>& src, uint32_t attachmentIndex, uint32_t width, uint32_t height, const PostProcessingSettings& settings);
 
 	private:
 		static void EnsureResources();
 		static void EnsureSizes(uint32_t width, uint32_t height);
-
-		inline static PostProcessingSettings s_Settings;
 	};
 
 }

@@ -12,16 +12,133 @@
 #include <fstream>
 #include "Waffle/ImGui/ImGuiLayer.h"
 #include <glm/glm.hpp>
+#include <stb_image/stb_image.h>
 
 namespace Waffle {
 
 	std::filesystem::path g_AssetPath = "Assets";
 
+	// Template for Content Browser > Create > Shader. Must keep the same
+	// vertex inputs, Camera UBO and u_Textures sampler array as the built-in
+	// 2DQuadShader.glsl - sprites feed it the same vertex stream and
+	// Renderer2D binds textures to set 1 / binding 0 exactly as usual.
+	static const char* k_NewShaderTemplate = R"(//--------------------------
+// - Waffle -
+// - Custom Sprite Shader
+// Drop this .glsl onto a sprite's texture slot (or set it in the Sprite
+// Renderer properties) to render that sprite with this shader.
+//--------------------------
+
+#type vertex
+#version 460 core
+
+// Keep this vertex body as-is: Renderer2D feeds this exact layout.
+layout (location = 0) in vec3 a_Position;
+layout (location = 1) in vec4 a_Color;
+layout (location = 2) in vec2 a_TexCoord;
+layout (location = 3) in float a_TexIndex;
+layout (location = 4) in vec2 a_TilingFactor;
+layout (location = 5) in int a_EntityID;
+
+layout(std140, binding = 0) uniform Camera
+{
+	mat4 u_ViewProjection;
+};
+
+layout(location = 0) out vec4 v_Color;
+layout(location = 1) out vec2 v_TexCoord;
+layout(location = 2) out flat float v_TexIndex;
+layout(location = 3) out vec2 v_TilingFactor;
+layout(location = 4) out flat int v_EntityID;
+
+void main()
+{
+	v_Color = a_Color;
+	v_TexCoord = a_TexCoord;
+	v_TexIndex = a_TexIndex;
+	v_TilingFactor = a_TilingFactor;
+	v_EntityID = a_EntityID;
+	gl_Position = u_ViewProjection * vec4(a_Position, 1.0);
+}
+
+#type fragment
+#version 460 core
+
+layout(location = 0) out vec4 o_Color;
+layout(location = 1) out int o_EntityID;
+
+layout(location = 0) in vec4 v_Color;
+layout(location = 1) in vec2 v_TexCoord;
+layout(location = 2) in flat float v_TexIndex;
+layout(location = 3) in vec2 v_TilingFactor;
+layout(location = 4) in flat int v_EntityID;
+
+#ifndef WF_MAX_TEXTURE_SLOTS
+#define WF_MAX_TEXTURE_SLOTS 32
+#endif
+
+layout(set = 1, binding = 0) uniform sampler2D u_Textures[WF_MAX_TEXTURE_SLOTS];
+
+vec4 SampleTexture(int index, vec2 uv)
+{
+	// Dynamically-uniform indexing workaround: a compile-time switch over
+	// the sampler array (same approach as the built-in quad shader).
+	switch (index)
+	{
+		case 0:  return texture(u_Textures[0],  uv);
+		case 1:  return texture(u_Textures[1],  uv);
+		case 2:  return texture(u_Textures[2],  uv);
+		case 3:  return texture(u_Textures[3],  uv);
+		case 4:  return texture(u_Textures[4],  uv);
+		case 5:  return texture(u_Textures[5],  uv);
+		case 6:  return texture(u_Textures[6],  uv);
+		case 7:  return texture(u_Textures[7],  uv);
+		case 8:  return texture(u_Textures[8],  uv);
+		case 9:  return texture(u_Textures[9],  uv);
+		case 10: return texture(u_Textures[10], uv);
+		case 11: return texture(u_Textures[11], uv);
+		case 12: return texture(u_Textures[12], uv);
+		case 13: return texture(u_Textures[13], uv);
+		case 14: return texture(u_Textures[14], uv);
+		case 15: return texture(u_Textures[15], uv);
+		case 16: return texture(u_Textures[16], uv);
+		case 17: return texture(u_Textures[17], uv);
+		case 18: return texture(u_Textures[18], uv);
+		case 19: return texture(u_Textures[19], uv);
+		case 20: return texture(u_Textures[20], uv);
+		case 21: return texture(u_Textures[21], uv);
+		case 22: return texture(u_Textures[22], uv);
+		case 23: return texture(u_Textures[23], uv);
+		case 24: return texture(u_Textures[24], uv);
+		case 25: return texture(u_Textures[25], uv);
+		case 26: return texture(u_Textures[26], uv);
+		case 27: return texture(u_Textures[27], uv);
+		case 28: return texture(u_Textures[28], uv);
+		case 29: return texture(u_Textures[29], uv);
+		case 30: return texture(u_Textures[30], uv);
+		case 31: return texture(u_Textures[31], uv);
+	}
+	return vec4(1.0, 0.0, 1.0, 1.0); // magenta = bad texture slot
+}
+
+void main()
+{
+	vec4 texColor = SampleTexture(int(v_TexIndex), v_TexCoord * v_TilingFactor);
+
+	// YOUR SHADER CODE HERE - this is the plain sprite tint:
+	o_Color = texColor * v_Color;
+	if (o_Color.a == 0.0)
+		discard;
+
+	o_EntityID = v_EntityID;
+}
+)";
+
 	ContentBrowserPanel::ContentBrowserPanel()
 		: m_CurrentDirectory(g_AssetPath)
 	{
-		m_DirectoryIcon = Texture2D::Create("Resources/Icons/ContentBrowser/DirectoryIcon.png");
-		m_FileIcon = Texture2D::Create("Resources/Icons/ContentBrowser/FileIcon.png");
+		m_DirectoryIcon = Texture2D::Create("Resources/Icons/ContentBrowser/DirectoryIcon.png", TextureFilter::Linear);
+		m_FileIcon = Texture2D::Create("Resources/Icons/ContentBrowser/FileIcon.png", TextureFilter::Linear);
 	}
 
 	void ContentBrowserPanel::SetAssetDirectory(const std::filesystem::path& path)
@@ -31,6 +148,134 @@ namespace Waffle {
 		// Thumbnails are keyed by absolute path - drop them on project switch
 		// or stale cross-project entries linger forever.
 		m_TextureCache.clear();
+	}
+
+	// 1x1 solid-color texture used as the thumbnail for prefabs whose
+	// renderer only carries a color. Cached per quantized RGBA so different
+	// colors don't thrash one texture, and identical ones share it.
+	Ref<Texture2D> ContentBrowserPanel::GetColorSwatch(const glm::vec4& color)
+	{
+		char key[32];
+		snprintf(key, sizeof(key), "color:%02X%02X%02X%02X",
+			(int)(glm::clamp(color.r, 0.0f, 1.0f) * 255.0f),
+			(int)(glm::clamp(color.g, 0.0f, 1.0f) * 255.0f),
+			(int)(glm::clamp(color.b, 0.0f, 1.0f) * 255.0f),
+			(int)(glm::clamp(color.a, 0.0f, 1.0f) * 255.0f));
+
+		auto it = m_TextureCache.find(key);
+		if (it != m_TextureCache.end())
+			return it->second;
+
+		Ref<Texture2D> tex = Texture2D::Create(1, 1);
+		if (!tex)
+			return nullptr;
+
+		uint32_t rgba =
+			((uint32_t)(glm::clamp(color.a, 0.0f, 1.0f) * 255.0f) << 24) |
+			((uint32_t)(glm::clamp(color.b, 0.0f, 1.0f) * 255.0f) << 16) |
+			((uint32_t)(glm::clamp(color.g, 0.0f, 1.0f) * 255.0f) << 8)  |
+			(uint32_t)(glm::clamp(color.r, 0.0f, 1.0f) * 255.0f);
+		tex->SetData(&rgba, sizeof(uint32_t));
+
+		m_TextureCache[key] = tex;
+		return tex;
+	}
+
+	// Prefab thumbnail = sprite texture tinted with the renderer color, the
+	// same multiply the quad shader does (texColor * Color). Loaded via stb,
+	// downsampled to <=128px, uploaded as a static texture. Cached per
+	// (path, color) pair so nothing re-decodes per frame; failures fall back
+	// to the untinted GPU texture (or the file icon) which is also cached.
+	Ref<Texture2D> ContentBrowserPanel::GetTintedThumbnail(const std::filesystem::path& texturePath, const glm::vec4& color)
+	{
+		auto channelHex = [](float v) -> int
+		{
+			return (int)(glm::clamp(v, 0.0f, 1.0f) * 255.0f);
+		};
+		char colorKey[16];
+		snprintf(colorKey, sizeof(colorKey), "%02X%02X%02X%02X",
+			channelHex(color.r), channelHex(color.g), channelHex(color.b), channelHex(color.a));
+
+		std::string key = texturePath.string() + "|" + colorKey;
+		auto it = m_TextureCache.find(key);
+		if (it != m_TextureCache.end())
+			return it->second;
+
+		Ref<Texture2D> result = nullptr;
+		int w = 0, h = 0, channels = 0;
+		stbi_uc* pixels = stbi_load(texturePath.string().c_str(), &w, &h, &channels, 4);
+		if (pixels)
+		{
+			// Halve until the image fits 128px (odd sizes drop a pixel).
+			int tw = w, th = h;
+			while (tw > 128 || th > 128)
+			{
+				tw = (tw + 1) / 2;
+				th = (th + 1) / 2;
+			}
+
+			std::vector<uint8_t> src(pixels, pixels + (size_t)w * h * 4);
+			stbi_image_free(pixels);
+
+			// Iterative 2x2 box downsample.
+			int sw = w, sh = h;
+			std::vector<uint8_t> dst;
+			while (sw > tw || sh > th)
+			{
+				int dw = std::max(1, sw / 2), dh = std::max(1, sh / 2);
+				dst.assign((size_t)dw * dh * 4, 0);
+				for (int y = 0; y < dh; y++)
+				{
+					for (int x = 0; x < dw; x++)
+					{
+						for (int c = 0; c < 4; c++)
+						{
+							uint32_t sum = 0;
+							int count = 0;
+							for (int sy = 0; sy < 2; sy++)
+							{
+								int syy = std::min(y * 2 + sy, sh - 1);
+								for (int sx = 0; sx < 2; sx++)
+								{
+									int sxx = std::min(x * 2 + sx, sw - 1);
+									sum += src[(size_t)syy * sw * 4 + (size_t)sxx * 4 + c];
+									count++;
+								}
+							}
+							dst[(size_t)y * dw * 4 + (size_t)x * 4 + c] = (uint8_t)(sum / count);
+						}
+					}
+				}
+				src.swap(dst);
+				sw = dw;
+				sh = dh;
+			}
+
+			// Tint: rgb *= color.rgb, a *= color.a (sRGB multiply, same as the shader).
+			for (size_t i = 0; i < src.size(); i += 4)
+			{
+				src[i + 0] = (uint8_t)(src[i + 0] * color.r);
+				src[i + 1] = (uint8_t)(src[i + 1] * color.g);
+				src[i + 2] = (uint8_t)(src[i + 2] * color.b);
+				src[i + 3] = (uint8_t)(src[i + 3] * color.a);
+			}
+
+			result = Texture2D::Create((uint32_t)tw, (uint32_t)th);
+			if (result)
+				result->SetData(src.data(), (uint32_t)src.size());
+		}
+
+		if (!result)
+		{
+			// Decode failed - fall back to the untinted GPU texture, then the
+			// file icon, so the failure itself is cached and never retried.
+			result = Texture2D::Create(texturePath.string(), TextureFilter::Nearest);
+			if (!result)
+				result = m_FileIcon;
+		}
+
+		m_TextureCache[key] = result;
+		return result;
 	}
 
 	void ContentBrowserPanel::OpenSpritesheetViewer(const std::filesystem::path& path)
@@ -195,8 +440,14 @@ namespace Waffle {
 					}
 						else if (ext == ".prefab")
 						{
-							std::string pathStr = path.string();
-							auto it = m_TextureCache.find(pathStr);
+							// The cache key includes the file's mtime: prefab
+							// thumbnails must refresh when the prefab is saved
+							// from the prefab editor (or edited by hand).
+							const std::string filePath = path.string();
+							std::error_code mtimeEc;
+							const std::string cacheKey = filePath + "|@" +
+								std::to_string(std::filesystem::last_write_time(path, mtimeEc).time_since_epoch().count());
+							auto it = m_TextureCache.find(cacheKey);
 							if (it != m_TextureCache.end() && it->second)
 							{
 								icon = it->second;
@@ -204,21 +455,63 @@ namespace Waffle {
 							else
 							{
 								try {
-									YAML::Node data = YAML::LoadFile(pathStr);
+									YAML::Node data = YAML::LoadFile(filePath);
 									auto entityNode = data["Entity"];
-									if (entityNode && entityNode["SpriteRendererComponent"] && entityNode["SpriteRendererComponent"]["TexturePath"])
-									{
-										std::string texRelPath = entityNode["SpriteRendererComponent"]["TexturePath"].as<std::string>();
-										if (!texRelPath.empty())
-											texRelPath = (g_AssetPath / texRelPath).string();
+									auto spriteNode = entityNode ? entityNode["SpriteRendererComponent"] : YAML::Node();
+									auto circleNode = entityNode ? entityNode["CircleRendererComponent"] : YAML::Node();
 
-										if (std::filesystem::exists(texRelPath))
+									// Colors are read field-by-field: the glm::vec4 YAML
+									// converters are local to SceneSerializer.cpp.
+									auto readColorNode = [](const YAML::Node& n, glm::vec4& out) -> bool
+									{
+										if (n && n.IsSequence() && n.size() >= 4)
 										{
-											Ref<Texture2D> loadedTex = Texture2D::Create(texRelPath, TextureFilter::Nearest);
-											if (loadedTex)
+											out = { n[0].as<float>(1.0f), n[1].as<float>(1.0f),
+													n[2].as<float>(1.0f), n[3].as<float>(1.0f) };
+											return true;
+										}
+										return false;
+									};
+
+									// 1. Sprite texture tinted with the sprite color -
+									// the same combination the renderer draws with.
+									glm::vec4 spriteColor(1.0f);
+									readColorNode(spriteNode ? spriteNode["Color"] : YAML::Node(), spriteColor);
+
+									if (spriteNode && spriteNode["TexturePath"])
+									{
+										std::string texRelPath = spriteNode["TexturePath"].as<std::string>();
+										if (!texRelPath.empty())
+										{
+											// Resolve like the scene serializer does -
+											// stored paths may or may not carry the
+											// "Assets/" prefix.
+											std::filesystem::path resolved = ResolveTexturePath(texRelPath);
+											if (!resolved.empty() && std::filesystem::exists(resolved))
 											{
-												m_TextureCache[pathStr] = loadedTex;
-												icon = loadedTex;
+												Ref<Texture2D> tinted = GetTintedThumbnail(resolved, spriteColor);
+												if (tinted)
+												{
+													m_TextureCache[cacheKey] = tinted;
+													icon = tinted;
+												}
+											}
+										}
+									}
+
+									// 2. Color-only prefabs: sprite or circle color swatch.
+									if (icon == m_FileIcon)
+									{
+										glm::vec4 color(1.0f);
+										bool hasColor = readColorNode(spriteNode ? spriteNode["Color"] : YAML::Node(), color)
+											|| readColorNode(circleNode ? circleNode["Color"] : YAML::Node(), color);
+										if (hasColor)
+										{
+											Ref<Texture2D> swatch = GetColorSwatch(color);
+											if (swatch)
+											{
+												m_TextureCache[cacheKey] = swatch;
+												icon = swatch;
 											}
 										}
 									}
@@ -229,7 +522,7 @@ namespace Waffle {
 									// Cache the "no thumbnail" result (as the
 									// file icon) so prefabs without a sprite
 									// don't re-parse YAML from disk EVERY frame.
-									m_TextureCache[pathStr] = m_FileIcon;
+									m_TextureCache[cacheKey] = m_FileIcon;
 								}
 							}
 						}
@@ -253,11 +546,22 @@ namespace Waffle {
 
 				bool isSelected = (m_SelectedItem == path);
 				ImGui::PushStyleColor(ImGuiCol_Button, isSelected ? ImVec4{ 0.2f, 0.4f, 0.8f, 0.5f } : ImVec4{ 0, 0, 0, 0 });
+
+				// Thumbnails are pixel art: request the backend's NEAREST
+				// sampler for this draw. The ImGui Vulkan backend samples all
+				// textures with its own Linear sampler unless a draw callback
+				// switches it - the texture's own filter is ignored here.
+				const bool isThumbnail = (icon && icon != m_DirectoryIcon && icon != m_FileIcon);
+				ImDrawList* dl = ImGui::GetWindowDrawList();
+				if (isThumbnail && ImGui::GetPlatformIO().DrawCallback_SetSamplerNearest)
+					dl->AddCallback(ImGui::GetPlatformIO().DrawCallback_SetSamplerNearest, nullptr);
+
 				ImGui::ImageButton("##", (ImTextureID)icon->GetImGuiTextureId(), iconSize, { 0, 1 }, { 1, 0 });
 
-				if (icon && icon != m_DirectoryIcon && icon != m_FileIcon)
+				if (isThumbnail)
 				{
-					ImDrawList* dl = ImGui::GetWindowDrawList();
+					// Reset back to the default (Linear) sampler for
+					// everything drawn after this item.
 					dl->AddCallback(ImDrawCallback_ResetRenderState, nullptr);
 				}
 
@@ -338,6 +642,13 @@ namespace Waffle {
 						if (m_OpenSceneCallback)
 							m_OpenSceneCallback(path);
 					}
+					else if (ext == ".prefab")
+					{
+						// Double-click opens the prefab edit view (hierarchy
+						// shows a Back button; saving writes the .prefab).
+						if (m_OpenPrefabCallback)
+							m_OpenPrefabCallback(path);
+					}
 					else if (ext == ".spritesheet")
 					{
 						OpenSpritesheetViewer(path);
@@ -351,7 +662,7 @@ namespace Waffle {
 						if (std::filesystem::exists(sheetPath))
 							OpenSpritesheetViewer(sheetPath);
 					}
-					else if (path.extension() == ".lua" || path.extension() == ".h" || path.extension() == ".cpp" || path.extension() == ".txt")
+					else if (path.extension() == ".lua" || path.extension() == ".h" || path.extension() == ".cpp" || path.extension() == ".txt" || ext == ".glsl")
 					{
 						PlatformUtils::OpenFileInEditor(path.string());
 					}
@@ -430,6 +741,21 @@ namespace Waffle {
 							   << "    -- Called when the script is destroyed\n"
 							   << "end\n";
 					scriptFile.close();
+				}
+
+				if (ImGui::MenuItem("Shader"))
+				{
+					std::filesystem::path shaderPath = m_CurrentDirectory / "NewShader.glsl";
+					int counter = 1;
+					while (std::filesystem::exists(shaderPath))
+					{
+						shaderPath = m_CurrentDirectory / ("NewShader" + std::to_string(counter++) + ".glsl");
+					}
+
+					std::ofstream shaderFile(shaderPath);
+					shaderFile << k_NewShaderTemplate;
+					shaderFile.close();
+					WF_CORE_INFO("Created shader '{0}'", shaderPath.filename().string());
 				}
 				ImGui::EndMenu();
 			}

@@ -92,6 +92,12 @@ namespace Waffle {
 		auto source  = ReadFile(filepath);
 		auto sources = PreProcess(source);
 
+		if (sources.empty())
+		{
+			WF_CORE_ERROR("VulkanShader: no #type sections found in '{0}' - shader is invalid.", filepath);
+			return;
+		}
+
 		{
 			Timer t;
 			CompileOrGetVulkanSPIRV(sources);

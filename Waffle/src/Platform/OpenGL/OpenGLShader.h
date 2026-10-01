@@ -34,6 +34,7 @@ namespace Waffle {
 
 		virtual void Bind() const override;
 		virtual void Unbind() const override;
+		virtual bool IsValid() const override { return m_RendererID != 0; }
 
 		virtual void SetInt(const std::string& name, int value) override;
 		virtual void SetIntArray(const std::string& name, int* values, uint32_t count) override;

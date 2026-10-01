@@ -76,6 +76,15 @@ namespace Waffle {
 		std::function<void(const std::filesystem::path&)> m_OpenSceneCallback;
 		std::function<void(const std::filesystem::path&, const std::filesystem::path&)> m_SceneRenamedCallback;
 		std::function<void(const std::filesystem::path&)> m_OpenSpritesheetEditorCallback;
+		std::function<void(const std::filesystem::path&)> m_OpenPrefabCallback;
+
+		// Color-swatch thumbnails (prefabs whose renderer only has a color),
+		// cached by quantized RGBA.
+		Ref<Texture2D> GetColorSwatch(const glm::vec4& color);
+
+		// Prefab thumbnail: the sprite texture tinted with the renderer's
+		// color (CPU composite, downsampled) - matches how the sprite renders.
+		Ref<Texture2D> GetTintedThumbnail(const std::filesystem::path& texturePath, const glm::vec4& color);
 
 	public:
 		ContentBrowserPanel();
@@ -87,5 +96,6 @@ namespace Waffle {
 		void SetOpenSceneCallback(const std::function<void(const std::filesystem::path&)>& callback) { m_OpenSceneCallback = callback; }
 		void SetSceneRenamedCallback(const std::function<void(const std::filesystem::path&, const std::filesystem::path&)>& callback) { m_SceneRenamedCallback = callback; }
 		void SetOpenSpritesheetEditorCallback(const std::function<void(const std::filesystem::path&)>& callback) { m_OpenSpritesheetEditorCallback = callback; }
+		void SetOpenPrefabCallback(const std::function<void(const std::filesystem::path&)>& callback) { m_OpenPrefabCallback = callback; }
 	};
 }

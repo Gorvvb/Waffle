@@ -9,6 +9,8 @@
 #include "Panels/EditorPanelManager.h"
 
 #include "Waffle/Renderer/EditorCamera.h"
+#include "Waffle/Renderer/PostProcessing.h"
+#include "Waffle/Core/UUID.h"
 
 namespace Waffle {
 
@@ -57,6 +59,13 @@ namespace Waffle {
 		void OnScenePause();
 		void OnDuplicateEntity();
 
+		// Prefab edit mode: double-clicking a .prefab in the Content Browser
+		// opens it as a temporary scene; Back (in the hierarchy header) saves
+		// it back to the .prefab file and returns to the real scene.
+		void OpenPrefabForEditing(const std::filesystem::path& prefabPath);
+		void ClosePrefabEditor(bool save);
+		bool IsInPrefabEditMode() const { return m_InPrefabEditMode; }
+
 		void UI_Toolbar();
 		void UI_GizmoToolbar();
 		void UI_TilePalette();
@@ -82,6 +91,20 @@ namespace Waffle {
 		Ref<Scene> m_EditorScene;
 
 		std::filesystem::path m_EditorScenePath;
+
+		// Prefab edit mode state (empty scene = not editing a prefab).
+		bool m_InPrefabEditMode = false;
+		Ref<Scene> m_PrefabScene;
+		std::filesystem::path m_PrefabEditPath;
+		UUID m_PrefabRootUUID = 0;
+		// Kept alive until the next frame starts: releasing the prefab scene
+		// mid-frame (Back is pressed during ImGui) destroys textures/samplers
+		// the still-recording command buffer references.
+		Ref<Scene> m_PrefabScenePendingRelease;
+
+		// Snapshot of the primary camera's post-processing settings, applied
+		// to the viewport preview in OnImGuiRender.
+		PostProcessingSettings m_ViewportPostSettings;
 
 		EditorCamera m_EditorCamera;
 
