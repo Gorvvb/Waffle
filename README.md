@@ -6,7 +6,7 @@ Waffle is a 2D game engine for Windows, built around a C#-scripted ECS and a doc
 
 ## Status
 
-Version 1.0.0
+Version 2.0.0
 
 ## Requirements
 
