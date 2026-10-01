@@ -9,7 +9,8 @@ namespace Waffle {
 	struct ProjectEntry
 	{
 		std::string Name;
-		std::string Path;
+		std::string Path;      // resolved absolute path (used to launch)
+		std::string ShortPath; // as stored in the manifest (project-relative when possible, for display)
 		std::string LastOpened;
 		std::string IconPath;
 

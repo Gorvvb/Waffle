@@ -28,6 +28,33 @@ namespace Waffle {
 		return std::string(buf);
 	}
 
+	// Paths inside the manifest are stored relative to the manifest's own
+	// folder (shareable/movable "Projects" folder); anything outside stays
+	// absolute. Forward slashes for cross-machine stability.
+	static std::string PathForManifest(const std::filesystem::path& path, const std::filesystem::path& manifestPath)
+	{
+		std::error_code ec;
+		std::filesystem::path base = std::filesystem::absolute(manifestPath).parent_path();
+		std::filesystem::path rel = std::filesystem::relative(path, base, ec);
+		if (!ec && !rel.empty() && rel.native()[0] != '.')
+		{
+			std::string s = rel.string();
+			for (char& c : s) { if (c == '\\') c = '/'; }
+			return s;
+		}
+		std::string s = std::filesystem::absolute(path).string();
+		for (char& c : s) { if (c == '\\') c = '/'; }
+		return s;
+	}
+
+	static std::filesystem::path PathFromManifest(const std::string& stored, const std::filesystem::path& manifestPath)
+	{
+		std::filesystem::path p(stored);
+		if (p.is_relative())
+			return std::filesystem::absolute(manifestPath).parent_path() / p;
+		return p;
+	}
+
 	void ProjectManager::Init()
 	{
 		s_ManifestPath = GetDefaultProjectsDirectory() / "projects_manifest.yaml";
@@ -59,7 +86,8 @@ namespace Waffle {
 				{
 					ProjectEntry entry;
 					entry.Name = item["Name"] ? item["Name"].as<std::string>() : "Untitled";
-					entry.Path = item["Path"] ? item["Path"].as<std::string>() : "";
+					entry.ShortPath = item["Path"] ? item["Path"].as<std::string>() : "";
+					entry.Path = entry.ShortPath.empty() ? std::string() : PathFromManifest(entry.ShortPath, s_ManifestPath).string();
 					entry.LastOpened = item["LastOpened"] ? item["LastOpened"].as<std::string>() : "";
 					entry.IconPath = item["IconPath"] ? item["IconPath"].as<std::string>() : "";
 
@@ -88,7 +116,7 @@ namespace Waffle {
 		{
 			out << YAML::BeginMap;
 			out << YAML::Key << "Name" << YAML::Value << proj.Name;
-			out << YAML::Key << "Path" << YAML::Value << proj.Path;
+			out << YAML::Key << "Path" << YAML::Value << PathForManifest(proj.Path, s_ManifestPath);
 			out << YAML::Key << "LastOpened" << YAML::Value << proj.LastOpened;
 			out << YAML::Key << "IconPath" << YAML::Value << proj.IconPath;
 			out << YAML::EndMap;
@@ -114,6 +142,8 @@ namespace Waffle {
 			{
 				proj.Name = name;
 				proj.LastOpened = GetCurrentTimestampString();
+				proj.Path = absPathStr;
+				proj.ShortPath = PathForManifest(absPathStr, s_ManifestPath);
 				if (!iconPath.empty()) proj.IconPath = iconPath;
 				SaveManifest();
 				return;
@@ -123,6 +153,7 @@ namespace Waffle {
 		ProjectEntry entry;
 		entry.Name = name;
 		entry.Path = absPathStr;
+		entry.ShortPath = PathForManifest(absPathStr, s_ManifestPath);
 		entry.LastOpened = GetCurrentTimestampString();
 		entry.IconPath = iconPath;
 		s_Projects.insert(s_Projects.begin(), entry);

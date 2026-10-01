@@ -25,6 +25,38 @@ namespace Waffle {
 
 	extern std::filesystem::path g_AssetPath;
 
+	// Path relative to projectRoot with forward slashes when the path lives
+	// inside it (portable, shareable), otherwise the full path. Used for
+	// every path written INTO project files.
+	static std::string MakeProjectRelative(const std::filesystem::path& path, const std::filesystem::path& projectRoot)
+	{
+		std::error_code ec;
+		if (!projectRoot.empty())
+		{
+			std::filesystem::path rel = std::filesystem::relative(path, projectRoot, ec);
+			if (!ec && !rel.empty() && rel.native()[0] != '.')
+			{
+				std::string s = rel.string();
+				for (char& c : s) { if (c == '\\') c = '/'; }
+				return s;
+			}
+		}
+		std::string s = path.string();
+		for (char& c : s) { if (c == '\\') c = '/'; }
+		return s;
+	}
+
+	// Inverse of MakeProjectRelative: resolves a stored (relative) path
+	// against projectRoot; absolute inputs pass through unchanged.
+	static std::filesystem::path ResolveFromProjectRoot(const std::string& stored, const std::filesystem::path& projectRoot)
+	{
+		std::filesystem::path p(stored);
+		if (p.is_relative() && !projectRoot.empty())
+			return projectRoot / p;
+		return p;
+	}
+
+
 	EditorLayer::EditorLayer()
 		: Layer("EditorLayer"), m_CameraController(1280.0f / 720.0f)
 	{}
@@ -1863,9 +1895,12 @@ namespace Waffle {
 						m_SceneList.clear();
 						for (auto node : project["Scenes"])
 						{
-							std::filesystem::path p = node.as<std::string>();
+							// Stored project-root-relative (older files may hold
+							// absolute paths - those still resolve directly).
+							std::filesystem::path p = ResolveFromProjectRoot(
+								node.as<std::string>(), m_ProjectPath);
 							if (std::filesystem::exists(p))
-								m_SceneList.push_back(p);
+								m_SceneList.push_back(std::filesystem::absolute(p));
 						}
 					}
 
@@ -2147,8 +2182,9 @@ namespace Waffle {
 			<< std::string(m_ExportIconPathBuffer);
 
 		out << YAML::Key << "Scenes" << YAML::Value << YAML::BeginSeq;
+		// Stored project-root-relative so project.wfp stays portable.
 		for (const auto& p : m_SceneList)
-			out << p.string();
+			out << MakeProjectRelative(p, m_ProjectPath);
 		out << YAML::EndSeq;
 
 		// Post-processing lives on the scene's cameras (CameraComponent).
@@ -2170,10 +2206,21 @@ namespace Waffle {
 		if (!m_ProjectPath.empty())
 		{
 			out << YAML::Key << "LastOpenedProject" << YAML::Value << m_ProjectPath.string();
+			// Portable hint: the same path relative to the config folder, so
+			// a moved/portable install (projects shipped next to the exe)
+			// still resolves after the absolute path breaks.
+			std::error_code ec;
+			std::filesystem::path exeDir = configPath.parent_path();
+			std::filesystem::path rel = std::filesystem::relative(m_ProjectPath, exeDir, ec);
+			if (!ec && !rel.empty() && rel.native()[0] != '.')
+				out << YAML::Key << "LastOpenedProjectRelative" << YAML::Value << rel.string();
 		}
 		if (!m_EditorScenePath.empty())
 		{
 			out << YAML::Key << "LastOpenedScene" << YAML::Value << m_EditorScenePath.string();
+			// Relative to the project root - moves with the project.
+			out << YAML::Key << "LastOpenedSceneRelative" << YAML::Value
+				<< MakeProjectRelative(m_EditorScenePath, m_ProjectPath);
 		}
 		out << YAML::EndMap;
 		out << YAML::EndMap;
@@ -2203,6 +2250,19 @@ namespace Waffle {
 					std::string lastProjStr = cfg["LastOpenedProject"] ? cfg["LastOpenedProject"].as<std::string>() : "";
 					std::string lastSceneStr = cfg["LastOpenedScene"] ? cfg["LastOpenedScene"].as<std::string>() : "";
 
+					// The absolute path wins; if it broke (drive moved, folder
+					// renamed), the relative hints keep the install working.
+					if (!lastProjStr.empty() && !std::filesystem::exists(lastProjStr))
+					{
+						if (cfg["LastOpenedProjectRelative"])
+						{
+							std::filesystem::path rel = configPath.parent_path()
+								/ cfg["LastOpenedProjectRelative"].as<std::string>();
+							if (std::filesystem::exists(rel))
+								lastProjStr = rel.string();
+						}
+					}
+
 					if (!lastProjStr.empty() && std::filesystem::exists(lastProjStr))
 					{
 						OpenProjectAtPath(lastProjStr);
@@ -2211,6 +2271,13 @@ namespace Waffle {
 						if (!lastSceneStr.empty() && std::filesystem::exists(lastSceneStr))
 						{
 							OpenScene(lastSceneStr);
+						}
+						else if (cfg["LastOpenedSceneRelative"])
+						{
+							std::filesystem::path relScene = ResolveFromProjectRoot(
+								cfg["LastOpenedSceneRelative"].as<std::string>(), m_ProjectPath);
+							if (std::filesystem::exists(relScene))
+								OpenScene(relScene);
 						}
 					}
 				}

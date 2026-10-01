@@ -375,8 +375,25 @@ void main()
 			ImGui::SameLine();
 		}
 
-		// Breadcrumb path display
-		std::string pathString = m_CurrentDirectory.string();
+		// Breadcrumb path display - relative to the project's Assets folder
+		// ("Assets/Scenes"), not the filesystem root.
+		std::string pathString;
+		{
+			std::error_code ec;
+			std::filesystem::path rel = std::filesystem::relative(m_CurrentDirectory, g_AssetPath, ec);
+			if (!ec && (rel.empty() || rel == "."))
+			{
+				pathString = "Assets";
+			}
+			else if (!ec && !rel.empty() && rel.native()[0] != '.')
+			{
+				pathString = "Assets/" + rel.generic_string();
+			}
+			else
+			{
+				pathString = m_CurrentDirectory.string();
+			}
+		}
 		ImGui::TextDisabled("Location: %s", pathString.c_str());
 		ImGui::PopStyleVar();
 

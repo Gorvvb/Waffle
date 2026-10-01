@@ -403,7 +403,7 @@ namespace Waffle {
 				ImGui::TextColored(HubStyle::DangerHover, "(folder missing)  ");
 				ImGui::SameLine(0.0f, 6.0f);
 			}
-			ImGui::TextColored(HubStyle::TextFaint, "%s", proj.Path.c_str());
+			ImGui::TextColored(HubStyle::TextFaint, "%s", proj.ShortPath.c_str());
 
 			// Right cluster: last opened + actions, vertically centered.
 			ImGui::SetCursorPos(ImVec2(cardW - 340.0f, 25.0f));
@@ -455,7 +455,7 @@ namespace Waffle {
 			if (indexValid)
 			{
 				ImGui::TextColored(HubStyle::Text, "%s", projects[m_PendingRemoveIndex].Name.c_str());
-				ImGui::TextColored(HubStyle::TextFaint, "%s", projects[m_PendingRemoveIndex].Path.c_str());
+				ImGui::TextColored(HubStyle::TextFaint, "%s", projects[m_PendingRemoveIndex].ShortPath.c_str());
 			}
 			ImGui::Spacing();
 			ImGui::TextColored(HubStyle::TextDim,
