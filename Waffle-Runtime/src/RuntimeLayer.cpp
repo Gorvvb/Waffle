@@ -161,18 +161,19 @@ namespace Waffle {
 		}
 		cmd->SetClearColor(clearColor);
 
-		if (postSettings.EnablePostProcessing)
+		// ALWAYS render into the offscreen target (it carries the entity-ID
+		// attachment the 2D shaders write), then present - post-processed
+		// when the camera enables it, otherwise through a plain passthrough
+		// blit. Rendering straight into the swapchain is not an option: the
+		// swapchain has no second attachment, which trips validation and
+		// breaks entity picking.
 		{
-			if (width == 0 || height == 0) return;
-
 			const auto& spec = m_Framebuffer->GetSpecification();
 			if (spec.Width != width || spec.Height != height)
 			{
 				m_Framebuffer->Resize(width, height);
 			}
 
-			// Render into the offscreen target, then post-process and
-			// present it to the screen.
 			cmd->BeginRenderPass(m_Framebuffer);
 
 			int pendingScene = m_Scene->OnUpdateRuntime(ts);
@@ -190,24 +191,6 @@ namespace Waffle {
 
 			PostProcessing::ProcessAndPresent(m_Framebuffer, 0, width, height, postSettings);
 
-			if (pendingScene != -1)
-				LoadScene(pendingScene);
-		}
-		else
-		{
-			// No post chain - render straight to the present surface.
-			cmd->BeginSwapchainPass(width, height);
-
-			int pendingScene = m_Scene->OnUpdateRuntime(ts);
-			cmd->EndRenderPass();
-
-			if (LuaScriptEngine::IsQuitRequested())
-			{
-				LuaScriptEngine::ClearQuitRequest();
-				m_Scene->OnRuntimeStop();
-				Application::Get().Close();
-				return;
-			}
 			if (pendingScene != -1)
 				LoadScene(pendingScene);
 		}

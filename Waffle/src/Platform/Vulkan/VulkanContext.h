@@ -56,6 +56,8 @@ namespace Waffle {
 		VkCommandBuffer   GetCurrentCommandBuffer() const;
 		uint32_t          GetCurrentFrameIndex()    const { return m_CurrentFrameIndex; }
 		uint32_t          GetCurrentImageIndex()    const { return m_CurrentImageIndex; }
+		// The swapchain image owned by the frame being recorded/submitted.
+		uint32_t          GetCurrentFrameImageIndex() const { return m_Frames[m_CurrentFrameIndex].ImageIndex; }
 
 		// Waits on timeline semaphore until all other frame slots have finished, safe to overwrite mapped memory.
 		void WaitForFrameUploads(uint32_t targetFrameIndex);
@@ -217,6 +219,11 @@ namespace Waffle {
 			VkSemaphore     ImageAvailableSemaphore = VK_NULL_HANDLE;
 			VkFence         InFlightFence = VK_NULL_HANDLE;
 			uint64_t        LastTimelineValue = 0; // Used to gate host writes to shared mapped buffers.
+			// Swapchain image this slot acquired. PER FRAME SLOT: reading the
+			// global index at submit/present time returns the OTHER slot's
+			// image once two frames are in flight, which breaks the
+			// acquire/present pairing (validation: non-acquired image used).
+			uint32_t        ImageIndex = 0;
 		};
 		std::vector<FrameData> m_Frames;
 		uint32_t m_CurrentFrameIndex = 0;

@@ -234,9 +234,10 @@ namespace Waffle {
 
 		// Transition swap-chain image to present layout using Synchronization 2
 		VkCommandBuffer cmd = GetCurrentCommandBuffer();
+		const uint32_t frameImageIndex = m_Frames[m_CurrentFrameIndex].ImageIndex;
 
 		VulkanUtils::TransitionImageLayout(cmd,
-			m_SwapChainImages[m_CurrentImageIndex],
+			m_SwapChainImages[frameImageIndex],
 			VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
 			VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
 			VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT, 0,
@@ -263,7 +264,7 @@ namespace Waffle {
 		{
 			{
 				.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO,
-				.semaphore = m_SwapchainRenderFinished[m_CurrentImageIndex],
+				.semaphore = m_SwapchainRenderFinished[m_Frames[m_CurrentFrameIndex].ImageIndex],
 				.stageMask = VK_PIPELINE_STAGE_2_ALL_GRAPHICS_BIT
 			},
 			{
@@ -321,14 +322,19 @@ namespace Waffle {
 		}
 
 		// Present
+		// pImageIndices MUST be the index captured by THIS frame slot's
+		// acquire: using the global index here presents the image the OTHER
+		// in-flight frame just acquired, breaking the acquire/present chain
+		// (validation: transitions on non-acquired swapchain images).
+		uint32_t presentIndex = m_Frames[m_CurrentFrameIndex].ImageIndex;
 		VkPresentInfoKHR presentInfo
 		{
 			.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
 			.waitSemaphoreCount = 1,
-			.pWaitSemaphores = &m_SwapchainRenderFinished[m_CurrentImageIndex],
+			.pWaitSemaphores = &m_SwapchainRenderFinished[presentIndex],
 			.swapchainCount = 1,
 			.pSwapchains = &m_SwapChain,
-			.pImageIndices = &m_CurrentImageIndex
+			.pImageIndices = &presentIndex
 		};
 
 		VkResult presentResult = vkQueuePresentKHR(m_PresentQueue, &presentInfo);
@@ -391,6 +397,8 @@ namespace Waffle {
 			}
 		} while (acquireResult == VK_ERROR_OUT_OF_DATE_KHR);
 
+		m_Frames[m_CurrentFrameIndex].ImageIndex = m_CurrentImageIndex;
+
 		vkResetCommandPool(m_Device, m_Frames[m_CurrentFrameIndex].CommandPool, 0);
 		VkCommandBufferBeginInfo beginInfo
 		{
@@ -440,10 +448,12 @@ namespace Waffle {
 		SetActiveRenderingFormats({ m_SwapChainImageFormat }, m_DepthFormat);
 		VkCommandBuffer cmd = GetCurrentCommandBuffer();
 
+		const uint32_t frameImageIndex = m_Frames[m_CurrentFrameIndex].ImageIndex;
+
 		if (!m_SwapchainImageInColor)
 		{
 			VulkanUtils::TransitionImageLayout(cmd,
-				m_SwapChainImages[m_CurrentImageIndex],
+				m_SwapChainImages[frameImageIndex],
 				VK_IMAGE_LAYOUT_UNDEFINED,
 				VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
 				0, VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT,
@@ -473,7 +483,7 @@ namespace Waffle {
 		VkRenderingAttachmentInfo colorAttachment
 		{
 			.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
-			.imageView = m_SwapChainImageViews[m_CurrentImageIndex],
+			.imageView = m_SwapChainImageViews[m_Frames[m_CurrentFrameIndex].ImageIndex],
 			.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
 			// First begin of the frame clears; a re-begin in the same frame must
 			// preserve what is already on the swap-chain image.
@@ -1003,6 +1013,7 @@ namespace Waffle {
 			m_Frames[0].ImageAvailableSemaphore, VK_NULL_HANDLE,
 			&m_CurrentImageIndex);
 		WF_CORE_ASSERT(acqRes == VK_SUCCESS || acqRes == VK_SUBOPTIMAL_KHR, "Failed to acquire initial swapchain image!");
+		m_Frames[0].ImageIndex = m_CurrentImageIndex;
 
 		VkResult beginRes = vkBeginCommandBuffer(m_Frames[0].CommandBuffer, &beginInfo);
 		WF_CORE_ASSERT(beginRes == VK_SUCCESS, "Failed to begin initial command buffer!");

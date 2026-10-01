@@ -117,6 +117,10 @@ namespace Waffle {
 			UUID uuid = srcSceneRegistry.get<IDComponent>(e).ID;
 			const auto& name = srcSceneRegistry.get<TagComponent>(e).Tag;
 			Entity newEntity = newScene->CreateEntityWithUUID(uuid, name);
+			// Editor-only gizmo visibility must survive the edit -> play copy
+			// (hidden in the editor means hidden during play).
+			newEntity.GetComponent<TagComponent>().ShowGizmos =
+				srcSceneRegistry.get<TagComponent>(e).ShowGizmos;
 			enttMap[uuid] = (entt::entity)newEntity;
 		}
 

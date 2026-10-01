@@ -428,14 +428,17 @@ static std::filesystem::path FindRuntimeExecutable()
 	std::filesystem::path exeDir = std::filesystem::current_path();
 #endif
 
-	// Order matters: prefer windowed (Dist/Release) runtimes so exports
-	// never ship the Debug console build by accident.
+	// Order matters: the repo dev layout's Dist/Release runtimes first, so
+	// exports NEVER ship the Debug build (console window + validation-layer
+	// spam) just because it happens to sit next to the editor exe. The
+	// exeDir/"../Waffle-Runtime" sibling only matches in deployed layouts,
+	// where no bin/ tree exists.
 	candidates = {
-		exeDir / "Waffle-Runtime.exe",
-		exeDir / "../Waffle-Runtime/Waffle-Runtime.exe",
 		exeDir / "../../bin/Dist-windows-x86_64/Waffle-Runtime/Waffle-Runtime.exe",
 		exeDir / "../../bin/Release-windows-x86_64/Waffle-Runtime/Waffle-Runtime.exe",
 		exeDir / "../../bin/Debug-windows-x86_64/Waffle-Runtime/Waffle-Runtime.exe",
+		exeDir / "Waffle-Runtime.exe",
+		exeDir / "../Waffle-Runtime/Waffle-Runtime.exe",
 		"bin/Dist-windows-x86_64/Waffle-Runtime/Waffle-Runtime.exe",
 		"bin/Release-windows-x86_64/Waffle-Runtime/Waffle-Runtime.exe",
 		"bin/Debug-windows-x86_64/Waffle-Runtime/Waffle-Runtime.exe",
@@ -451,7 +454,16 @@ static std::filesystem::path FindRuntimeExecutable()
 		if (std::filesystem::exists(path, ec))
 		{
 			auto canon = std::filesystem::canonical(path, ec);
-			return ec ? path : canon;
+			std::filesystem::path chosen = ec ? path : canon;
+
+			// A Debug runtime means a console window and validation-layer
+			// logging in the player's face - say so loudly.
+			std::string chosenStr = chosen.string();
+			if (chosenStr.find("Debug-windows") != std::string::npos)
+				WF_CORE_WARN("ProjectExporter: shipping the DEBUG runtime - "
+					"build the Dist configuration for a clean export ({0})", chosenStr);
+
+			return chosen;
 		}
 	}
 

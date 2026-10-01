@@ -7,6 +7,7 @@
 
 #include <unordered_map>
 #include <vector>
+#include <glm/glm.hpp>
 
 struct lua_State;
 
@@ -33,6 +34,25 @@ namespace Waffle {
 	{
 		uint32_t EntityID;
 		float    Remaining;
+	};
+
+	// Editor-only debug gizmos queued from Lua (Gizmo.DrawRay etc.). Drawn
+	// by the editor overlay while playing; the exported runtime never draws
+	// them and drops them every frame.
+	struct DebugDrawLine
+	{
+		glm::vec2 A;
+		glm::vec2 B;
+		glm::vec4 Color;
+		uint32_t Entity = 0xFFFFFFFF; // owning script's entity (0xFFFFFFFF = unknown)
+	};
+
+	struct DebugDrawCircle
+	{
+		glm::vec2 Center;
+		float Radius;
+		glm::vec4 Color;
+		uint32_t Entity = 0xFFFFFFFF;
 	};
 
 	class LuaScriptEngine
@@ -89,6 +109,17 @@ namespace Waffle {
 		static bool IsQuitRequested() { return s_QuitRequested; }
 		static void ClearQuitRequest() { s_QuitRequested = false; }
 
+		// Editor-only debug gizmos (read by the editor overlay each frame).
+		static const std::vector<DebugDrawLine>& GetPendingDebugLines() { return s_DebugLines; }
+		static const std::vector<DebugDrawCircle>& GetPendingDebugCircles() { return s_DebugCircles; }
+
+		// Editor gizmo preview: runs each script's OnDrawGizmos(entity) while
+		// EDITING (no play), so rays/wire shapes tune like Unity gizmos.
+		// During this pass, mutating bindings (entity lifecycle, physics
+		// impulses, sounds, scene changes) are ignored with a warning.
+		static void OnEditorGizmos(Scene* scene);
+		static bool IsEditorGizmoPass() { return s_EditorGizmoPass; }
+
 		// Context-aware Quit(): the editor installs a handler that stops
 		// play mode; a standalone game has none and terminates the app.
 		static void SetQuitHandler(const std::function<void()>& callback) { s_QuitHandler = callback; }
@@ -136,6 +167,14 @@ namespace Waffle {
 		// Deferred / delayed entity destruction
 		static std::vector<uint32_t>         s_PendingDestroys;
 		static std::vector<LuaDelayedDestroy> s_DelayedDestroys;
+
+		// Editor-only debug gizmos (Gizmo.DrawRay / DrawLine / DrawWireCircle).
+		static std::vector<DebugDrawLine>    s_DebugLines;
+		static std::vector<DebugDrawCircle>  s_DebugCircles;
+
+		static bool s_EditorGizmoPass;
+		static uint32_t s_CurrentGizmoEntity; // entity whose script is queueing gizmos
+		static std::unordered_map<std::string, std::filesystem::file_time_type> s_EditorGizmoEnvTimes;
 
 		// Current frame delta time (exposed to Lua via GetDeltaTime())
 		static float                         s_CurrentDeltaTime;

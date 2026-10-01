@@ -37,7 +37,7 @@ namespace Waffle {
 		static bool IsVisibleInFrustum(const glm::vec3& min, const glm::vec3& max);
 		static bool IsVisibleInFrustum(const glm::vec3& center, const glm::vec2& size);
 
-		static void DrawLine(const glm::vec3& p0, glm::vec3& p1, const glm::vec4& color, int entityID = -1);
+		static void DrawLine(const glm::vec3& p0, const glm::vec3& p1, const glm::vec4& color, int entityID = -1);
 
 		static float GetLineWidth();
 		static void SetLineWidth(float width);

@@ -141,6 +141,10 @@ namespace Waffle {
 		m_ContentBrowserPanel.SetOpenPrefabCallback(
 			[this](const std::filesystem::path& path) { OpenPrefabForEditing(path); });
 
+		m_SceneHierarchyPanel.SetColliderEditHooks(
+			[this](int target) { return IsEditingCollider(target); },
+			[this](int target, bool active) { SetColliderEditMode(active, target); });
+
 		// Lua Quit() during play stops the game, never the editor.
 		LuaScriptEngine::SetQuitHandler([this]
 		{
@@ -245,6 +249,8 @@ namespace Waffle {
 		{
 		case SceneState::Edit:
 			m_ActiveScene->OnUpdateEditor(ts, m_EditorCamera);
+			// Unity-style OnDrawGizmos: scripts queue gizmos while editing.
+			LuaScriptEngine::OnEditorGizmos(m_ActiveScene.get());
 			break;
 
 		case SceneState::Play:
@@ -449,8 +455,6 @@ namespace Waffle {
 			{
 				ImGui::MenuItem("Settings", nullptr, &m_ShowSettingsPanel);
 				ImGui::MenuItem("Tile Palette", nullptr, &m_ShowTilePalette);
-				ImGui::Separator();
-				ImGui::MenuItem("Show Physics Colliders", nullptr, &m_ShowPhysicsColliders);
 				ImGui::MenuItem("Show Selection Outline", nullptr, &m_ShowSelectionOutline);
 				ImGui::MenuItem("Use Component Colors", nullptr, &m_UseComponentSelectionColor);
 				ImGui::EndMenu();
@@ -712,7 +716,115 @@ namespace Waffle {
 
 			// Transform gizmos
 			Entity selectedEntity = m_SceneHierarchyPanel.GetSelectedEntity();
-			if (selectedEntity && m_GizmoType != -1 && selectedEntity.HasComponent<TransformComponent>())
+
+			// Collider edit mode: the gizmo drives the SELECTED entity's
+			// collider instead of its transform (Translate = offset,
+			// Scale = size / radius). Rotating a symmetric 2D collider is
+			// meaningless, so only those two operations act.
+			if (m_ColliderEditMode && selectedEntity && m_SceneState == SceneState::Edit)
+			{
+				const bool editBox = m_ColliderEditTarget == ColliderEditTarget::Box && selectedEntity.HasComponent<BoxCollider2DComponent>();
+				const bool editCircle = m_ColliderEditTarget == ColliderEditTarget::Circle && selectedEntity.HasComponent<CircleCollider2DComponent>();
+				if (!editBox && !editCircle)
+				{
+					m_ColliderEditMode = false;
+				}
+				else if (m_GizmoType == ImGuizmo::OPERATION::TRANSLATE || m_GizmoType == ImGuizmo::OPERATION::SCALE)
+				{
+					const glm::mat4& cameraProjection = m_EditorCamera.GetProjection();
+					glm::mat4        cameraView = m_EditorCamera.GetViewMatrix();
+
+					ImGuizmo::SetOrthographic(cameraProjection[3][3] == 1.0f);
+					ImGuizmo::SetDrawlist();
+					ImGuizmo::SetRect(
+						m_ViewportBounds[0].x, m_ViewportBounds[0].y,
+						m_ViewportBounds[1].x - m_ViewportBounds[0].x,
+						m_ViewportBounds[1].y - m_ViewportBounds[0].y);
+
+					glm::vec3 wTrans, wRot, wScale;
+					Math::DecomposeTransform(m_ActiveScene->GetWorldTransform(selectedEntity), wTrans, wRot, wScale);
+
+					glm::vec2 offset;
+					glm::vec2 sizeVec;
+					if (editBox)
+					{
+						auto& bc2d = selectedEntity.GetComponent<BoxCollider2DComponent>();
+						offset = bc2d.Offset;
+						sizeVec = bc2d.Size * 2.0f;
+					}
+					else
+					{
+						auto& cc2d = selectedEntity.GetComponent<CircleCollider2DComponent>();
+						offset = cc2d.Offset;
+						sizeVec = glm::vec2(cc2d.Radius * 2.0f);
+					}
+
+					glm::mat4 colliderMatrix =
+						glm::translate(glm::mat4(1.0f), wTrans)
+						* glm::rotate(glm::mat4(1.0f), wRot.z, glm::vec3(0.0f, 0.0f, 1.0f))
+						* glm::translate(glm::mat4(1.0f), glm::vec3(offset, 0.0f))
+						* glm::scale(glm::mat4(1.0f), wScale * glm::vec3(sizeVec, 1.0f));
+
+					bool snap = Input::IsKeyPressed(Key::LeftControl);
+					float snapValues[3] = { 0.1f, 0.1f, 0.1f };
+
+					ImGuizmo::Manipulate(
+						glm::value_ptr(cameraView),
+						glm::value_ptr(cameraProjection),
+						(ImGuizmo::OPERATION)m_GizmoType,
+						ImGuizmo::LOCAL,
+						glm::value_ptr(colliderMatrix),
+						nullptr,
+						snap ? snapValues : nullptr);
+
+					if (ImGuizmo::IsUsing())
+					{
+						glm::vec3 translation, rotationDeg, scale;
+						ImGuizmo::DecomposeMatrixToComponents(
+							glm::value_ptr(colliderMatrix),
+							glm::value_ptr(translation),
+							glm::value_ptr(rotationDeg),
+							glm::value_ptr(scale));
+
+						// Undo the body rotation so the offset stays
+						// body-local, exactly like the physics setup does.
+						glm::vec2 delta = glm::vec2(translation.x, translation.y) - glm::vec2(wTrans);
+						glm::vec2 localOffset(
+							cosf(-wRot.z) * delta.x - sinf(-wRot.z) * delta.y,
+							sinf(-wRot.z) * delta.x + cosf(-wRot.z) * delta.y);
+
+						if (editBox)
+						{
+							auto& bc2d = selectedEntity.GetComponent<BoxCollider2DComponent>();
+							if (m_GizmoType == ImGuizmo::OPERATION::TRANSLATE)
+								bc2d.Offset = localOffset;
+							else
+							{
+								bc2d.Size = glm::vec2(
+									std::max(scale.x / (2.0f * wScale.x), 0.01f),
+									std::max(scale.y / (2.0f * wScale.y), 0.01f));
+							}
+						}
+						else
+						{
+							auto& cc2d = selectedEntity.GetComponent<CircleCollider2DComponent>();
+							if (m_GizmoType == ImGuizmo::OPERATION::TRANSLATE)
+								cc2d.Offset = localOffset;
+							else
+							{
+								cc2d.Radius = std::max(std::max(scale.x, scale.y) / (2.0f * wScale.x), 0.01f);
+							}
+						}
+					}
+
+					// Hint + exit affordance while editing.
+					ImGui::SetCursorScreenPos(ImVec2(m_ViewportBounds[0].x + 12.0f, m_ViewportBounds[0].y + 46.0f));
+					ImGui::TextColored(ImVec4(1.0f, 0.85f, 0.1f, 1.0f),
+						"Editing %s Collider - Translate moves offset, Scale resizes (Esc to stop)",
+						editBox ? "Box" : "Circle");
+				}
+			}
+			else if (selectedEntity && m_GizmoType != -1 && selectedEntity.HasComponent<TransformComponent>())
 			{
 				const glm::mat4& cameraProjection = m_EditorCamera.GetProjection();
 				glm::mat4        cameraView = m_EditorCamera.GetViewMatrix();
@@ -1370,7 +1482,6 @@ namespace Waffle {
 
 		ImGui::SeparatorText("Viewport and Overlay");
 		UI::BeginPropertyGrid();
-		UI::PropertyCheckbox("Show Physics Colliders", m_ShowPhysicsColliders);
 		UI::PropertyCheckbox("Show Selection Outline", m_ShowSelectionOutline);
 		UI::PropertyCheckbox("Use Component Colors", m_UseComponentSelectionColor);
 		UI::DrawColorEdit4("Outline Color", m_SelectionOutlineColor);
@@ -1575,6 +1686,7 @@ namespace Waffle {
 		case Key::W: m_GizmoType = ImGuizmo::OPERATION::TRANSLATE; break;
 		case Key::E: m_GizmoType = ImGuizmo::OPERATION::ROTATE;    break;
 		case Key::R: m_GizmoType = ImGuizmo::OPERATION::SCALE;     break;
+		case Key::Escape: if (m_ColliderEditMode) ExitColliderEditMode(); break;
 
 		case Key::F:
 		{
@@ -1660,61 +1772,67 @@ namespace Waffle {
 			}
 		}
 
-		if (m_ShowPhysicsColliders)
+		// Collider outline of the SELECTED entity (green normally, amber
+		// while its collider is being edited with the gizmo).
+		if (Entity sel = m_SceneHierarchyPanel.GetSelectedEntity())
 		{
-			// Box colliders
-			auto boxView = m_ActiveScene->GetAllEntitiesWith<
-				TransformComponent, BoxCollider2DComponent>();
-			for (auto entity : boxView)
+			glm::vec3 wTrans, wRot, wScale;
+			Math::DecomposeTransform(m_ActiveScene->GetWorldTransform(sel), wTrans, wRot, wScale);
+			glm::vec4 colliderColor = m_ColliderEditMode
+				? glm::vec4(1.0f, 0.85f, 0.1f, 1.0f)
+				: glm::vec4(0.0f, 1.0f, 0.0f, 1.0f);
+
+			if (sel.HasComponent<BoxCollider2DComponent>())
 			{
-				auto [tc, bc2d] = boxView.get<
-					TransformComponent, BoxCollider2DComponent>(entity);
-
-				glm::vec3 wTrans = tc.Translation, wRot = tc.Rotation, wScale = tc.Scale;
-				Math::DecomposeTransform(
-					m_ActiveScene->GetWorldTransform(Entity{ entity, m_ActiveScene.get() }),
-					wTrans, wRot, wScale);
-
-				// The collider offset is body-local in physics
-				// (SetAsBox(..., center, 0)) - rotate it into world space like
-				// the solver does instead of applying it in world axes.
+				auto& bc2d = sel.GetComponent<BoxCollider2DComponent>();
 				glm::mat4 transform =
-					glm::translate(glm::mat4(1.0f),
-						wTrans + glm::vec3(0.0f, 0.0f, 0.001f))
-					* glm::rotate(glm::mat4(1.0f), wRot.z,
-						glm::vec3(0.0f, 0.0f, 1.0f))
-					* glm::translate(glm::mat4(1.0f),
-						glm::vec3(bc2d.Offset, 0.0f))
-					* glm::scale(glm::mat4(1.0f),
-						wScale * glm::vec3(bc2d.Size * 2.0f, 1.0f));
-
-				Renderer2D::DrawRect(transform, glm::vec4(0, 1, 0, 1));
+					glm::translate(glm::mat4(1.0f), wTrans + glm::vec3(0.0f, 0.0f, 0.001f))
+					* glm::rotate(glm::mat4(1.0f), wRot.z, glm::vec3(0.0f, 0.0f, 1.0f))
+					* glm::translate(glm::mat4(1.0f), glm::vec3(bc2d.Offset, 0.0f))
+					* glm::scale(glm::mat4(1.0f), wScale * glm::vec3(bc2d.Size * 2.0f, 1.0f));
+				Renderer2D::DrawRect(transform, colliderColor);
 			}
 
-			// Circle colliders
-			auto circleView = m_ActiveScene->GetAllEntitiesWith<
-				TransformComponent, CircleCollider2DComponent>();
-			for (auto entity : circleView)
+			if (sel.HasComponent<CircleCollider2DComponent>())
 			{
-				auto [tc, cc2d] = circleView.get<
-					TransformComponent, CircleCollider2DComponent>(entity);
-
-				glm::vec3 wTrans = tc.Translation, wRot = tc.Rotation, wScale = tc.Scale;
-				Math::DecomposeTransform(
-					m_ActiveScene->GetWorldTransform(Entity{ entity, m_ActiveScene.get() }),
-					wTrans, wRot, wScale);
-
+				auto& cc2d = sel.GetComponent<CircleCollider2DComponent>();
 				glm::mat4 transform =
-					glm::translate(glm::mat4(1.0f),
-						wTrans + glm::vec3(0.0f, 0.0f, 0.001f))
-					* glm::rotate(glm::mat4(1.0f), wRot.z,
-						glm::vec3(0.0f, 0.0f, 1.0f))
-					* glm::translate(glm::mat4(1.0f),
-						glm::vec3(cc2d.Offset, 0.0f))
-					* glm::scale(glm::mat4(1.0f),
-						wScale * glm::vec3(cc2d.Radius * 2.0f));
+					glm::translate(glm::mat4(1.0f), wTrans + glm::vec3(0.0f, 0.0f, 0.001f))
+					* glm::rotate(glm::mat4(1.0f), wRot.z, glm::vec3(0.0f, 0.0f, 1.0f))
+					* glm::translate(glm::mat4(1.0f), glm::vec3(cc2d.Offset, 0.0f))
+					* glm::scale(glm::mat4(1.0f), wScale * glm::vec3(cc2d.Radius * 2.0f));
+				Renderer2D::DrawCircle(transform, colliderColor, 0.01f);
+			}
+		}
 
-				Renderer2D::DrawCircle(transform, glm::vec4(0, 1, 0, 1), 0.01f);
+		// Lua debug gizmos (Gizmo.DrawRay / DrawLine / DrawWireCircle) -
+		// queued by scripts, drawn here and ONLY in the editor. Each entity
+		// can hide its own gizmos with the "Show Gizmos" inspector toggle.
+		{
+			auto gizmosVisible = [&](uint32_t entityId) -> bool
+			{
+				if (entityId == 0xFFFFFFFFu || !m_ActiveScene)
+					return true;
+				Entity owner{ (entt::entity)entityId, m_ActiveScene.get() };
+				if (!owner || !owner.HasComponent<TagComponent>())
+					return true;
+				return owner.GetComponent<TagComponent>().ShowGizmos;
+			};
+
+			const auto& lines = LuaScriptEngine::GetPendingDebugLines();
+			for (const auto& l : lines)
+			{
+				if (!gizmosVisible(l.Entity)) continue;
+				Renderer2D::DrawLine(glm::vec3(l.A, 0.002f), glm::vec3(l.B, 0.002f), l.Color);
+			}
+
+			const auto& circles = LuaScriptEngine::GetPendingDebugCircles();
+			for (const auto& c : circles)
+			{
+				if (!gizmosVisible(c.Entity)) continue;
+				glm::mat4 transform = glm::translate(glm::mat4(1.0f), glm::vec3(c.Center, 0.002f))
+					* glm::scale(glm::mat4(1.0f), glm::vec3(c.Radius * 2.0f, c.Radius * 2.0f, 1.0f));
+				Renderer2D::DrawCircle(transform, c.Color, 0.02f);
 			}
 		}
 
@@ -2331,6 +2449,8 @@ namespace Waffle {
 	{
 		if (!m_EditorScene) return;
 
+		ExitColliderEditMode();
+
 		// Play runs the persisted scene - a prefab being edited is not one.
 		// The Back button saves & returns to the scene, then Play works.
 		if (m_InPrefabEditMode)
@@ -2462,6 +2582,13 @@ namespace Waffle {
 	{
 		if (m_SceneState == SceneState::Edit) return;
 		m_ActiveScene->SetPaused(true);
+	}
+
+	void EditorLayer::SetColliderEditMode(bool active, int target)
+	{
+		m_ColliderEditMode = active;
+		if (active)
+			m_ColliderEditTarget = (ColliderEditTarget)target;
 	}
 
 	void EditorLayer::OnDuplicateEntity()

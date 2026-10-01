@@ -9,6 +9,9 @@
 
 namespace Waffle {
 
+	// Which collider the viewport "edit collider" gizmo acts on.
+	enum class ColliderEditTarget { Box = 0, Circle = 1 };
+
 	class SceneHierarchyPanel
 	{
 	private:
@@ -17,6 +20,9 @@ namespace Waffle {
 
 		Entity m_RenamingEntity;
 		char m_RenameBuffer[256] = "";
+
+		std::function<bool(int)> m_IsEditingCollider;
+		std::function<void(int, bool)> m_SetEditingCollider;
 
 		bool m_PrefabEditMode = false;
 		std::string m_PrefabName;
@@ -32,6 +38,16 @@ namespace Waffle {
 
 		Entity GetSelectedEntity() const { return m_SelectionContext; }
 		void SetSelectedEntity(Entity entity);
+
+		// Collider edit mode hooks - the toggle state lives in EditorLayer
+		// because the viewport gizmo acts on it (Unity-style "Edit Collider").
+		void SetColliderEditHooks(
+			std::function<bool(int)> isEditing,
+			std::function<void(int, bool)> setEditing)
+		{
+			m_IsEditingCollider = std::move(isEditing);
+			m_SetEditingCollider = std::move(setEditing);
+		}
 
 		// Prefab edit mode: the header shows a Back button + which prefab is
 		// being edited (and the scene it came from) instead of the scene name.

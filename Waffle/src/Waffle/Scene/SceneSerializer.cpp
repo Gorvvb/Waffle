@@ -1282,6 +1282,7 @@ namespace Waffle {
 	// rebuilt from the serialized UUIDs after all entities exist.
 	static void DeserializePrefabComponents(Entity& deserializedEntity, const YAML::Node& entityNode)
 	{
+
 		auto transformComponent = entityNode["TransformComponent"];
 		if (transformComponent)
 		{

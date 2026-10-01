@@ -139,10 +139,15 @@
 	{
 		const std::string resolvedPath = ResolveShaderFile(filepath);
 
+		// A resolved path is either a real file (mtime drives hot reload) or
+		// a VFS-virtual path inside a mounted archive (exported games) - the
+		// latter "exists" through the VFS and has no timestamp, so cached
+		// entries simply stay stable.
 		std::error_code ec;
+		bool onDisk = std::filesystem::exists(resolvedPath, ec) && !ec;
+		bool fileExists = onDisk || VFS::Exists(resolvedPath);
 		std::filesystem::file_time_type lastWrite{};
-		bool fileExists = std::filesystem::exists(resolvedPath, ec) && !ec;
-		if (fileExists)
+		if (onDisk)
 			lastWrite = std::filesystem::last_write_time(resolvedPath, ec);
 
 		auto it = m_Shaders.find(filepath);
@@ -151,7 +156,7 @@
 			// Cached - recompile only when the file actually changed.
 			// A failed compile is cached as a null shader with the failing
 			// file's timestamp, so it retries only on the next edit.
-			if (!fileExists || ec || it->second.LastWrite == lastWrite)
+			if (!onDisk || ec || it->second.LastWrite == lastWrite)
 				return it->second.Shader;
 		}
 		else if (!fileExists || ec)

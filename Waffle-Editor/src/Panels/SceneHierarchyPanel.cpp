@@ -464,7 +464,8 @@ namespace Waffle {
 
 		if (entity.HasComponent<TagComponent>())
 		{
-			auto& tag = entity.GetComponent<TagComponent>().Tag;
+			auto& tagComponent = entity.GetComponent<TagComponent>();
+			auto& tag = tagComponent.Tag;
 
 			char buffer[256];
 			memset(buffer, 0, sizeof(buffer));
@@ -472,10 +473,44 @@ namespace Waffle {
 
 			float buttonWidth = 120.0f;
 			float labelWidth = 35.0f;
-			float tagWidth = contentRegionAvailable.x - labelWidth - buttonWidth - 15.0f;
+			float dotWidth = 18.0f;
+			float tagWidth = contentRegionAvailable.x - labelWidth - buttonWidth - dotWidth - 15.0f;
 			if (tagWidth < 50.0f) tagWidth = 50.0f;
 
 			ImGui::Text("Tag");
+			ImGui::SameLine();
+
+			// Gizmo visibility dot (before the name): amber = this entity's
+			// gizmos show in the viewport, hollow = hidden. Pure editor
+			// state, click to toggle.
+			ImVec2 dotPos = ImGui::GetCursorScreenPos();
+			float dotHeight = ImGui::GetFrameHeight();
+			ImGui::PushID("EntityGizmoDot");
+			ImGui::InvisibleButton("##dot", ImVec2(dotWidth, dotHeight));
+			bool dotHovered = ImGui::IsItemHovered();
+			if (ImGui::IsItemClicked(ImGuiMouseButton_Left))
+				tagComponent.ShowGizmos = !tagComponent.ShowGizmos;
+
+			ImDrawList* dotDrawList = ImGui::GetWindowDrawList();
+			ImVec2 dotCenter(dotPos.x + dotWidth * 0.5f, dotPos.y + dotHeight * 0.5f);
+			if (tagComponent.ShowGizmos)
+			{
+				dotDrawList->AddCircleFilled(dotCenter, 4.5f, IM_COL32(255, 190, 60, 255));
+				dotDrawList->AddCircle(dotCenter, 4.5f, IM_COL32(120, 85, 10, 255));
+			}
+			else
+			{
+				dotDrawList->AddCircle(dotCenter, 4.5f, IM_COL32(110, 115, 125, 200));
+			}
+			if (dotHovered)
+			{
+				dotDrawList->AddCircle(dotCenter, 7.0f, IM_COL32(255, 255, 255, 60));
+				ImGui::SetTooltip(tagComponent.ShowGizmos
+					? "Gizmos visible - click to hide"
+					: "Gizmos hidden - click to show");
+			}
+			ImGui::PopID();
+
 			ImGui::SameLine();
 			ImGui::PushItemWidth(tagWidth);
 			if (ImGui::InputText("##Tag", buffer, sizeof(buffer)))
@@ -1300,8 +1335,20 @@ namespace Waffle {
 			UI::EndPropertyGrid();
 		});
 
-		DrawComponent<BoxCollider2DComponent>("Box Collider (2D)", entity, [](auto& component)
+		DrawComponent<BoxCollider2DComponent>("Box Collider (2D)", entity, [&](auto& component)
 		{
+			// Unity-style visual editing: toggles the viewport gizmo onto the
+			// collider (Translate = offset, Scale = size).
+			{
+				bool editing = m_IsEditingCollider && m_IsEditingCollider((int)ColliderEditTarget::Box);
+				if (ImGui::Button(editing ? "Editing Collider (click to stop)" : "Edit Collider"))
+				{
+					if (m_SetEditingCollider)
+						m_SetEditingCollider((int)ColliderEditTarget::Box, !editing);
+				}
+				ImGui::Separator();
+			}
+
 			UI::BeginPropertyGrid();
 			UI::PropertyFloat("Offset X", component.Offset.x, 0.05f);
 			UI::PropertyFloat("Offset Y", component.Offset.y, 0.05f);
@@ -1315,8 +1362,18 @@ namespace Waffle {
 			UI::EndPropertyGrid();
 		});
 
-		DrawComponent<CircleCollider2DComponent>("Circle Collider (2D)", entity, [](auto& component)
+		DrawComponent<CircleCollider2DComponent>("Circle Collider (2D)", entity, [&](auto& component)
 		{
+			{
+				bool editing = m_IsEditingCollider && m_IsEditingCollider((int)ColliderEditTarget::Circle);
+				if (ImGui::Button(editing ? "Editing Collider (click to stop)" : "Edit Collider"))
+				{
+					if (m_SetEditingCollider)
+						m_SetEditingCollider((int)ColliderEditTarget::Circle, !editing);
+				}
+				ImGui::Separator();
+			}
+
 			UI::BeginPropertyGrid();
 			UI::PropertyFloat("Offset X", component.Offset.x, 0.05f);
 			UI::PropertyFloat("Offset Y", component.Offset.y, 0.05f);

@@ -35,6 +35,12 @@ namespace Waffle {
 	{
 		std::string Tag;
 
+		// Per-entity toggle for the editor gizmo layer (Gizmo.DrawRay etc.
+		// queued by the entity's scripts). Pure editor-session state: never
+		// serialized, never present in scene/prefab/exported files - it
+		// carries into play mode through Scene::Copy and resets on reload.
+		bool ShowGizmos = true;
+
 		TagComponent() = default;
 		TagComponent(const TagComponent&) = default;
 		TagComponent(std::string& tag)

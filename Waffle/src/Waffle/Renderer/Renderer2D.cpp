@@ -540,7 +540,7 @@ namespace Waffle {
 		}
 	}
 
-	void Renderer2D::DrawLine(const glm::vec3& p0, glm::vec3& p1, const glm::vec4& color, int entityID)
+	void Renderer2D::DrawLine(const glm::vec3& p0, const glm::vec3& p1, const glm::vec4& color, int entityID)
 	{
 		if (s_Data.LineVertexCount >= s_Data.MaxVertices)
 			NextBatch();

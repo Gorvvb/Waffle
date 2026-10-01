@@ -66,6 +66,12 @@ namespace Waffle {
 		void ClosePrefabEditor(bool save);
 		bool IsInPrefabEditMode() const { return m_InPrefabEditMode; }
 
+		// Collider edit mode (Unity-style): the viewport gizmo manipulates
+		// the selected entity's collider (Translate = offset, Scale = size).
+		void SetColliderEditMode(bool active, int target);
+		bool IsEditingCollider(int target) const { return m_ColliderEditMode && m_ColliderEditTarget == (ColliderEditTarget)target; }
+		void ExitColliderEditMode() { m_ColliderEditMode = false; }
+
 		void UI_Toolbar();
 		void UI_GizmoToolbar();
 		void UI_TilePalette();
@@ -106,6 +112,10 @@ namespace Waffle {
 		// to the viewport preview in OnImGuiRender.
 		PostProcessingSettings m_ViewportPostSettings;
 
+		// Collider edit mode state.
+		bool m_ColliderEditMode = false;
+		ColliderEditTarget m_ColliderEditTarget = ColliderEditTarget::Box;
+
 		EditorCamera m_EditorCamera;
 
 		bool m_ViewportFocused = false, m_ViewportHovered = false;
@@ -114,7 +124,6 @@ namespace Waffle {
 
 		int m_GizmoType = -1;
 
-		bool m_ShowPhysicsColliders = false;
 		bool m_ShowSelectionOutline = true;
 		bool m_UseComponentSelectionColor = true;
 		glm::vec4 m_SelectionOutlineColor = glm::vec4(0.95f, 0.55f, 0.15f, 1.0f);

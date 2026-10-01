@@ -46,6 +46,75 @@ namespace Waffle {
 	uint32_t                               LuaScriptEngine::s_NextTimerID = 0;
 	std::vector<uint32_t>                  LuaScriptEngine::s_PendingDestroys;
 	std::vector<LuaDelayedDestroy>         LuaScriptEngine::s_DelayedDestroys;
+
+	// Editor-only debug gizmos (Gizmo.DrawRay / DrawLine / DrawWireCircle).
+	std::vector<DebugDrawLine>   LuaScriptEngine::s_DebugLines;
+	std::vector<DebugDrawCircle> LuaScriptEngine::s_DebugCircles;
+
+	bool LuaScriptEngine::s_EditorGizmoPass = false;
+	uint32_t LuaScriptEngine::s_CurrentGizmoEntity = 0xFFFFFFFF;
+	// tableKey -> script mtime at load; drives hot reload of OnDrawGizmos
+	// environments while editing.
+	std::unordered_map<std::string, std::filesystem::file_time_type> LuaScriptEngine::s_EditorGizmoEnvTimes;
+
+	static const glm::vec4 k_GizmoDefaultColor(1.0f, 0.85f, 0.15f, 1.0f);
+
+	// Optional color is passed as r, g, b, a flat arguments.
+	static glm::vec4 GizmoColorFromArgs(lua_State* L, int startIndex)
+	{
+		if (lua_gettop(L) >= startIndex + 3)
+		{
+			float r = (float)luaL_checknumber(L, startIndex);
+			float g = (float)luaL_checknumber(L, startIndex + 1);
+			float b = (float)luaL_checknumber(L, startIndex + 2);
+			float a = (float)luaL_optnumber(L, startIndex + 3, 1.0);
+			return { r, g, b, a };
+		}
+		return k_GizmoDefaultColor;
+	}
+
+	// Gizmo.DrawRay(x, y, dirX, dirY, distance [, r, g, b [, a]])
+	static int Lua_GizmoDrawRay(lua_State* L)
+	{
+		float x = (float)luaL_checknumber(L, 1);
+		float y = (float)luaL_checknumber(L, 2);
+		float dx = (float)luaL_checknumber(L, 3);
+		float dy = (float)luaL_checknumber(L, 4);
+		float dist = (float)luaL_checknumber(L, 5);
+
+		DebugDrawLine draw;
+		draw.A = { x, y };
+		draw.B = { x + dx * dist, y + dy * dist };
+		draw.Color = GizmoColorFromArgs(L, 6);
+		draw.Entity = LuaScriptEngine::s_CurrentGizmoEntity;
+		LuaScriptEngine::s_DebugLines.push_back(draw);
+		return 0;
+	}
+
+	// Gizmo.DrawLine(x1, y1, x2, y2 [, r, g, b [, a]])
+	static int Lua_GizmoDrawLine(lua_State* L)
+	{
+		DebugDrawLine draw;
+		draw.A = { (float)luaL_checknumber(L, 1), (float)luaL_checknumber(L, 2) };
+		draw.B = { (float)luaL_checknumber(L, 3), (float)luaL_checknumber(L, 4) };
+		draw.Color = GizmoColorFromArgs(L, 5);
+		draw.Entity = LuaScriptEngine::s_CurrentGizmoEntity;
+		LuaScriptEngine::s_DebugLines.push_back(draw);
+		return 0;
+	}
+
+	// Gizmo.DrawWireCircle(x, y, radius [, r, g, b [, a]])
+	static int Lua_GizmoDrawWireCircle(lua_State* L)
+	{
+		DebugDrawCircle draw;
+		draw.Center = { (float)luaL_checknumber(L, 1), (float)luaL_checknumber(L, 2) };
+		draw.Radius = (float)luaL_checknumber(L, 3);
+		draw.Color = GizmoColorFromArgs(L, 4);
+		draw.Entity = LuaScriptEngine::s_CurrentGizmoEntity;
+		LuaScriptEngine::s_DebugCircles.push_back(draw);
+		return 0;
+	}
+
 	float                                  LuaScriptEngine::s_CurrentDeltaTime = 0.0f;
 
 	static std::filesystem::path ResolveScriptPath(const std::string& scriptPath)
@@ -594,6 +663,12 @@ namespace Waffle {
 
 	static int Lua_ChangeScene(lua_State* L)
 	{
+			if (LuaScriptEngine::s_EditorGizmoPass)
+		{
+			WF_CORE_WARN("Editor gizmo preview: {0} has no effect outside play mode", __func__);
+			lua_pushnil(L);
+			return 1;
+		}
 		LuaScriptEngine::SetPendingSceneChange((int)lua_tonumber(L, 1));
 		return 0;
 	}
@@ -1293,6 +1368,12 @@ namespace Waffle {
 	// NEW BINDINGS - Entity management
 	static int Lua_CreateEntity(lua_State* L)
 	{
+			if (LuaScriptEngine::s_EditorGizmoPass)
+		{
+			WF_CORE_WARN("Editor gizmo preview: {0} has no effect outside play mode", __func__);
+			lua_pushnil(L);
+			return 1;
+		}
 		const char* name = lua_isstring(L, 1) ? lua_tostring(L, 1) : "Entity";
 		float x = lua_isnumber(L, 2) ? (float)lua_tonumber(L, 2) : 0.0f;
 		float y = lua_isnumber(L, 3) ? (float)lua_tonumber(L, 3) : 0.0f;
@@ -1313,6 +1394,12 @@ namespace Waffle {
 
 	static int Lua_DestroyEntity(lua_State* L)
 	{
+			if (LuaScriptEngine::s_EditorGizmoPass)
+		{
+			WF_CORE_WARN("Editor gizmo preview: {0} has no effect outside play mode", __func__);
+			lua_pushnil(L);
+			return 1;
+		}
 		uint32_t entityID = (uint32_t)lua_tonumber(L, 1);
 		// Deferred - we process after the script update loop to avoid iterator invalidation
 		LuaScriptEngine::s_PendingDestroys.push_back(entityID);
@@ -1321,6 +1408,12 @@ namespace Waffle {
 
 	static int Lua_DestroyEntityDelayed(lua_State* L)
 	{
+			if (LuaScriptEngine::s_EditorGizmoPass)
+		{
+			WF_CORE_WARN("Editor gizmo preview: {0} has no effect outside play mode", __func__);
+			lua_pushnil(L);
+			return 1;
+		}
 		uint32_t entityID = (uint32_t)lua_tonumber(L, 1);
 		float delay = lua_isnumber(L, 2) ? (float)lua_tonumber(L, 2) : 0.0f;
 		LuaScriptEngine::s_DelayedDestroys.push_back({ entityID, delay });
@@ -1329,6 +1422,12 @@ namespace Waffle {
 
 	static int Lua_CloneEntity(lua_State* L)
 	{
+			if (LuaScriptEngine::s_EditorGizmoPass)
+		{
+			WF_CORE_WARN("Editor gizmo preview: {0} has no effect outside play mode", __func__);
+			lua_pushnil(L);
+			return 1;
+		}
 		uint32_t sourceID = (uint32_t)lua_tonumber(L, 1);
 		Scene* scene = LuaScriptEngine::GetSceneContext();
 		if (!scene) { lua_pushnumber(L, -1); return 1; }
@@ -1345,6 +1444,12 @@ namespace Waffle {
 
 	static int Lua_InstantiatePrefab(lua_State* L)
 	{
+			if (LuaScriptEngine::s_EditorGizmoPass)
+		{
+			WF_CORE_WARN("Editor gizmo preview: {0} has no effect outside play mode", __func__);
+			lua_pushnil(L);
+			return 1;
+		}
 		const char* pathStr = lua_tostring(L, 1);
 		float x = lua_isnumber(L, 2) ? (float)lua_tonumber(L, 2) : 0.0f;
 		float y = lua_isnumber(L, 3) ? (float)lua_tonumber(L, 3) : 0.0f;
@@ -1391,6 +1496,12 @@ namespace Waffle {
 	// Quit contextually: stops play mode in the editor, exits an exported game. Deferred to end of frame - destroying the scene inside a callback corrupts the registry mid-iteration.
 	static int Lua_Quit(lua_State* L)
 	{
+			if (LuaScriptEngine::s_EditorGizmoPass)
+		{
+			WF_CORE_WARN("Editor gizmo preview: {0} has no effect outside play mode", __func__);
+			lua_pushnil(L);
+			return 1;
+		}
 		LuaScriptEngine::RequestQuit();
 		return 0;
 	}
@@ -1454,6 +1565,12 @@ namespace Waffle {
 	// NEW BINDINGS - Timer system
 	static int Lua_SetTimer(lua_State* L)
 	{
+			if (LuaScriptEngine::s_EditorGizmoPass)
+		{
+			WF_CORE_WARN("Editor gizmo preview: {0} has no effect outside play mode", __func__);
+			lua_pushnil(L);
+			return 1;
+		}
 		float delay = (float)lua_tonumber(L, 1);
 		if (!lua_isfunction(L, 2)) { lua_pushnumber(L, -1); return 1; }
 
@@ -2035,6 +2152,12 @@ namespace Waffle {
 	// NEW BINDINGS - Audio Engine
 	static int Lua_PlaySound(lua_State* L)
 	{
+			if (LuaScriptEngine::s_EditorGizmoPass)
+		{
+			WF_CORE_WARN("Editor gizmo preview: {0} has no effect outside play mode", __func__);
+			lua_pushnil(L);
+			return 1;
+		}
 		const char* path = lua_tostring(L, 1);
 		float vol = lua_isnumber(L, 2) ? (float)lua_tonumber(L, 2) : 1.0f;
 		float pitch = 1.0f;
@@ -2281,6 +2404,14 @@ namespace Waffle {
 		lua_pushcfunction(L, Lua_StopSound);            lua_setglobal(L, "StopSound");
 		lua_pushcfunction(L, Lua_SetSoundVolume);       lua_setglobal(L, "SetSoundVolume");
 		lua_pushcfunction(L, Lua_SetMasterVolume);      lua_setglobal(L, "SetMasterVolume");
+
+		// ---- Debug gizmos (drawn in the EDITOR viewport only; the exported
+		// runtime drops them) ----
+		lua_newtable(L);
+		lua_pushcfunction(L, Lua_GizmoDrawRay);        lua_setfield(L, -2, "DrawRay");
+		lua_pushcfunction(L, Lua_GizmoDrawLine);       lua_setfield(L, -2, "DrawLine");
+		lua_pushcfunction(L, Lua_GizmoDrawWireCircle); lua_setfield(L, -2, "DrawWireCircle");
+		lua_setglobal(L, "Gizmo");
 
 		// ---- Pure-Lua Math / Vec2 helpers ----
 		static const char* s_MathLibLua = R"lua(
@@ -2593,8 +2724,90 @@ if Global == nil then Global = {} end
 	glm::vec2 LuaScriptEngine::s_GameViewportSize = glm::vec2(0.0f);
 	bool LuaScriptEngine::s_HasGameViewport = false;
 
-	void LuaScriptEngine::OnRuntimeStart(Scene* scene)
+		// Runs every script's OnDrawGizmos(entity) while EDITING the scene (no
+	// play): the Unity OnDrawGizmos equivalent. Environments are cached per
+	// script and hot-reload when the .lua file changes. During the pass a
+	// flag is set so mutating bindings no-op with a warning - gizmo code
+	// must only read state and queue draws.
+	void LuaScriptEngine::OnEditorGizmos(Scene* scene)
 	{
+		if (!scene || !s_LuaState)
+		{
+			if (!s_LuaState && scene)
+				Init();
+			if (!scene || !s_LuaState)
+				return;
+		}
+
+		s_DebugLines.clear();
+		s_DebugCircles.clear();
+
+		auto view = scene->m_Registry.view<ScriptComponent>();
+
+		Scene* previousContext = s_SceneContext;
+		s_SceneContext = scene;
+		s_EditorGizmoPass = true;
+
+		for (auto entityID : view)
+		{
+			if (!scene->m_Registry.valid(entityID)) continue;
+
+			Entity entity{ entityID, scene };
+			auto& sc = entity.GetComponent<ScriptComponent>();
+
+			std::vector<std::string> scriptsToLoad = sc.ScriptPaths;
+			if (scriptsToLoad.empty() && !sc.ClassName.empty())
+				scriptsToLoad.push_back(sc.ClassName);
+
+			for (const auto& scriptPath : scriptsToLoad)
+			{
+				if (scriptPath.empty())
+					continue;
+
+				std::filesystem::path fullPath = ResolveScriptPath(scriptPath);
+				if (!VFS::Exists(fullPath))
+					continue;
+
+				std::string tableKey = MakeTableKey((uint32_t)entityID, fullPath);
+
+				// Load once, then hot-reload when the file changes on disk.
+				std::error_code ec;
+				std::filesystem::file_time_type lastWrite = std::filesystem::last_write_time(fullPath, ec);
+				auto cached = s_EditorGizmoEnvTimes.find(tableKey);
+				bool envExists = false;
+				lua_getglobal(s_LuaState, tableKey.c_str());
+				envExists = lua_istable(s_LuaState, -1);
+				lua_pop(s_LuaState, 1);
+
+				if (!envExists || cached == s_EditorGizmoEnvTimes.end() || cached->second != lastWrite)
+				{
+					if (!LoadScriptIntoEnv(s_LuaState, fullPath, tableKey))
+						continue;
+					s_EditorGizmoEnvTimes[tableKey] = lastWrite;
+
+					// Keep the inspector's field list in sync too, so edited
+					// Public values show up without entering play.
+					ScrapePublicFields(s_LuaState, tableKey, scriptPath, sc);
+				}
+
+				uint32_t id = (uint32_t)entityID;
+				s_CurrentGizmoEntity = id;
+				CallEnvFunction(s_LuaState, tableKey, "OnDrawGizmos", 1, [&]() {
+					lua_pushnumber(s_LuaState, id);
+					});
+				s_CurrentGizmoEntity = 0xFFFFFFFF;
+			}
+		}
+
+		s_EditorGizmoPass = false;
+		s_SceneContext = previousContext;
+	}
+
+void LuaScriptEngine::OnRuntimeStart(Scene* scene)
+	{
+
+		s_DebugLines.clear();
+		s_DebugCircles.clear();
 		Init();
 		s_SceneContext = scene;
 
@@ -2663,6 +2876,11 @@ if Global == nil then Global = {} end
 
 	void LuaScriptEngine::OnRuntimeStop(Scene* scene)
 	{
+
+		// Drop any gizmos queued by the last play frame - otherwise the
+		// editor overlay would keep drawing them while editing.
+		s_DebugLines.clear();
+		s_DebugCircles.clear();
 		if (!scene || !s_LuaState)
 		{
 			s_SceneContext = nullptr;
@@ -2776,6 +2994,12 @@ if Global == nil then Global = {} end
 		s_CurrentDeltaTime = (float)ts;
 		UpdateInputStates(); // snapshot prev/curr key and mouse states
 
+		// Debug gizmos last a single frame: the editor drains them in its
+		// overlay pass; the exported runtime never reads them, so dropping
+		// here keeps the queues from growing unbounded.
+		s_DebugLines.clear();
+		s_DebugCircles.clear();
+
 		// --- Script update (skip disabled entities) --- snapshot BEFORE scripts: OnUpdate can CreateEntity/InstantiatePrefab, reallocating the pool under a live view iterator (UB).
 		std::vector<entt::entity> scriptedEntities;
 		{
@@ -2801,6 +3025,7 @@ if Global == nil then Global = {} end
 
 			for (const auto& tableKey : sc.ScriptTableKeys)
 			{
+				s_CurrentGizmoEntity = id;
 				CallEnvFunction(s_LuaState, tableKey, "OnUpdate", 2, [&]() {
 					lua_pushnumber(s_LuaState, id);
 					lua_pushnumber(s_LuaState, tsf);

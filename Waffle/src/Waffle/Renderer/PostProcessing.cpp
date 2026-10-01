@@ -336,7 +336,30 @@ namespace Waffle {
 
 		Ref<Framebuffer> processed = Process(src, attachmentIndex, width, height, settings);
 		if (!processed)
+		{
+			// Post chain disabled - present the source framebuffer through a
+			// plain passthrough blit instead of drawing the scene straight
+			// into the swapchain (the swapchain has no entity-ID attachment,
+			// and the 2D shaders write one).
+			EnsureResources();
+			if (!s_Data.CompositePipeline)
+				return;
+			EnsureSizes(width, height);
+
+			CommandBuffer* cmd = Renderer::GetCommandBuffer();
+
+			CompositeParams params{};
+			params.EnablePostProcessing = 0;
+			cmd->UpdateUniformBuffer(s_Data.ParamsUniformBuffer, &params, sizeof(params), 0);
+
+			cmd->BeginSwapchainPass(width, height);
+			cmd->BindPipeline(s_Data.CompositePipeline);
+			cmd->BindFramebufferAttachment(0, src, attachmentIndex);
+			cmd->BindFramebufferAttachment(1, src, attachmentIndex);
+			cmd->DrawIndexed(s_Data.QuadVertexArray, 6, 0);
+			cmd->EndRenderPass();
 			return;
+		}
 
 		CommandBuffer* cmd = Renderer::GetCommandBuffer();
 
