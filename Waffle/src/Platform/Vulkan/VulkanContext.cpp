@@ -18,9 +18,7 @@
 
 namespace Waffle {
 
-	// Fatal initialization failure. Dist builds have no console and asserts
-	// compile out, so surface the reason in a message box and exit cleanly -
-	// a silent white-screen crash is impossible to diagnose remotely.
+	// Fatal init failure - dist has no console/asserts, so show a message box (a white-screen crash is undiagnosable).
 	static void FailGracefully(const char* title, const char* message)
 	{
 		WF_CORE_CRITICAL("{0}: {1}", title, message);
@@ -101,9 +99,7 @@ namespace Waffle {
 
 	VulkanContext::~VulkanContext()
 	{
-		// If Init() failed before the logical device existed, every
-		// vkDestroy* below would run against a null device (UB) - only tear
-		// down the objects that were actually created.
+		// If Init() failed early, the vkDestroy* below would hit a null device (UB) - only tear down what was created.
 		if (m_Device != VK_NULL_HANDLE)
 		{
 			vkDeviceWaitIdle(m_Device);
@@ -204,8 +200,7 @@ namespace Waffle {
 		m_ActiveColorFormats = { m_SwapChainImageFormat };
 		m_ActiveDepthFormat  = m_DepthFormat;
 
-		// Set default viewport / scissor.
-		// Negative height flips Vulkan's Y-down NDC to match OpenGL/GLM's Y-up.
+		// Default viewport/scissor - negative height flips Vulkan's Y-down NDC to match GL's Y-up.
 		m_CurrentViewport.x        = 0.0f;
 		m_CurrentViewport.y        = (float)m_SwapChainExtent.height;
 		m_CurrentViewport.width    = (float)m_SwapChainExtent.width;
@@ -301,10 +296,7 @@ namespace Waffle {
 		else
 		{
 			WF_CORE_ERROR("Vulkan: vkQueueSubmit2 failed ({0})", (int)submitResult);
-			// The fence was reset above and will never be signaled now -
-			// replace it with a pre-signaled one or the next vkWaitForFences
-			// on this slot deadlocks, and skip present (its wait semaphore
-			// was never signaled either).
+			// The reset fence will never signal - swap in a pre-signaled one or vkWaitForFences deadlocks; skip present too.
 			VkFence oldFence = m_Frames[m_CurrentFrameIndex].InFlightFence;
 			VkFenceCreateInfo fci{ VK_STRUCTURE_TYPE_FENCE_CREATE_INFO, nullptr, VK_FENCE_CREATE_SIGNALED_BIT };
 			VkFence newFence = VK_NULL_HANDLE;
@@ -321,11 +313,7 @@ namespace Waffle {
 			return;
 		}
 
-		// Present
-		// pImageIndices MUST be the index captured by THIS frame slot's
-		// acquire: using the global index here presents the image the OTHER
-		// in-flight frame just acquired, breaking the acquire/present chain
-		// (validation: transitions on non-acquired swapchain images).
+		// Present: pImageIndices must be this frame slot's acquired index - the global index breaks the acquire/present pairing.
 		uint32_t presentIndex = m_Frames[m_CurrentFrameIndex].ImageIndex;
 		VkPresentInfoKHR presentInfo
 		{
@@ -342,9 +330,7 @@ namespace Waffle {
 			|| m_SwapChainNeedsRecreation)
 		{
 			m_SwapChainNeedsRecreation = false;
-			// On abort (window closing while minimised) just flag a retry -
-			// don't return here, the acquire loop below blocks until the
-			// window is restored or the app exits.
+			// On abort (closing while minimised) just flag a retry - don't return, the acquire loop below blocks until restored.
 			if (!RecreateSwapChain())
 				m_SwapChainNeedsRecreation = true;
 		}
@@ -417,10 +403,7 @@ namespace Waffle {
 		if (m_Device == VK_NULL_HANDLE || m_TimelineSemaphore == VK_NULL_HANDLE)
 			return;
 
-		// The frame-slot fence (waited in SwapBuffers) already covers this
-		// slot's previous submission; only the OTHER slots can still be
-		// executing and reading shared mapped memory. Once a value has been
-		// waited, skip re-waiting for it.
+		// Own slot's fence was waited in SwapBuffers; only other slots can still read mapped memory - skip already-synced values.
 		for (uint32_t i = 0; i < (uint32_t)m_Frames.size(); i++)
 		{
 			if (i == targetFrameIndex)
@@ -485,8 +468,7 @@ namespace Waffle {
 			.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
 			.imageView = m_SwapChainImageViews[m_Frames[m_CurrentFrameIndex].ImageIndex],
 			.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-			// First begin of the frame clears; a re-begin in the same frame must
-			// preserve what is already on the swap-chain image.
+			// First begin of the frame clears; re-begins must preserve the swap-chain image.
 			.loadOp = m_SwapchainClearedThisFrame ? VK_ATTACHMENT_LOAD_OP_LOAD : VK_ATTACHMENT_LOAD_OP_CLEAR,
 			.storeOp = VK_ATTACHMENT_STORE_OP_STORE,
 			.clearValue{.color = clearColor}
@@ -1295,8 +1277,7 @@ namespace Waffle {
 	VkSurfaceFormatKHR VulkanContext::ChooseSwapSurfaceFormat(
 		const std::vector<VkSurfaceFormatKHR>& available) const
 	{
-		// Prefer RGBA so the swapchain format matches the FBO attachment format
-		// (VK_FORMAT_R8G8B8A8_UNORM), avoiding R<->B channel swapping.
+		// Prefer RGBA so the swapchain matches the FBO format (R8G8B8A8_UNORM) - avoids R/B channel swapping.
 		for (auto& fmt : available)
 			if (fmt.format == VK_FORMAT_R8G8B8A8_UNORM
 				&& fmt.colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR)

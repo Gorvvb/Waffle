@@ -22,9 +22,7 @@ namespace Waffle {
 		if (s.rfind("./", 0) == 0)
 			s = s.substr(2);
 
-		// Match an "Assets" path SEGMENT (case-insensitive) - a plain
-		// substring search also matched inside names like "MyAssets/..." and
-		// truncated the path at the wrong position.
+		// Match an "Assets" path SEGMENT (case-insensitive) - a plain substring search also matched "MyAssets/..." and truncated at the wrong spot.
 		std::string lower = s;
 		std::transform(lower.begin(), lower.end(), lower.begin(),
 			[](unsigned char c) { return (char)std::tolower(c); });
@@ -102,8 +100,7 @@ namespace Waffle {
 			return false;
 		}
 
-		// Reads a POD header field; every failure means a truncated/corrupt
-		// pack and must abort the mount, not feed garbage into allocations.
+		// Reads a POD header field; any failure means a truncated/corrupt pack - abort the mount, don't feed garbage into allocations.
 		auto readField = [&stream](void* dst, uint32_t bytes) -> bool
 		{
 			stream.read(reinterpret_cast<char*>(dst), bytes);
@@ -126,8 +123,7 @@ namespace Waffle {
 			return false;
 		}
 
-		// Sanity bound: a corrupted length field must not turn into a
-		// multi-gigabyte allocation or a 4-billion-iteration loop.
+		// Sanity bound: a corrupted length field must not turn into a multi-gigabyte allocation or a 4-billion-iteration loop.
 		constexpr uint32_t MaxPathLength = 4096;
 		constexpr uint32_t MaxFileCount  = 100000;
 		if (fileCount > MaxFileCount)

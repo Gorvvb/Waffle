@@ -3,11 +3,7 @@ using System.Text;
 
 namespace Waffle.Scripting.Internal;
 
-/// <summary>
-/// Typed function pointers bound once at init from the host table. All
-/// engine access from scripts routes through these - direct calls, no
-/// marshaling stubs, no allocations on the hot path.
-/// </summary>
+/// <summary>Typed function pointers bound once at init from the host table; all script engine access routes through these - no marshaling, no hot-path allocations.</summary>
 internal static unsafe class NativeApi
 {
     // logging
@@ -215,7 +211,7 @@ internal static unsafe class NativeApi
         GizmoDrawWireCircle = (delegate* unmanaged<float, float, float, float, float, float, float, void>)fns->GizmoDrawWireCircle;
     }
 
-    // --- utf8 helpers -------------------------------------------------------
+    // UTF-8 helpers
 
     /// <summary>Encodes a string as a null-terminated UTF-8 rented buffer.</summary>
     internal static byte[] Utf8(string message)

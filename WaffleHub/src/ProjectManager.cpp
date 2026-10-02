@@ -28,9 +28,7 @@ namespace Waffle {
 		return std::string(buf);
 	}
 
-	// Paths inside the manifest are stored relative to the manifest's own
-	// folder (shareable/movable "Projects" folder); anything outside stays
-	// absolute. Forward slashes for cross-machine stability.
+	// Manifest paths are stored relative to the manifest's own folder (portable "Projects" dir); outside paths stay absolute, forward slashes throughout.
 	static std::string PathForManifest(const std::filesystem::path& path, const std::filesystem::path& manifestPath)
 	{
 		std::error_code ec;
@@ -221,9 +219,7 @@ namespace Waffle {
 				std::filesystem::copy_options::recursive, ec);
 		}
 
-		// Copy imgui.ini into new project directory.
-		// The project is opened by the EDITOR, so it needs the EDITOR's current layout, which lives next to the editor executable.
-		// The template's copy, is only a last resort and goes stale as the UI evolves.
+		// Copy imgui.ini: the EDITOR opens the project and needs the editor's current layout; the template's copy goes stale as the UI evolves.
 		std::vector<std::filesystem::path> iniCandidates = {
 			GetEditorExecutablePath().parent_path() / "imgui.ini",
 			sourceTemplate / "imgui.ini",
@@ -248,8 +244,7 @@ namespace Waffle {
 				std::filesystem::copy_options::overwrite_existing, ec);
 		}
 
-		// Ensure Assets directory structure exists.
-		// CONSIDER: Not forcing project file structure.
+		// Ensure Assets directory structure exists (CONSIDER: don't force a project file structure).
 		std::filesystem::create_directories(targetDir / "Assets" / "Scripts", ec);
 		std::filesystem::create_directories(targetDir / "Assets" / "Scenes", ec);
 		std::filesystem::create_directories(targetDir / "Assets" / "Audio", ec);

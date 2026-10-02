@@ -3,10 +3,7 @@ using Waffle.Scripting.Internal;
 
 namespace Waffle;
 
-// -------------------------------------------------------------------------
-// Typed component views. Zero-allocation structs over the entity id - every
-// property reads/writes the native component directly through the ABI.
-// -------------------------------------------------------------------------
+// Typed component views: zero-allocation structs over the entity id; properties read/write the native component via the ABI.
 
 /// <summary>Box2D rigidbody view. Missing when the entity has no Rigidbody2DComponent.</summary>
 public readonly unsafe struct Rigidbody2D

@@ -2,12 +2,7 @@ using System.Runtime.InteropServices;
 
 namespace Waffle.Scripting.Internal;
 
-/// <summary>
-/// The managed entry points the native host resolves through hostfxr's
-/// load_assembly_and_get_function_pointer delegate. Names here are ABI:
-/// CSharpScriptEngine.cpp resolves them by metadata name - do not rename
-/// without updating the C++ side.
-/// </summary>
+/// <summary>Managed entry points the native host resolves via hostfxr. Names are ABI: CSharpScriptEngine.cpp resolves them by metadata name - don't rename without updating the C++ side.</summary>
 internal static unsafe class WaffleNative
 {
     [UnmanagedCallersOnly]

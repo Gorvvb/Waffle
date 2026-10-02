@@ -32,8 +32,7 @@ namespace Waffle {
 		static const Frustum2D& GetFrustum();
 		static bool IsVisibleInFrustum(const AABB2D& bounds);
 		static bool IsVisibleInFrustum(const glm::vec2& position, const glm::vec2& size);
-		// Z-aware overloads: with a perspective camera the visible XY region
-		// depends on Z, so culling must test the object's actual depth.
+		// Z-aware overloads: with a perspective camera the visible XY region depends on Z, so culling must test the object's actual depth.
 		static bool IsVisibleInFrustum(const glm::vec3& min, const glm::vec3& max);
 		static bool IsVisibleInFrustum(const glm::vec3& center, const glm::vec2& size);
 
@@ -54,18 +53,13 @@ namespace Waffle {
 	static void DrawQuad(const glm::vec2& position, const glm::vec2& size, const Ref<Texture2D>& texture, const glm::vec2& tilingFactor = glm::vec2(1.0f), const glm::vec4& tintColor = glm::vec4(1.0f));
 	static void DrawQuad(const glm::vec3& position, const glm::vec2& size, const Ref<Texture2D>& texture, const glm::vec2& tilingFactor = glm::vec2(1.0f), const glm::vec4& tintColor = glm::vec4(1.0f));
 
-	// The mat4-based overloads accept an optional custom shader for this
-	// quad (see SpriteRendererComponent::CustomShaderPath). Custom shaders
-	// must use the same vertex inputs and u_Textures binding as
-	// 2DQuadShader.glsl - the Content Browser's shader template shows the
-	// layout.
+	// The mat4-based overloads accept an optional custom shader for this quad (see SpriteRendererComponent::CustomShaderPath); custom shaders must use the same vertex inputs and u_Textures binding as 2DQuadShader.glsl (the Content Browser's shader template shows the layout).
 	static void DrawQuad(const glm::mat4& transform, const glm::vec4& color, int entityID = -1, const Ref<Shader>& customShader = nullptr);
 	static void DrawRoundedQuad(const glm::mat4& transform, const glm::vec4& color, float cornerRadius = 0.04f, int cornerSegments = 4, int entityID = -1);
 	static void DrawQuad(const glm::mat4& transform, const Ref<Texture2D>& texture, const glm::vec2& tilingFactor = glm::vec2(1.0f), const glm::vec4& tintColor = glm::vec4(1.0f), int entityID = -1, SpriteAspectMode aspectMode = SpriteAspectMode::Stretch, const Ref<Shader>& customShader = nullptr);
 	static void DrawQuad(const glm::mat4& transform, const Ref<SubTexture2D>& subTexture, const glm::vec2& tilingFactor = glm::vec2(1.0f), const glm::vec4& tintColor = glm::vec4(1.0f), int entityID = -1, SpriteAspectMode aspectMode = SpriteAspectMode::Stretch, const glm::vec2& framePivot = glm::vec2(0.5f, 0.5f), const glm::vec2& referencePixelSize = glm::vec2(0.0f), const glm::vec4* contentFrac = nullptr);
 
-	// Bakes one textured quad per glyph into the sprite batch. penPosition is
-	// the start of the baseline in the current camera space (UI space: Y down).
+	// Bakes one textured quad per glyph into the sprite batch; penPosition is the baseline start in camera space (UI space: Y down).
 	static void DrawString(const std::string& text, const Ref<Font>& font, const glm::vec2& penPosition, float scale, const glm::vec4& color, int entityID = -1);
 
 		static void DrawRotatedQuad(const glm::vec2& position, const glm::vec2& size, float rotation, const glm::vec4& color);

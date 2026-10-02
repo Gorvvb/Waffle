@@ -4,17 +4,7 @@ using System.Text;
 
 namespace Waffle.Scripting.Internal;
 
-/// <summary>
-/// Owns the loaded script assembly and all live script instances.
-///
-/// Two instance stores: play instances (created by the engine during
-/// OnRuntimeStart / prefab instantiation, dispatched per entity per frame)
-/// and editor gizmo instances (created lazily by the OnDrawGizmos preview
-/// pass, dropped when the assembly is recompiled).
-///
-/// Message dispatch uses per-type MethodInfo caches bound to closed
-/// delegates at instantiation - no per-frame reflection.
-/// </summary>
+/// <summary>Owns the loaded script assembly and all live instances (play instances per entity, plus lazily created editor gizmo instances); dispatch uses delegates cached at instantiation - no per-frame reflection.</summary>
 internal static unsafe class ScriptRuntime
 {
     private sealed class ScriptType
@@ -107,13 +97,11 @@ internal static unsafe class ScriptRuntime
         NativeApi.Release(buffer);
     }
 
-    // --- assembly loading ---------------------------------------------------
+    // Assembly loading
 
     private static bool EnsureAssemblyLoaded()
     {
-        // The engine tells us where the compiled scripts assembly lives via
-        // CompileScripts; when playing/gizmo-passing we load whatever is on
-        // disk at the path the host passed to InstanceCreate's compile step.
+        // The host gives us the assembly path via CompileScripts; we load whatever is on disk there.
         if (_context is not null)
             return true;
 
@@ -220,7 +208,7 @@ internal static unsafe class ScriptRuntime
         }
     }
 
-    // --- engine entry points -------------------------------------------------
+    // Engine entry points
 
     public static void RuntimeStart()
     {
@@ -232,9 +220,7 @@ internal static unsafe class ScriptRuntime
 
     public static void RuntimeStop()
     {
-        // OnDestroy already fired per-instance by the host. Drop everything
-        // play-related; PersistentData deliberately survives (Global table
-        // semantics). Also drops stale gizmo instances (entity ids recycle).
+        // Host already fired OnDestroy per instance. Drop play + gizmo instances; PersistentData deliberately survives (Global table semantics).
         ClearPlayInstances();
         ClearGizmoInstances();
         UnloadAssembly();
@@ -399,8 +385,7 @@ internal static unsafe class ScriptRuntime
     {
         if (!_playByEntity.TryGetValue(entityId, out var list))
             return;
-        // Copy count each step: a script may spawn/destroy scripted entities,
-        // mutating this very list mid-iteration.
+        // Re-read Count each step: scripts may spawn/destroy entities, mutating this list mid-iteration.
         for (int i = 0; i < list.Count; i++)
         {
             ScriptInstance entry = list[i];
@@ -540,7 +525,7 @@ internal static unsafe class ScriptRuntime
         ClearGizmoInstances();
     }
 
-    // --- field scrape (editor inspector) -------------------------------------
+    // Field scrape (editor inspector)
 
     public static int ScrapeFields(string typeName, ScriptFieldDef* outDefs, int maxDefs)
     {
@@ -633,14 +618,14 @@ internal static unsafe class ScriptRuntime
         NativeApi.Release(bytes);
     }
 
-    // --- frame pump (timers) ---------------------------------------------------
+    // Frame pump (timers)
 
     public static void Frame(float dt)
     {
         Time.Pump(dt);
     }
 
-    // --- helpers -----------------------------------------------------------------
+    // Helpers
 
     private static void BindMessages(ScriptInstance entry)
     {
@@ -685,8 +670,7 @@ internal static unsafe class ScriptRuntime
 
     private static void ClearPlayInstances()
     {
-        // Fire OnDestroy for anything still registered (host normally does
-        // this per-entity; this is the safety net).
+        // Safety net: fire OnDestroy for anything still registered (host normally does this per-entity).
         foreach (var pair in _byHandle)
         {
             if (pair.Value.Destroy is not null)

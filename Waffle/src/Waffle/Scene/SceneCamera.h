@@ -42,8 +42,7 @@ namespace Waffle {
 
 		float GetAspectRatio() const { return m_AspectRatio; }
 		
-		// For fixed-aspect cameras the aspect is never derived from the viewport,
-		// so it must be restorable (e.g. from a scene file).
+		// Fixed-aspect cameras never derive aspect from the viewport, so it must be restorable.
 		void SetAspectRatio(float aspectRatio) { m_AspectRatio = aspectRatio; RecalculateProjection(); }
 
 		ProjectionType GetProjectionType() const { return m_ProjectionType; }

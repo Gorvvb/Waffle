@@ -12,10 +12,7 @@
 
 	namespace Waffle {
 
-		// Built-in shaders load lazily on first use - which can be AFTER the
-		// editor moved the CWD into the project folder - so fall back to the
-		// executable's directory (where the build copies Assets/shaders).
-		// Mounted VFS archives (exported games) keep using virtual paths.
+		// Built-in shaders load lazily, possibly after the editor changed the CWD, so fall back to the exe directory (where the build copies Assets/shaders); mounted VFS archives (exported games) keep using virtual paths.
 		static std::string ResolveShaderFile(const std::string& path)
 		{
 			std::error_code ec;
@@ -33,9 +30,7 @@
 				if (std::filesystem::exists(exeDir / path, ec) && !ec)
 					return (exeDir / path).string();
 
-				// The build layout uses "Assets" (capitalized); the code asks
-				// for "assets/..." - cover both spellings explicitly so this
-				// also works on case-sensitive filesystems.
+				// Build layout uses "Assets" (capitalized); the code asks for "assets/..." - cover both spellings so case-sensitive filesystems work too.
 				if (path.rfind("assets/", 0) == 0)
 				{
 					std::filesystem::path cap = exeDir / "Assets" / path.substr(7);
@@ -64,9 +59,7 @@
 
 		std::string Shader::GetGlobalDefinesCacheTag()
 		{
-			// FNV-1a over the sorted define set - order-independent and
-			// stable across runs, so cache file names collide only for
-			// identical define sets.
+			// FNV-1a over the sorted define set - order-independent and stable across runs, so cache file names collide only for identical define sets.
 			std::vector<std::string> parts;
 			parts.reserve(GetGlobalDefineStorage().size());
 			for (const auto& [name, value] : GetGlobalDefineStorage())
@@ -139,10 +132,7 @@
 	{
 		const std::string resolvedPath = ResolveShaderFile(filepath);
 
-		// A resolved path is either a real file (mtime drives hot reload) or
-		// a VFS-virtual path inside a mounted archive (exported games) - the
-		// latter "exists" through the VFS and has no timestamp, so cached
-		// entries simply stay stable.
+		// A resolved path is either a real file (mtime drives hot reload) or a VFS-virtual path in a mounted archive (exported games) - the latter has no timestamp, so cached entries simply stay stable.
 		std::error_code ec;
 		bool onDisk = std::filesystem::exists(resolvedPath, ec) && !ec;
 		bool fileExists = onDisk || VFS::Exists(resolvedPath);
@@ -153,9 +143,7 @@
 		auto it = m_Shaders.find(filepath);
 		if (it != m_Shaders.end())
 		{
-			// Cached - recompile only when the file actually changed.
-			// A failed compile is cached as a null shader with the failing
-			// file's timestamp, so it retries only on the next edit.
+			// Cached - recompile only when the file actually changed. A failed compile is cached as a null shader with the failing file's timestamp, so it retries only on the next edit.
 			if (!onDisk || ec || it->second.LastWrite == lastWrite)
 				return it->second.Shader;
 		}
@@ -166,8 +154,7 @@
 			return nullptr;
 		}
 
-		// Keep serving the last working version if a recompile fails, but
-		// stamp the failing file's timestamp so we don't retry every frame.
+		// Keep serving the last working version if a recompile fails, but stamp the failing file's timestamp so we don't retry every frame.
 		Ref<Shader> previous = (it != m_Shaders.end()) ? it->second.Shader : nullptr;
 
 		Ref<Shader> newShader = Shader::Create(resolvedPath);
@@ -185,8 +172,7 @@
 
 	Ref<Shader> ShaderLibrary::Get(const std::string& name) const
 	{
-		// find(), not operator[]: a miss must not insert a null Ref that
-		// would make every future Exists() check lie.
+		// find(), not operator[]: a miss must not insert a null Ref that would make every future Exists() check lie.
 		auto it = m_Shaders.find(name);
 		return it != m_Shaders.end() ? it->second.Shader : nullptr;
 	}

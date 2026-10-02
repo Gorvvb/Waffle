@@ -13,14 +13,7 @@ namespace Waffle {
 	class VulkanShader;
 	class VulkanVertexArray;
 
-	// -------------------------------------------------------------------------
-	// VulkanGraphicsPipeline - explicit pipeline object. The VkPipeline itself
-	// is resolved (and cached) from the bound vertex array's input layout, the
-	// topology, and the ACTIVE render target's formats at first draw - the
-	// formats are a property of the target being rendered into, so they cannot
-	// be known at Create() time. Resolution goes through the shader's pipeline
-	// cache, so each distinct combination is created exactly once.
-	// -------------------------------------------------------------------------
+	// VulkanGraphicsPipeline - VkPipeline resolved and cached on first draw (target formats aren't known at Create() time).
 	class VulkanGraphicsPipeline : public GraphicsPipeline
 	{
 	public:
@@ -30,11 +23,7 @@ namespace Waffle {
 		VkPipeline Resolve(const VulkanVertexArray* vertexArray);
 	};
 
-	// -------------------------------------------------------------------------
-	// VulkanCommandBuffer - records into the current frame's command buffer.
-	// Draw state comes from this object's explicit binds, not from the
-	// context's global state.
-	// -------------------------------------------------------------------------
+	// VulkanCommandBuffer - records into the current frame's command buffer; state comes from explicit binds, not the context.
 	class VulkanCommandBuffer : public CommandBuffer
 	{
 	public:

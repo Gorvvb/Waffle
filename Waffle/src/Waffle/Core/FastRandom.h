@@ -7,8 +7,7 @@ namespace Waffle
 	struct FastRandom
 	{
 		FastRandom() = default;
-		// Lehmer/LCG mod 2^31-1 breaks on negative or zero state (negative
-		// outputs, division-by-zero style degeneration) - normalize the seed.
+		// Lehmer/LCG mod 2^31-1 breaks on negative or zero state (negative outputs, degeneration) - normalize the seed.
 		FastRandom(int seed) noexcept { SetSeed(seed); }
 
 		inline void SetSeed(int newSeed) noexcept

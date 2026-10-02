@@ -117,9 +117,7 @@ namespace Waffle {
 			: Lifetime(lifetime), RemainingTime(lifetime) {}
 	};
 
-	// How a sprite maps onto the entity quad when its native aspect ratio
-	// differs from the quad's. Fit/Fill keep the pixels square - essential
-	// for animations whose frames have different native sizes.
+	// Sprite->quad mapping when aspect ratios differ; Fit/Fill keep pixels square (for animations).
 	enum class SpriteAspectMode : int8_t { Stretch = 0, Fit = 1, Fill = 2 };
 
 	struct SpriteRendererComponent
@@ -131,10 +129,7 @@ namespace Waffle {
 		TextureFilter FilterMode = TextureFilter::Linear;
 		SpriteAspectMode AspectMode = SpriteAspectMode::Stretch;
 
-		// Optional custom .glsl replacing the built-in quad shader for this
-		// sprite. Must use the same vertex layout / u_Textures binding as
-		// 2DQuadShader.glsl (see the Content Browser's shader template).
-		// Resolved per frame through the ShaderLibrary (hot reloads on edit).
+		// Optional custom .glsl - must use 2DQuadShader.glsl's layout and u_Textures binding; hot-reloads.
 		std::string CustomShaderPath;
 
 		int SortingLayer = 0;
@@ -171,26 +166,21 @@ namespace Waffle {
 		glm::vec2 BackgroundTilingFactor = { 1.0f, 1.0f };
 		TextureFilter BackgroundFilterMode = TextureFilter::Linear;
 
-		// Post-processing applied to whatever this camera renders (bloom,
-		// vignette, tonemapping, color grading). Previously a single global
-		// project setting - per-camera settings allow different looks per
-		// scene/viewport.
+		// Post-processing for this camera (bloom, vignette, tonemap, grading); was one global setting.
 		PostProcessingSettings PostProcessing;
 
 		CameraComponent() = default;
 		CameraComponent(const CameraComponent&) = default;
 	};
 
-	// TODO: Consider removing native scripting, since it is not used in the current engine architecture.
-	// Forward declaration
+	// TODO: consider removing native scripting (unused); forward declaration.
 	class ScriptableEntity;
 
 	struct NativeScriptComponent
 	{
 		ScriptableEntity* Instance = nullptr;
 
-		// Default-initialized to null: components constructed without Bind()
-		// previously called through garbage function pointers.
+		// Null by default: unbound components previously called through garbage function pointers.
 		ScriptableEntity* (*InstanciateScript)() = nullptr;
 		void (*DestroyScript)(NativeScriptComponent*) = nullptr;
 
@@ -209,18 +199,13 @@ namespace Waffle {
 		enum class BodyType { Static = 0, Dynamic, Kinematic };
 		BodyType Type = BodyType::Static;
 		bool FixedRotation = false;
-		// 0 = derive mass from Density x collider area (the Box2D default).
-		// The old default of 1.0 made SetMassData run for every dynamic body
-		// and silently override density-driven mass.
+		// 0 = mass from Density x area (Box2D default); the old 1.0 default overrode density-driven mass.
 		float Mass = 0.0f;
 
 		// Storage for runtime
 		void* RuntimeBody = nullptr;
 
-		// Render interpolation state (runtime only, not serialized): the
-		// body state before the last physics step. Rendering blends
-		// prev->current by the accumulator fraction so bodies move
-		// smoothly between fixed steps instead of stair-stepping.
+		// Interpolation state (runtime only, not serialized): body state before the last step.
 		glm::vec2 RuntimePrevPosition{ 0.0f, 0.0f };
 		float RuntimePrevAngle = 0.0f;
 		bool RuntimePrevValid = false;
@@ -287,8 +272,7 @@ namespace Waffle {
 		PolygonCollider2DComponent(const PolygonCollider2DComponent&) = default;
 	};
 
-	// Tag component that marks an entity as inactive.
-	// When present, the entity is skipped by the script engine and renderer.
+	// Marks an entity as inactive - skipped by the script engine and renderer.
 	struct DisabledComponent {};
 
 	struct AnimationClip
@@ -313,22 +297,13 @@ namespace Waffle {
 		// Largest visible-content size across the frames, in texture pixels.
 		glm::vec2 MaxContentPixelSize{ 0.0f, 0.0f };
 
-		// Per-frame opaque-content rect as fractions of the frame window
-		// (xy = bottom-left, zw = top-right, in UV space where y grows up).
-		// Frames are aligned and scaled by their visible content so
-		// differently cropped frames don't glide; equals the full frame
-		// when the pixels can't be inspected.
+		// Opaque-content rect per frame as frame fractions (xy=bl, zw=tr, UV y-up); full frame if unreadable.
 		std::vector<glm::vec4> SubContentFracs;
 
-		// Per-frame pivot override in RENDER space (y up: (0.5,0) = frame
-		// bottom). Negative x = unset: the animator's FramePivot applies.
-		// Comes from spritesheet region pivots.
+		// Per-frame pivot override in render space (y up); x < 0 = unset, animator FramePivot applies.
 		std::vector<glm::vec2> SubPivots;
 
-		// Appends a frame and derives its content rect from an EXACT pixel
-		// window (top-left origin). The window must never be reconstructed
-		// from UVs: the float round-trip drifts by a pixel and bleeds into
-		// adjacent regions of tightly packed sheets, skewing alignment.
+		// Appends a frame from an EXACT pixel window (top-left origin); UV round-trip drifts and bleeds.
 		void PushFrame(const Ref<SubTexture2D>& sub, const std::string& imagePath, const glm::vec4& windowPx,
 			const glm::vec2& pivotOverride = glm::vec2(-1.0f))
 		{
@@ -384,10 +359,7 @@ namespace Waffle {
 					size_t colonPos = (pipePos == std::string::npos) ? path.find(':') : std::string::npos;
 					if (pipePos != std::string::npos)
 					{
-						// Pixel-rect format: "texturePath|minX,minY,maxX,maxY"
-						// with an optional third segment "|pivotX,pivotY"
-						// (normalized, image space y-down; -1 or missing =
-						// inherit the animator Frame Pivot).
+						// "texturePath|minX,minY,maxX,maxY" + optional "|pivotX,pivotY" (y-down; -1 = inherit pivot).
 						std::string texPath = path.substr(0, pipePos);
 						std::string rectStr = path.substr(pipePos + 1);
 						size_t secondPipe = rectStr.find('|');
@@ -423,9 +395,7 @@ namespace Waffle {
 					else if (colonPos != std::string::npos)
 					{
 						std::string sheetPath = path.substr(0, colonPos);
-						// stoi sits inside its own try: any path containing ':'
-						// (every absolute Windows path C:/...) lands here and
-						// would throw std::invalid_argument out of a render call.
+						// stoi in its own try: any path with ':' (e.g. C:/...) would throw std::invalid_argument.
 						int frameIdx = 0;
 						bool frameIdxValid = false;
 						try {
@@ -464,8 +434,7 @@ namespace Waffle {
 					}
 					else
 					{
-						// Only load if the path looks like an image file - guard against
-						// stale keyframe paths that point to .spritesheet / .yaml files.
+						// Only load image files - guards against stale keyframe paths pointing at .spritesheet/.yaml.
 						std::string lext = std::filesystem::path(path).extension().string();
 						for (auto& c : lext) c = (char)::tolower(c);
 						if (lext == ".png" || lext == ".jpg" || lext == ".jpeg" || lext == ".bmp" || lext == ".tga")
@@ -510,10 +479,7 @@ namespace Waffle {
 	{
 		std::unordered_map<std::string, AnimationClip> Clips;
 		std::string CurrentClip = "";
-		// Where a frame sits inside the entity quad when it is smaller than
-		// the clip bounds (Sprite Aspect = Fit): (0,0) bottom-left, (0.5,0.5)
-		// center, (1,1) top-right. Bottom-center keeps the feet planted
-		// across frames of different sizes.
+		// Frame placement in the quad when smaller (Aspect = Fit); bottom-center keeps feet planted.
 		glm::vec2 FramePivot = { 0.5f, 0.0f };
 		int CurrentFrameIndex = 0;
 		float Timer = 0.0f;
@@ -545,10 +511,7 @@ namespace Waffle {
 			IsPlaying = false;
 		}
 
-		// Largest visible-content size across ALL clips of this animator, in
-		// texture pixels. Rendering normalizes every clip against this one
-		// value, so the character keeps the same on-screen size when clips
-		// (whose largest frames differ) switch.
+		// Max content size across ALL clips (px); render normalizes to it so size survives clip switches.
 		glm::vec2 GetMaxContentPixelSize()
 		{
 			glm::vec2 result(0.0f);
@@ -562,9 +525,7 @@ namespace Waffle {
 			return result;
 		}
 
-		// Opaque-content rect of the current frame as fractions of the frame
-		// window (UV space, y up). Returns x < 0 when there is no current
-		// frame; (0,0,1,1) when the pixels couldn't be inspected.
+		// Current frame's content rect (UV, y up); x < 0 = no frame, (0,0,1,1) = pixels uninspectable.
 		glm::vec4 GetCurrentFrameContentFrac()
 		{
 			auto it = Clips.find(CurrentClip);
@@ -580,8 +541,7 @@ namespace Waffle {
 			return clip.SubContentFracs[idx];
 		}
 
-		// Effective pivot for the current frame: the region's pivot
-		// override when set, else the animator-wide FramePivot.
+		// Current frame's pivot: region override if set, else the animator-wide FramePivot.
 		glm::vec2 GetCurrentFramePivot()
 		{
 			auto it = Clips.find(CurrentClip);
@@ -649,21 +609,11 @@ namespace Waffle {
 		}
 	};
 
-	// -------------------------------------------------------------------------
-	// Game UI system.
-	//
-	// A UI canvas renders in screen space (pixels, origin top-left, Y down)
-	// on top of the world, inside the game viewport. Elements are ordinary
-	// entities: add a UICanvasComponent to one root entity, then give child
-	// elements a RectTransformComponent plus any of UIImage/UIText/UIButton/
-	// UIProgressBar below. RectTransforms anchor to the canvas, or to the
-	// parent's rect when the parent itself has a RectTransform.
-	// -------------------------------------------------------------------------
+	// Game UI system: screen-space canvas (pixels, Y down); elements are entities with RectTransforms.
 
 	struct UICanvasComponent
 	{
-		// Design resolution the layout was authored against. The whole UI is
-		// uniformly scaled to fit the actual viewport (letterboxed, centered).
+		// Design resolution the UI was authored against; scaled uniformly to fit (letterboxed, centered).
 		glm::vec2 ReferenceResolution = { 1920.0f, 1080.0f };
 		bool ScaleWithScreen = true;
 
@@ -683,18 +633,13 @@ namespace Waffle {
 
 	struct RectTransformComponent
 	{
-		// Which point of the canvas (or of the parent rect, when the parent has
-		// a RectTransform) the element attaches to.
+		// Which point of the canvas (or parent rect, if it has one) the element attaches to.
 		UIAnchor Anchor = UIAnchor::MiddleCenter;
-		// Point of the rect placed at the anchor: (0,0) top-left, (1,1)
-		// bottom-right (screen space, Y down).
+		// Point of the rect placed at the anchor: (0,0) top-left, (1,1) bottom-right (Y down).
 		glm::vec2 Pivot = { 0.5f, 0.5f };
 		int Order = 0;         // draw order within the canvas (lower first)
 
-		// Position, size and rotation come from the entity's regular
-		// TransformComponent: Translation = offset in canvas pixels from the
-		// anchor (world convention, +Y up), Scale = element size in canvas
-		// pixels, Rotation.z = tilt. The gizmo therefore just works.
+		// Uses TransformComponent: Translation = px offset from anchor (+Y up), Scale = canvas-px size.
 
 		RectTransformComponent() = default;
 		RectTransformComponent(const RectTransformComponent&) = default;
@@ -740,8 +685,7 @@ namespace Waffle {
 		std::string HoverTexturePath;
 		std::string PressedTexturePath;
 
-		// Optional label rendered centered on the button with the engine font
-		// system (same fonts as UIText). Empty = no label.
+		// Optional centered label, engine fonts (same as UIText). Empty = no label.
 		std::string Label = "Button";
 		float LabelSize = 22.0f;
 		glm::vec4 LabelColor{ 1.0f, 1.0f, 1.0f, 1.0f };
@@ -768,18 +712,7 @@ namespace Waffle {
 		UIProgressBarComponent(const UIProgressBarComponent&) = default;
 	};
 
-	// -------------------------------------------------------------------------
-	// Tilemaps.
-	//
-	// A TilemapComponent owns a tilesheet sliced into TileSize x TileSize
-	// pixel tiles and a sparse grid of placed tiles (cell -> tile index).
-	// Each tile renders one transform-scale square: the entity scale is the
-	// tile size in world units (per axis) and its translation offsets the
-	// whole, unbounded map. Solid tiles + the optional TilemapColliderComponent
-	// bake into a small set of merged static colliders at runtime start
-	// (greedy rectangle merge - one fixture per run of solid tiles, not one
-	// per tile).
-	// -------------------------------------------------------------------------
+	// Tilemaps: tilesheet + sparse cell grid; entity scale = tile size; solids bake to merged colliders.
 
 	struct TilemapComponent
 	{
@@ -793,8 +726,7 @@ namespace Waffle {
 		int SortingLayer = 0;
 		int SortingOrder = 0;
 
-		// Sparse map data: grid cell (x grows right, y grows up) -> tile
-		// index (row-major from the sheet's top-left).
+		// Sparse map: grid cell (x right, y up) -> tile index (row-major from sheet's top-left).
 		std::map<std::pair<int, int>, int> Tiles;
 
 		TilemapComponent() = default;
@@ -833,13 +765,9 @@ namespace Waffle {
 			if (!TileCache[index])
 			{
 				int col = index % cols;
-				// Tile indices count rows from the sheet's top; UV space
-				// counts from the bottom.
+				// Tile indices count rows from the sheet's top; UV space counts from the bottom.
 				int row = rows - 1 - (index / cols);
-				// Small UV inset: sampling exactly on the tile's borders
-				// lets neighbouring sheet pixels bleed through at seams.
-				// A tenth of a texel is enough to avoid boundary rounding
-				// while keeping the edge pixels (nearly) full width.
+				// UV inset: sampling exactly on tile borders bleeds neighbour pixels at seams; 0.1 texel suffices.
 				const float texWf = (float)TilesetTexture->GetWidth();
 				const float texHf = (float)TilesetTexture->GetHeight();
 				const float epsX = 0.1f / texWf;
@@ -859,10 +787,7 @@ namespace Waffle {
 		// Tiles whose indices appear here are solid. Empty = no collision.
 		std::vector<int> SolidTileIndices;
 
-		// Surface material of the merged fixtures. Box2D mixes friction per
-		// contact pair (geometric mean): a wall/obstacle tilemap with
-		// Friction 0 never grips a falling body, while ground tilemaps keep
-		// their grip.
+		// Fixture surface material; Box2D mixes friction per contact (mean), so Friction 0 never grips.
 		float Friction = 0.6f;
 		float Restitution = 0.0f;
 

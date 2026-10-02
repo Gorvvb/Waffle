@@ -28,8 +28,7 @@ namespace Waffle {
 	{
 		m_Context = context;
 		m_SelectionContext = {};
-		// A stale m_RenamingEntity keeps the Delete-key handler disabled
-		// after a scene switch mid-rename.
+		// Clear a stale m_RenamingEntity or the Delete-key handler stays disabled after a scene switch mid-rename.
 		m_RenamingEntity = {};
 	}
 
@@ -66,8 +65,7 @@ namespace Waffle {
 
 			auto view = m_Context->m_Registry.view<TagComponent>();
 
-			// Sort by UUID so the list doesn't reverse after every
-			// save/load (registry iteration order flips on deserialize).
+			// Sort by UUID so the list doesn't reverse after every save/load (registry order flips on deserialize).
 			std::vector<entt::entity> roots;
 			for (auto entityID : view)
 			{
@@ -96,9 +94,7 @@ namespace Waffle {
 			if (ImGui::IsMouseDown(0) && ImGui::IsWindowHovered())
 				m_SelectionContext = {};
 
-			// Drag and drop onto empty hierarchy space:
-			// - entities are unparented
-			// - prefabs from the Content Browser are instantiated as root entities
+			// Drop onto empty hierarchy space: entities are unparented; Content Browser prefabs become root entities.
 			ImGui::Dummy(ImGui::GetContentRegionAvail());
 			if (ImGui::BeginDragDropTarget())
 			{
@@ -196,21 +192,18 @@ namespace Waffle {
 		}
 	}
 
-	// Creates a UI element entity: RectTransform + mirrored transform, parented
-	// to the scene's UI canvas when one exists.
+	// Creates a UI element entity: RectTransform + mirrored transform, parented to the scene's UI canvas when one exists.
 	Entity SceneHierarchyPanel::CreateUIElement(const std::string& name)
 	{
 		Entity element = m_Context->CreateEntity(name);
-		// CreateEntity already gives every entity a TransformComponent -
-		// adding another one here tripped the duplicate-component assert.
+		// CreateEntity already gives every entity a TransformComponent - adding another tripped the duplicate-component assert.
 		if (!element.HasComponent<TransformComponent>())
 			element.AddComponent<TransformComponent>();
 		element.AddComponent<RectTransformComponent>();
 		// Scale = element size in canvas pixels.
 		element.GetComponent<TransformComponent>().Scale = { 300.0f, 60.0f, 1.0f };
 
-		// Parent to the scene's UI canvas; the first UI element creates
-		// the canvas on its own.
+		// Parent to the scene's UI canvas; the first UI element creates the canvas on its own.
 		Entity canvas;
 		for (auto e : m_Context->GetAllEntitiesWith<UICanvasComponent>())
 		{
@@ -480,10 +473,7 @@ namespace Waffle {
 			ImGui::Text("Tag");
 			ImGui::SameLine();
 
-			// Visibility dot (before the name): amber = entity visible in
-			// the viewport and game, hollow = hidden. Toggles the entity's
-			// DisabledComponent - the same state Lua SetActive controls -
-			// so it persists in scenes and applies at runtime.
+			// Visibility dot: amber = visible in viewport and game, hollow = hidden; toggles DisabledComponent (the state Lua SetActive controls), so it persists and applies at runtime.
 			bool entityHidden = entity.HasComponent<DisabledComponent>();
 			ImVec2 dotPos = ImGui::GetCursorScreenPos();
 			float dotHeight = ImGui::GetFrameHeight();
@@ -726,9 +716,7 @@ namespace Waffle {
 					component.ScriptPaths.push_back("");
 				}
 
-				// Gather all .cs files for the dropdown from a CACHE -
-				// this ran a full recursive asset-tree walk per scripted
-				// entity PER FRAME. Refresh every 2 seconds.
+				// Gather .cs files for the dropdown from a cache - this was a full recursive asset-tree walk per entity PER FRAME; refresh every 2 seconds.
 				static std::vector<std::filesystem::path> s_ScriptFileCache;
 				static float s_ScriptFileCacheAge = 1e9f;
 				s_ScriptFileCacheAge += ImGui::GetIO().DeltaTime;
@@ -853,7 +841,7 @@ namespace Waffle {
 					component.ScriptPaths.push_back("");
 				}
 
-				// --- Public Fields ---
+				// Public Fields
 				for (auto& [scriptPath, fieldList] : component.Fields)
 				{
 					if (fieldList.empty()) continue;
@@ -869,8 +857,7 @@ namespace Waffle {
 					ImGui::TextDisabled("%s", stem.c_str());
 					ImGui::Spacing();
 
-					// Live instance handle while playing (ScriptHandles is
-					// index-aligned with ScriptPaths).
+					// Live instance handle while playing (ScriptHandles is index-aligned with ScriptPaths).
 					int scriptIndex = (int)(std::find(component.ScriptPaths.begin(),
 						component.ScriptPaths.end(), scriptPath) - component.ScriptPaths.begin());
 					if (scriptIndex >= (int)component.ScriptPaths.size())
@@ -959,9 +946,7 @@ namespace Waffle {
 
 			if (component.Texture)
 			{
-				// Pixel art preview: switch the backend to its NEAREST
-				// sampler for this draw (Vulkan ignores the texture's own
-				// filter inside ImGui).
+				// Pixel art preview: NEAREST sampler for this draw via draw callback (Vulkan ignores the texture's own filter inside ImGui).
 				ImDrawList* previewDl = ImGui::GetWindowDrawList();
 				if (ImGui::GetPlatformIO().DrawCallback_SetSamplerNearest)
 					previewDl->AddCallback(ImGui::GetPlatformIO().DrawCallback_SetSamplerNearest, nullptr);
@@ -1070,9 +1055,7 @@ namespace Waffle {
 			ImGui::EndCombo();
 			}
 
-			// Optional custom shader (relative to Assets, e.g.
-			// "shaders/MyShader.glsl"). Also set by dropping a .glsl file on
-			// the sprite texture slot above.
+			// Optional custom shader, relative to Assets (e.g. "shaders/MyShader.glsl"); also set by dropping a .glsl on the sprite texture slot above.
 			char shaderBuf[256];
 			snprintf(shaderBuf, sizeof(shaderBuf), "%s", component.CustomShaderPath.c_str());
 			ImGui::InputTextWithHint("##CustomShader", "Custom shader (drop .glsl)", shaderBuf, sizeof(shaderBuf));
@@ -1377,8 +1360,7 @@ namespace Waffle {
 
 		DrawComponent<BoxCollider2DComponent>("Box Collider (2D)", entity, [&](auto& component)
 		{
-			// Unity-style visual editing: toggles the viewport gizmo onto the
-			// collider (Translate = offset, Scale = size).
+			// Unity-style visual editing: toggles the viewport gizmo onto the collider (Translate = offset, Scale = size).
 			{
 				bool editing = m_IsEditingCollider && m_IsEditingCollider((int)ColliderEditTarget::Box);
 				if (ImGui::Button(editing ? "Editing Collider (click to stop)" : "Edit Collider"))
@@ -1551,8 +1533,7 @@ namespace Waffle {
 			{
 				m_SelectionContext.AddComponent<T>();
 
-				// UI elements are placed by their RectTransform - add one
-				// automatically so a fresh element is immediately visible.
+				// UI elements are placed by their RectTransform - add one automatically so a fresh element is immediately visible.
 				if constexpr (std::is_same_v<T, UIImageComponent> || std::is_same_v<T, UITextComponent> ||
 					std::is_same_v<T, UIButtonComponent> || std::is_same_v<T, UIProgressBarComponent>)
 				{

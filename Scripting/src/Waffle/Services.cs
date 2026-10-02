@@ -3,8 +3,7 @@ using Waffle.Scripting.Internal;
 
 namespace Waffle;
 
-/// <summary>Keyboard, mouse and axis input. Editor-aware: input outside the
-/// game viewport (or while typing in editor fields) reports released.</summary>
+/// <summary>Keyboard, mouse and axis input. Editor-aware: input outside the game viewport or while typing in editor fields reports released.</summary>
 public static unsafe class Input
 {
     public static bool GetKey(KeyCode key) => NativeApi.IsKeyPressed((int)key) != 0;
@@ -56,10 +55,7 @@ public readonly struct RaycastResult
 
 public static unsafe class Physics2D
 {
-    /// <summary>
-    /// Raycasts from an entity's position + offset along a direction. Returns
-    /// false when nothing was hit (the entity's own colliders are ignored).
-    /// </summary>
+    /// <summary>Raycasts from an entity's position + offset along a direction; the entity's own colliders are ignored, false when nothing hit.</summary>
     public static bool Raycast(Entity from, Vector2 offset, Vector2 direction, float distance, out RaycastResult hit)
     {
         int hitEntity = -1;
@@ -191,8 +187,7 @@ public static unsafe class Time
     /// <summary>Seconds since the last frame.</summary>
     public static float DeltaTime => _deltaTime;
 
-    /// <summary>Invokes <paramref name="callback"/> once after <paramref name="delay"/> seconds.
-    /// Cancel the returned handle to prevent it from firing. Cleared on scene stop.</summary>
+    /// <summary>Invokes <paramref name="callback"/> once after <paramref name="delay"/> seconds; cancel the returned handle to prevent it. Cleared on scene stop.</summary>
     public static TimerHandle SetTimer(float delay, Action callback)
     {
         if (Scripting.Internal.NativeApi.EditorGizmoPass() != 0)
@@ -253,8 +248,7 @@ internal static class TimerSystem
 
     internal static void Pump(float dt)
     {
-        // Snapshot firing indices BEFORE invoking: callbacks may schedule or
-        // cancel timers, mutating this list mid-iteration.
+        // Snapshot the count BEFORE invoking: callbacks may schedule or cancel timers, mutating this list mid-iteration.
         int count = _timers.Count;
         for (int i = 0; i < count && i < _timers.Count; i++)
         {
@@ -331,8 +325,7 @@ public static unsafe class Audio
     public static void SetMasterVolume(float volume) => NativeApi.SetMasterVolume(volume);
 }
 
-/// <summary>Editor debug drawing (also visible while playing in the editor;
-/// never drawn in exported games).</summary>
+/// <summary>Editor debug drawing (visible while playing in the editor too; never drawn in exported games).</summary>
 public static unsafe class Gizmos
 {
     public static void DrawRay(Vector2 origin, Vector2 direction, float distance, Color? color = null)
@@ -357,8 +350,7 @@ public static unsafe class Gizmos
 /// <summary>App-level queries and actions.</summary>
 public static unsafe class Application
 {
-    /// <summary>Quits play mode in the editor; exits an exported game. Deferred
-    /// to the end of the frame.</summary>
+    /// <summary>Quits play mode in the editor; exits an exported game. Deferred to the end of the frame.</summary>
     public static void Quit() => NativeApi.RequestQuit();
 
     /// <summary>Current game viewport size in pixels.</summary>
@@ -381,10 +373,7 @@ public static unsafe class Application
     }
 }
 
-/// <summary>
-/// Key/value store that survives scene changes AND script hot reloads -
-/// the replacement for the Lua engine's persistent Global table.
-/// </summary>
+/// <summary>Key/value store that survives scene changes AND script hot reloads - the replacement for the Lua engine's persistent Global table.</summary>
 public static class PersistentData
 {
     private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, object> _data = new();

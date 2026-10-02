@@ -16,17 +16,14 @@ namespace Waffle {
 
 	namespace
 	{
-		// Width/height ratio of the quad described by a transform (lengths of
-		// its local X/Y axes).
+		// Width/height ratio of the quad described by a transform (local X/Y axis lengths).
 		float QuadAspectOf(const glm::mat4& transform)
 		{
 			glm::vec2 scale(glm::length(transform[0]), glm::length(transform[1]));
 			return (scale.y != 0.0f) ? (scale.x / scale.y) : 0.0f;
 		}
 
-		// Scales the quad's local X/Y axes so the drawn rectangle keeps the
-		// sprite's native aspect ratio, letterboxed (centered) inside the
-		// original quad.
+		// Scale local X/Y axes so the rect keeps the sprite's aspect ratio, letterboxed inside the quad.
 		glm::mat4 FitTransformToAspect(const glm::mat4& transform, float spriteAspect)
 		{
 			glm::vec2 scale(glm::length(transform[0]), glm::length(transform[1]));
@@ -42,8 +39,7 @@ namespace Waffle {
 			return transform * glm::scale(glm::mat4(1.0f), glm::vec3(sx, sy, 1.0f));
 		}
 
-		// Crops the [uvMin, uvMax] window (centered) so the sampled region
-		// has the quad's aspect ratio - the "cover" behaviour.
+		// Crops the [uvMin, uvMax] window (centered) so the sampled region matches the quad's aspect ("cover").
 		void CropUVsToAspect(glm::vec2& uvMin, glm::vec2& uvMax, float spriteAspect, float quadAspect)
 		{
 			if (spriteAspect <= 0.0f || quadAspect <= 0.0f)
@@ -105,8 +101,7 @@ namespace Waffle {
 		static const uint32_t MaxVertices = MaxQuads * 4;
 		static const uint32_t MaxIndices = MaxQuads * 6;
 
-		// Hard upper bound (TextureSlots array capacity).
-		// The usable count is clamped to the device limit in Init(), some GPUs expose only 16 texture image units and a u_Textures[32] array fails to link there.
+		// Hard bound (TextureSlots capacity); usable count clamped to the device limit in Init() - some GPUs expose only 16 texture image units, where u_Textures[32] fails to link.
 		static const uint32_t MaxTextureSlotCapacity = 32;
 		uint32_t MaxTextureSlots = MaxTextureSlotCapacity;
 
@@ -153,19 +148,13 @@ namespace Waffle {
 			uint32_t ElementOffset = 0;
 			uint32_t ElementCount = 0;
 			uint32_t TextureCount = 0;
-			// Non-null for quads drawn with a custom shader (see
-			// SpriteRendererComponent::CustomShaderPath). Entries only merge
-			// while this matches, which keeps one batch per shader.
+			// Non-null for custom-shader quads (see SpriteRendererComponent::CustomShaderPath); entries only merge while it matches, one batch per shader.
 			Ref<Shader> Shader;
 		};
 
 		std::vector<RenderCommandEntry> Commands;
 
-		// Pipelines for custom quad shaders, keyed by shader pointer. The
-		// entry keeps a Ref to the shader it was built from, so a stale entry
-		// (shader reloaded -> new Ref) is detected by comparing pointers and
-		// the old VkPipeline stays alive until Shutdown instead of dying
-		// under in-flight command buffers.
+		// Custom quad pipelines keyed by shader pointer; each entry keeps a Ref so a stale entry (shader reloaded -> new Ref) is caught by pointer compare and the old VkPipeline stays alive until Shutdown.
 		struct CustomPipelineEntry
 		{
 			Ref<Shader> Shader;
@@ -297,17 +286,13 @@ namespace Waffle {
 		s_Data.CameraUniformBuffer = UniformBuffer::Create(sizeof(Renderer2DData::CameraData), 0);
 	}
 
-	// Deferred from Init(): compiles the built-in shaders and creates their
-	// pipelines on first BeginScene. Apps that never render a 2D scene (the
-	// Hub launcher, headless tools) then never touch shader files at all.
+	// Deferred from Init(): builds the built-in shaders/pipelines on first BeginScene, so apps that never render 2D (Hub launcher, headless tools) never touch shader files.
 	void Renderer2D::InitShaders()
 	{
 		if (s_Data.QuadShader)
 			return;
 
-		// Clamp the batcher to this device's sampler limit and publish it as
-		// WF_MAX_TEXTURE_SLOTS BEFORE creating shaders, so u_Textures[] is
-		// declared with a size this GPU can actually link.
+		// Clamp the batcher to the device's sampler limit and publish it as WF_MAX_TEXTURE_SLOTS BEFORE creating shaders so u_Textures[] can link on this GPU.
 		uint32_t deviceSlots = RenderCommand::GetMaxTextureSlots();
 		s_Data.MaxTextureSlots = (deviceSlots < Renderer2DData::MaxTextureSlotCapacity)
 			? deviceSlots : Renderer2DData::MaxTextureSlotCapacity;
@@ -319,8 +304,7 @@ namespace Waffle {
 		for (int32_t i = 0; i < (int32_t)s_Data.MaxTextureSlots; i++)
 			samplers[i] = i;
 
-		// Built-ins load through the central ShaderLibrary like any user
-		// shader (which also gives them hot reload for free).
+		// Built-ins load through the central ShaderLibrary like any user shader (hot reload for free).
 		s_Data.QuadShader = ShaderLibrary::Get().Load("assets/shaders/2DQuadShader.glsl");
 		WF_CORE_ASSERT(s_Data.QuadShader && s_Data.QuadShader->IsValid(), "Failed to load 2DQuadShader!");
 		s_Data.QuadShader->Bind();
@@ -329,8 +313,7 @@ namespace Waffle {
 		s_Data.CircleShader = ShaderLibrary::Get().Load("assets/shaders/2DCircleShader.glsl");
 		s_Data.LineShader = ShaderLibrary::Get().Load("assets/shaders/2DLineShader.glsl");
 
-		// Explicit pipelines - the backend no longer derives state from
-		// "whatever shader/VAO is bound" at draw time.
+		// Explicit pipelines - the backend no longer derives state from whatever shader/VAO is bound at draw time.
 		GraphicsPipeline::Desc pipelineDesc;
 		pipelineDesc.Blending   = GraphicsPipeline::BlendMode::SrcAlpha;
 		pipelineDesc.DepthTest  = true;
@@ -347,8 +330,7 @@ namespace Waffle {
 		s_Data.LinePipeline = GraphicsPipeline::Create(pipelineDesc);
 	}
 
-	// Resolves (or creates) the pipeline for a custom quad shader - same
-	// fixed state as QuadPipeline, only the shader differs.
+	// Resolves (or creates) the pipeline for a custom quad shader - same fixed state as QuadPipeline, only the shader differs.
 	static Ref<GraphicsPipeline> GetOrCreateCustomQuadPipeline(const Ref<Shader>& shader)
 	{
 		auto it = s_Data.CustomQuadPipelines.find(shader.get());
@@ -378,9 +360,7 @@ namespace Waffle {
 		s_Data.CircleVertexBufferPtr = nullptr;
 		s_Data.LineVertexBufferPtr = nullptr;
 
-		// Release GPU objects here, while the graphics context is still alive.
-		// The static s_Data Refs would otherwise destruct after main() when the
-		// context is already gone.
+		// Release GPU objects here, while the graphics context is still alive; static s_Data Refs would otherwise destruct after main().
 		s_Data.QuadVertexArray = nullptr;
 		s_Data.QuadVertexBuffer = nullptr;
 		s_Data.QuadShader = nullptr;
@@ -460,9 +440,7 @@ namespace Waffle {
 		return s_Data.ActiveFrustum.IsVisible(position, size);
 	}
 
-
-	// Z-aware culling: with a perspective camera the visible XY region
-	// tapers with depth, so the object's actual Z must be tested.
+	// Z-aware culling: with a perspective camera the visible XY region tapers with depth, so the object's actual Z must be tested.
 	bool Renderer2D::IsVisibleInFrustum(const glm::vec3& min, const glm::vec3& max)
 	{
 		return s_Data.ActiveFrustum.IsVisible(min, max);
@@ -1051,8 +1029,7 @@ namespace Waffle {
 			* glm::rotate(glm::mat4(1.0f), rotation, { 0.0f, 0.0f, 1.0f })
 			* glm::scale(glm::mat4(1.0f), { size.x, size.y, 1.0f });
 
-		// Same conservative-AABB culling as every other transform-based
-		// draw - rotated quads previously always entered the batch.
+		// Same conservative-AABB culling as every other transform-based draw - rotated quads previously always entered the batch.
 		{
 			glm::vec3 minPt(1e9f), maxPt(-1e9f);
 			for (size_t i = 0; i < 4; i++)
@@ -1124,8 +1101,7 @@ namespace Waffle {
 		glm::mat4 transform = transformIn;
 		glm::vec2 texCoordsOverride[4];
 
-		// Frame-native aspect from the sub-texture's UV window - this is what
-		// keeps animation frames with different sizes from distorting.
+		// Frame-native aspect from the sub-texture's UV window - keeps animation frames of different sizes from distorting.
 		if (aspectMode != SpriteAspectMode::Stretch && texture->GetWidth() > 0 && texture->GetHeight() > 0)
 		{
 			glm::vec2 uvMin = textureCoords[0];
@@ -1139,25 +1115,13 @@ namespace Waffle {
 
 				if (aspectMode == SpriteAspectMode::Fit)
 				{
-					// Normalized content fit: every frame shares the
-					// pixels-per-unit of the animator's LARGEST visible
-					// content (referencePixelSize; falls back to this frame
-					// when unknown), so differently sized frames keep one
-					// consistent scale instead of each filling the quad.
-					// Frames are anchored by their opaque CONTENT, not their
-					// crop rect: the pivot point within the content box
-					// lands on the matching pivot point of the quad, so
-					// tighter/looser crops don't make the art glide.
+					// Normalized content fit: every frame shares the pixels-per-unit of the animator's LARGEST visible content (referencePixelSize; falls back to this frame), and frames are anchored by their opaque CONTENT pivot, not their crop rect, so tighter/looser crops don't make the art glide.
 					glm::vec2 quadSize(glm::length(transformIn[0]), glm::length(transformIn[1]));
 					glm::vec2 refSize = (referencePixelSize.x > 0.0f && referencePixelSize.y > 0.0f)
 						? referencePixelSize
 						: glm::vec2(spriteW, spriteH);
 
-					// Anchor fraction within the frame: the pivot point of
-					// the content box, or just framePivot when no content
-					// rect is known (content == whole frame). Clamped so a
-					// stray fraction degrades gracefully instead of
-					// switching the frame to a different alignment mode.
+					// Anchor fraction within the frame: the content-box pivot, or just framePivot when no content rect; clamped so a stray fraction degrades gracefully.
 					glm::vec2 anchorFrac = framePivot;
 					if (contentFrac)
 					{
@@ -1260,8 +1224,7 @@ namespace Waffle {
 		float penX = penPosition.x;
 		const float baseline = penPosition.y;
 
-		// Resolved lazily per glyph: a NextBatch() inside the loop clears the
-		// texture slots, so the atlas index must be looked up again after it.
+		// Resolved lazily per glyph: a NextBatch() inside the loop clears the texture slots, so the atlas index must be looked up again after it.
 		auto findOrAddAtlasSlot = [&atlas]() -> float
 		{
 			for (uint32_t i = 1; i < s_Data.TextureSlotIndex; i++)

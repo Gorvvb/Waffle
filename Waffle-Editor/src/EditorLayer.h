@@ -59,15 +59,12 @@ namespace Waffle {
 		void OnScenePause();
 		void OnDuplicateEntity();
 
-		// Prefab edit mode: double-clicking a .prefab in the Content Browser
-		// opens it as a temporary scene; Back (in the hierarchy header) saves
-		// it back to the .prefab file and returns to the real scene.
+		// Prefab edit mode: a .prefab opens as a temporary scene; Back saves it back to the file and returns to the real scene.
 		void OpenPrefabForEditing(const std::filesystem::path& prefabPath);
 		void ClosePrefabEditor(bool save);
 		bool IsInPrefabEditMode() const { return m_InPrefabEditMode; }
 
-		// Collider edit mode (Unity-style): the viewport gizmo manipulates
-		// the selected entity's collider (Translate = offset, Scale = size).
+		// Collider edit mode (Unity-style): the gizmo manipulates the selected entity's collider (Translate = offset, Scale = size).
 		void SetColliderEditMode(bool active, int target);
 		bool IsEditingCollider(int target) const { return m_ColliderEditMode && m_ColliderEditTarget == (ColliderEditTarget)target; }
 		void ExitColliderEditMode() { m_ColliderEditMode = false; }
@@ -103,13 +100,10 @@ namespace Waffle {
 		Ref<Scene> m_PrefabScene;
 		std::filesystem::path m_PrefabEditPath;
 		UUID m_PrefabRootUUID = 0;
-		// Kept alive until the next frame starts: releasing the prefab scene
-		// mid-frame (Back is pressed during ImGui) destroys textures/samplers
-		// the still-recording command buffer references.
+		// Released next frame, not mid-frame (Back fires during ImGui): the recording command buffer still references its textures.
 		Ref<Scene> m_PrefabScenePendingRelease;
 
-		// Snapshot of the primary camera's post-processing settings, applied
-		// to the viewport preview in OnImGuiRender.
+		// Primary camera's post-processing settings, applied to the viewport preview in OnImGuiRender.
 		PostProcessingSettings m_ViewportPostSettings;
 
 		// Collider edit mode state.

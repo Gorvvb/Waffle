@@ -13,8 +13,7 @@ namespace Waffle {
 	{
 		uint8_t* Data = nullptr;
 		uint64_t Size = 0;
-		// View constructors (from std::array/std::vector) alias foreign
-		// memory - destroying such a Buffer must never delete[] it.
+		// View constructors (from std::array/std::vector) alias foreign memory - destroying such a Buffer must never delete[] it.
 		bool OwnsData = true;
 
 		Buffer() = default;
@@ -31,8 +30,7 @@ namespace Waffle {
 				std::memcpy(Data, data, size);
 		}
 
-		// Non-owning view over the container's memory. The container must
-		// outlive the Buffer.
+		// Non-owning view over the container's memory; the container must outlive the Buffer.
 		template<typename T, size_t S>
 		Buffer(const std::array<T, S>& arr)
 			: Data((uint8_t*)arr.data()), Size(arr.size() * sizeof(T)), OwnsData(false) { }

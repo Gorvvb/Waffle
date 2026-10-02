@@ -18,10 +18,7 @@ namespace Waffle {
 
 	std::filesystem::path g_AssetPath = "Assets";
 
-	// Template for Content Browser > Create > Shader. Must keep the same
-	// vertex inputs, Camera UBO and u_Textures sampler array as the built-in
-	// 2DQuadShader.glsl - sprites feed it the same vertex stream and
-	// Renderer2D binds textures to set 1 / binding 0 exactly as usual.
+	// Template for Create > Shader: must match 2DQuadShader.glsl (vertex inputs, Camera UBO, u_Textures array).
 	static const char* k_NewShaderTemplate = R"(//--------------------------
 // - Waffle -
 // - Custom Sprite Shader
@@ -145,14 +142,11 @@ void main()
 	{
 		g_AssetPath = path;
 		m_CurrentDirectory = g_AssetPath;
-		// Thumbnails are keyed by absolute path - drop them on project switch
-		// or stale cross-project entries linger forever.
+		// Thumbnail cache is keyed by absolute path: clear on project switch or stale entries linger.
 		m_TextureCache.clear();
 	}
 
-	// 1x1 solid-color texture used as the thumbnail for prefabs whose
-	// renderer only carries a color. Cached per quantized RGBA so different
-	// colors don't thrash one texture, and identical ones share it.
+	// 1x1 solid-color thumbnail for color-only prefabs, cached per quantized RGBA.
 	Ref<Texture2D> ContentBrowserPanel::GetColorSwatch(const glm::vec4& color)
 	{
 		char key[32];
@@ -181,11 +175,7 @@ void main()
 		return tex;
 	}
 
-	// Prefab thumbnail = sprite texture tinted with the renderer color, the
-	// same multiply the quad shader does (texColor * Color). Loaded via stb,
-	// downsampled to <=128px, uploaded as a static texture. Cached per
-	// (path, color) pair so nothing re-decodes per frame; failures fall back
-	// to the untinted GPU texture (or the file icon) which is also cached.
+	// Prefab thumbnail: sprite texture tinted with renderer color (same as shader), stb-loaded, downsampled to <=128px; cached per (path, color), failures fall back to untinted texture or file icon.
 	Ref<Texture2D> ContentBrowserPanel::GetTintedThumbnail(const std::filesystem::path& texturePath, const glm::vec4& color)
 	{
 		auto channelHex = [](float v) -> int
@@ -267,8 +257,7 @@ void main()
 
 		if (!result)
 		{
-			// Decode failed - fall back to the untinted GPU texture, then the
-			// file icon, so the failure itself is cached and never retried.
+			// Decode failed: fall back to the untinted GPU texture, then the file icon - failure is cached and never retried.
 			result = Texture2D::Create(texturePath.string(), TextureFilter::Nearest);
 			if (!result)
 				result = m_FileIcon;
@@ -375,8 +364,7 @@ void main()
 			ImGui::SameLine();
 		}
 
-		// Breadcrumb path display - relative to the project's Assets folder
-		// ("Assets/Scenes"), not the filesystem root.
+		// Breadcrumb path relative to the project's Assets folder ("Assets/Scenes"), not the filesystem root.
 		std::string pathString;
 		{
 			std::error_code ec;
@@ -420,9 +408,7 @@ void main()
 				for (auto& c : ext) c = (char)tolower(c);
 				std::string fn = path.filename().string();
 
-				// Hide internal engine/project files (.wfp, .wfk, .ini, .log, .yaml, dotfiles) from the user.
-				// .spritesheet files are metadata of their PNG - the texture
-				// entry owns them, so they stay out of the grid.
+				// Hide internal engine/project files (.wfp, .wfk, .ini, .log, .yaml, dotfiles); .spritesheet is metadata of its PNG, owned by the texture entry.
 				if (ext == ".wfp" || ext == ".wfk" || ext == ".ini" || ext == ".log" || ext == ".yaml" || ext == ".yml" || ext == ".spritesheet" || (!fn.empty() && fn[0] == '.'))
 					continue;
 
@@ -457,9 +443,7 @@ void main()
 					}
 						else if (ext == ".prefab")
 						{
-							// The cache key includes the file's mtime: prefab
-							// thumbnails must refresh when the prefab is saved
-							// from the prefab editor (or edited by hand).
+							// Cache key includes the file's mtime: prefab thumbnails must refresh when the prefab is saved (editor or hand-edited).
 							const std::string filePath = path.string();
 							std::error_code mtimeEc;
 							const std::string cacheKey = filePath + "|@" +
@@ -477,8 +461,7 @@ void main()
 									auto spriteNode = entityNode ? entityNode["SpriteRendererComponent"] : YAML::Node();
 									auto circleNode = entityNode ? entityNode["CircleRendererComponent"] : YAML::Node();
 
-									// Colors are read field-by-field: the glm::vec4 YAML
-									// converters are local to SceneSerializer.cpp.
+								// Colors are read field-by-field: the glm::vec4 YAML converters are local to SceneSerializer.cpp.
 									auto readColorNode = [](const YAML::Node& n, glm::vec4& out) -> bool
 									{
 										if (n && n.IsSequence() && n.size() >= 4)
@@ -490,8 +473,7 @@ void main()
 										return false;
 									};
 
-									// 1. Sprite texture tinted with the sprite color -
-									// the same combination the renderer draws with.
+								// 1. Sprite texture tinted with the sprite color - the same combination the renderer draws.
 									glm::vec4 spriteColor(1.0f);
 									readColorNode(spriteNode ? spriteNode["Color"] : YAML::Node(), spriteColor);
 
@@ -500,9 +482,7 @@ void main()
 										std::string texRelPath = spriteNode["TexturePath"].as<std::string>();
 										if (!texRelPath.empty())
 										{
-											// Resolve like the scene serializer does -
-											// stored paths may or may not carry the
-											// "Assets/" prefix.
+								// Resolve like the scene serializer does - stored paths may or may not carry the "Assets/" prefix.
 											std::filesystem::path resolved = ResolveTexturePath(texRelPath);
 											if (!resolved.empty() && std::filesystem::exists(resolved))
 											{
@@ -536,9 +516,7 @@ void main()
 
 								if (icon == m_FileIcon)
 								{
-									// Cache the "no thumbnail" result (as the
-									// file icon) so prefabs without a sprite
-									// don't re-parse YAML from disk EVERY frame.
+								// Cache the "no thumbnail" result (the file icon) so prefabs without a sprite don't re-parse YAML every frame.
 									m_TextureCache[cacheKey] = m_FileIcon;
 								}
 							}
@@ -548,9 +526,7 @@ void main()
 				ImVec2 iconSize = { thumbnailSize, thumbnailSize };
 				if (icon && icon != m_DirectoryIcon && icon != m_FileIcon)
 				{
-					// Textures load with TextureFilter::Nearest already; the
-					// old per-frame SetFilter(Nearest) here stalled the whole
-					// Vulkan device once per thumbnail per frame.
+					// Textures load with TextureFilter::Nearest already; the old per-frame SetFilter here stalled the whole Vulkan device.
 					float aspect = (float)icon->GetWidth() / (float)icon->GetHeight();
 					if (aspect > 0.0f)
 					{
@@ -564,10 +540,7 @@ void main()
 				bool isSelected = (m_SelectedItem == path);
 				ImGui::PushStyleColor(ImGuiCol_Button, isSelected ? ImVec4{ 0.2f, 0.4f, 0.8f, 0.5f } : ImVec4{ 0, 0, 0, 0 });
 
-				// Thumbnails are pixel art: request the backend's NEAREST
-				// sampler for this draw. The ImGui Vulkan backend samples all
-				// textures with its own Linear sampler unless a draw callback
-				// switches it - the texture's own filter is ignored here.
+				// Thumbnails are pixel art: the ImGui Vulkan backend samples with its own Linear sampler unless a draw callback switches it - the texture's filter is ignored.
 				const bool isThumbnail = (icon && icon != m_DirectoryIcon && icon != m_FileIcon);
 				ImDrawList* dl = ImGui::GetWindowDrawList();
 				if (isThumbnail && ImGui::GetPlatformIO().DrawCallback_SetSamplerNearest)
@@ -577,8 +550,7 @@ void main()
 
 				if (isThumbnail)
 				{
-					// Reset back to the default (Linear) sampler for
-					// everything drawn after this item.
+					// Reset back to the default (Linear) sampler for everything drawn after this item.
 					dl->AddCallback(ImDrawCallback_ResetRenderState, nullptr);
 				}
 
@@ -661,8 +633,7 @@ void main()
 					}
 					else if (ext == ".prefab")
 					{
-						// Double-click opens the prefab edit view (hierarchy
-						// shows a Back button; saving writes the .prefab).
+						// Double-click opens the prefab edit view (hierarchy shows a Back button; saving writes the .prefab).
 						if (m_OpenPrefabCallback)
 							m_OpenPrefabCallback(path);
 					}
@@ -672,8 +643,7 @@ void main()
 					}
 					else if (ext == ".png" || ext == ".jpg" || ext == ".jpeg")
 					{
-						// The spritesheet data belongs to the texture: double
-						// click opens its sprite viewer when metadata exists.
+						// Spritesheet data belongs to the texture: double-click opens its sprite viewer when metadata exists.
 						std::filesystem::path sheetPath = path;
 						sheetPath.replace_extension(".spritesheet");
 						if (std::filesystem::exists(sheetPath))
@@ -746,13 +716,9 @@ void main()
 						scriptPath = m_CurrentDirectory / ("NewScript" + std::to_string(counter++) + ".cs");
 					}
 
-					// The engine resolves script classes by file stem - keep the
-					// class name in sync when renaming the file.
-					// The engine resolves script classes by file stem - keep the
-					// class name in sync when renaming the file.
+					// Engine resolves script classes by file stem - keep the class name in sync when renaming the file.
 					std::string className = scriptPath.stem().string();
-				// The engine resolves script classes by file stem - keep the
-				// class name in sync when renaming the file.
+				// Engine resolves script classes by file stem - keep the class name in sync when renaming the file.
 				std::ofstream scriptFile(scriptPath);
 					scriptFile << "using Waffle;\n"
 					           << "\n"
@@ -865,8 +831,7 @@ void main()
 
 					if (newPath != m_ItemToRename)
 					{
-						// Never silently destroy an existing file: MSVC's
-						// rename uses MOVEFILE_REPLACE_EXISTING.
+						// Never silently destroy an existing file: MSVC's rename uses MOVEFILE_REPLACE_EXISTING.
 						if (std::filesystem::exists(newPath))
 						{
 							WF_CORE_ERROR("Rename failed: '{0}' already exists", newPath.filename().string());
@@ -878,8 +843,7 @@ void main()
 							std::filesystem::rename(m_ItemToRename, newPath, ec);
 							if (ec)
 							{
-								// Invalid characters / locked file throw
-								// out of the ImGui render loop otherwise.
+								// Invalid characters / locked file would throw out of the ImGui render loop otherwise.
 								WF_CORE_ERROR("Rename failed: {0}", ec.message());
 							}
 							else
@@ -956,9 +920,7 @@ void main()
 			ImGui::EndPopup();
 		}
 
-		// =========================================================================
-		//  SPRITESHEET SPRITE VIEWER  (grouped filmstrip / sheet overlay)
-		// =========================================================================
+		// SPRITESHEET SPRITE VIEWER (grouped filmstrip / sheet overlay)
 		if (m_ShowSpritesheetViewer && !m_SpritesheetSubTextures.empty() && m_SpritesheetTexture)
 		{
 			ImGui::Separator();
@@ -1010,8 +972,7 @@ void main()
 
 			if (m_SpritesheetShowSheet)
 			{
-				// ── Sheet view: the whole texture with grouped region
-				//    rectangles drawn over it (no sprite names).
+				// Sheet view: the whole texture with grouped region rectangles drawn over it (no sprite names).
 				ImGui::BeginChild("##SheetView", ImVec2(0, 340.0f), true,
 					ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
 
@@ -1063,8 +1024,7 @@ void main()
 			}
 			else
 			{
-				// ── Grouped filmstrip: one labeled row per group, thumbnails
-				//    only (names in tooltips). Ungrouped sprites last.
+				// Grouped filmstrip: one labeled row per group, thumbnails only (names in tooltips); ungrouped sprites last.
 				ImGui::BeginChild("##SpriteViewer", ImVec2(0, 150.0f), true,
 					ImGuiWindowFlags_HorizontalScrollbar);
 
@@ -1169,10 +1129,7 @@ void main()
 			ImGui::PopStyleColor();
 		}
 
-
-		// A zero-size Dummy can never be hovered, so the previous background
-		// drop target was unreachable dead code - use a real filler item that
-		// covers the remaining panel space.
+		// Zero-size Dummy is never hoverable, so the old background drop target was unreachable dead code - use a real filler covering the remaining panel space.
 		ImVec2 remaining = ImGui::GetContentRegionAvail();
 		remaining.x = glm::max(remaining.x, 1.0f);
 		remaining.y = glm::max(remaining.y, 1.0f);

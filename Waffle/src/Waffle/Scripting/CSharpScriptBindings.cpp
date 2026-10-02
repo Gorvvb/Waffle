@@ -27,7 +27,7 @@ namespace Waffle {
 
 	namespace {
 
-		// --- shared helpers -------------------------------------------------
+		// Shared helpers
 
 		bool PathEscapesAssetRoot(const std::string& path)
 		{
@@ -41,8 +41,7 @@ namespace Waffle {
 			return false;
 		}
 
-		// Input arbitration: gameplay input is gated only outside the game
-		// viewport rect in the editor; the exported runtime is never gated.
+		// Input arbitration: gameplay input is gated only outside the game viewport rect in the editor; the exported runtime is never gated.
 		bool GameplayMouseBlocked()
 		{
 			ImGuiIO& io = ImGui::GetIO();
@@ -86,8 +85,7 @@ namespace Waffle {
 			body->SetAwake(true);
 		}
 
-		// Editor gizmo preview: mutating calls no-op with a warning (scripts
-		// may run OnDrawGizmos while editing - they must only read and draw).
+		// Editor gizmo preview: mutating calls no-op with a warning (scripts may run OnDrawGizmos while editing - they must only read and draw).
 		bool GizmoPassGate(const char* apiName)
 		{
 			if (CSharpScriptEngine::IsEditorGizmoPass())
@@ -98,8 +96,7 @@ namespace Waffle {
 			return false;
 		}
 
-		// Copies a std::string into a caller buffer; returns needed length
-		// (excluding terminator), or -1 when the buffer is too small.
+		// Copies a std::string into a caller buffer; returns needed length (excluding terminator), or -1 when the buffer is too small.
 		int CopyToBuffer(const std::string& text, char* buffer, int bufferSize)
 		{
 			if (!buffer || bufferSize <= 0)
@@ -111,13 +108,13 @@ namespace Waffle {
 			return (int)text.size();
 		}
 
-		// --- logging ----------------------------------------------------------
+		// Logging
 
 		void WF_LogInfo(const char* utf8) { if (utf8) WF_INFO("{0}", utf8); }
 		void WF_LogWarn(const char* utf8) { if (utf8) WF_WARN("{0}", utf8); }
 		void WF_LogError(const char* utf8) { if (utf8) WF_ERROR("{0}", utf8); }
 
-		// --- scene / framework -------------------------------------------------
+		// Scene / framework
 
 		void WF_GetViewportSize(float* outW, float* outH)
 		{
@@ -157,7 +154,7 @@ namespace Waffle {
 			return CSharpScriptEngine::IsEditorGizmoPass() ? 1 : 0;
 		}
 
-		// --- input ---------------------------------------------------------------
+		// Input
 
 		int WF_IsKeyPressed(int code)
 		{
@@ -228,14 +225,14 @@ namespace Waffle {
 			return Input::GetAxis(axisUtf8);
 		}
 
-		// --- scene management ------------------------------------------------------
+		// Scene management
 
 		void WF_ChangeScene(int index) { if (!GizmoPassGate("ChangeScene")) CSharpScriptEngine::SetPendingSceneChange(index); }
 		int  WF_GetCurrentSceneIndex() { return CSharpScriptEngine::GetCurrentSceneIndex(); }
 		void WF_SetCurrentSceneIndex(int index) { CSharpScriptEngine::SetCurrentSceneIndex(index); }
 		void WF_RequestQuit() { if (!GizmoPassGate("Quit")) CSharpScriptEngine::RequestQuit(); }
 
-		// --- entity management ---------------------------------------------------------
+		// Entity management
 
 		int WF_CreateEntity(const char* nameUtf8, float x, float y)
 		{
@@ -316,8 +313,7 @@ namespace Waffle {
 			// Physics body right away so the physics write-back works this frame.
 			scene->CreateRuntimePhysicsBody(entity);
 
-			// Init + OnStart scripts immediately, or the instance registry stays
-			// empty and EntityUpdate silently skips the entity.
+			// Init + OnStart scripts immediately, or the instance registry stays empty and EntityUpdate silently skips the entity.
 			CSharpScriptEngine::InitScriptsForEntity(scene, entity);
 
 			return (int)(uint32_t)(entt::entity)entity;
@@ -482,7 +478,7 @@ namespace Waffle {
 			return registry.all_of<DisabledComponent>((entt::entity)entityId) ? 0 : 1;
 		}
 
-		// --- transform ---------------------------------------------------------------
+		// Transform
 
 		void WF_Translate(uint32_t entityId, float dx, float dy, float dz)
 		{
@@ -641,7 +637,7 @@ namespace Waffle {
 			*outX = 1; *outY = 1; *outZ = 1;
 		}
 
-		// --- physics 2D ----------------------------------------------------------------
+		// Physics 2D
 
 		void WF_SetLinearVelocity(uint32_t entityId, float vx, float vy)
 		{
@@ -1054,7 +1050,7 @@ namespace Waffle {
 			return count;
 		}
 
-		// --- visual ---------------------------------------------------------------------
+		// Visual
 
 		void WF_SetColor(uint32_t entityId, float r, float g, float b, float a)
 		{
@@ -1117,7 +1113,7 @@ namespace Waffle {
 			}
 		}
 
-		// --- game UI ----------------------------------------------------------------------
+		// Game UI
 
 		void WF_SetUIText(uint32_t entityId, const char* textUtf8)
 		{
@@ -1167,7 +1163,7 @@ namespace Waffle {
 			}
 		}
 
-		// --- animation ---------------------------------------------------------------------
+		// Animation
 
 		void WF_PlayAnimation(uint32_t entityId, const char* clipUtf8)
 		{
@@ -1207,7 +1203,7 @@ namespace Waffle {
 			return 0;
 		}
 
-		// --- audio ---------------------------------------------------------------------------
+		// Audio
 
 		int WF_PlaySound(const char* pathUtf8, float volume, float pitch, int loop)
 		{
@@ -1235,7 +1231,7 @@ namespace Waffle {
 			AudioEngine::SetMasterVolume(volume);
 		}
 
-		// --- editor debug gizmos ---------------------------------------------------------------
+		// Editor debug gizmos
 
 		void WF_GizmoDrawRay(float x, float y, float dx, float dy, float distance, float r, float g, float b, float a)
 		{

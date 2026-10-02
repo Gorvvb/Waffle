@@ -10,9 +10,7 @@
 #include <fstream>
 #include <vector>
 
-// ImGui ships a patched stb_truetype. Pull it in with static linkage so this
-// translation unit gets its own private copy and cannot clash with the one
-// compiled into imgui_draw.cpp.
+// ImGui ships a patched stb_truetype; static linkage gives this TU its own private copy that cannot clash with imgui_draw.cpp's.
 #define STBTT_STATIC
 #define STB_TRUETYPE_IMPLEMENTATION
 #include <imstb_truetype.h>
@@ -30,9 +28,7 @@ namespace Waffle {
 	#include <windows.h>
 #endif
 
-	// Absolute path of the running executable. The default font must be
-	// found next to the editor/runtime binary no matter what the current
-	// working directory is (project folders usually have no fonts).
+	// Absolute path of the running executable; the default font must sit next to the binary no matter the working directory (project folders usually have no fonts).
 	static std::filesystem::path GetExecutableDirectory()
 	{
 #if defined(WF_PLATFORM_WINDOWS)
@@ -46,8 +42,7 @@ namespace Waffle {
 
 	static bool ReadFontBytes(const std::filesystem::path& path, std::vector<uint8_t>& out)
 	{
-		// Mounted .wpack archives must serve fonts for exported games; fall
-		// back to the loose filesystem when nothing is mounted.
+		// Mounted .wpack archives must serve fonts for exported games; fall back to the loose filesystem when nothing is mounted.
 		if (VFS::IsMounted() && VFS::Exists(path))
 		{
 			Buffer buf = VFS::ReadFile(path);
@@ -94,9 +89,7 @@ namespace Waffle {
 		m_Ascent = (float)ascent * scale;
 		m_Descent = (float)descent * scale;
 
-		// Bake into a coverage bitmap, growing the atlas height until all
-		// glyphs fit (stbtt_BakeFontBitmap returns a negative index when the
-		// bitmap is too small).
+		// Bake into a coverage bitmap, doubling the atlas height until all glyphs fit (stbtt_BakeFontBitmap returns a negative index when too small).
 		const int atlasWidth = 1024;
 		int atlasHeight = 256;
 		std::vector<uint8_t> coverage;
@@ -199,8 +192,7 @@ namespace Waffle {
 				candidates.push_back(assetDir / defaultRel);
 			candidates.push_back(exeDir / "Assets" / defaultRel);
 			candidates.push_back(exeDir / defaultRel);
-			// "Assets/..." form: resolves next to a loose-copy game AND
-			// through a mounted .wpack archive (VFS keys are Assets/-rooted).
+			// "Assets/..." form: resolves next to a loose-copy game AND through a mounted .wpack archive (VFS keys are Assets/-rooted).
 			candidates.push_back(std::filesystem::path("Assets") / defaultRel);
 			candidates.push_back(std::filesystem::current_path() / "Assets" / defaultRel);
 			candidates.push_back(std::filesystem::current_path() / defaultRel);

@@ -3,17 +3,10 @@ using System.Runtime.Loader;
 
 namespace Waffle.Scripting.Internal;
 
-/// <summary>
-/// Collectible load context that owns ONLY the game-scripts assembly.
-/// Everything else - the contract assembly (Waffle.Scripting), the framework -
-/// must fall through to the default context: the engine host already loaded
-/// Waffle.Scripting via hostfxr, and type identity of WaffleBehaviour has to
-/// match it or script classes would silently not derive from it.
-/// </summary>
+/// <summary>Collectible ALC owning only the game-scripts assembly; Waffle.Scripting and the framework must fall through to the default context or WaffleBehaviour type identity breaks.</summary>
 internal sealed class ScriptLoadContext : AssemblyLoadContext
 {
-    // Optional: only exists when a deps.json sits next to the scripts
-    // assembly (exported games). csc-built dev assemblies have none.
+    // Only exists when a deps.json sits next to the scripts assembly (exported games); csc dev builds have none.
     private readonly AssemblyDependencyResolver? _resolver;
 
     public ScriptLoadContext(string mainAssemblyPath)
@@ -31,9 +24,7 @@ internal sealed class ScriptLoadContext : AssemblyLoadContext
 
     protected override Assembly? Load(AssemblyName name)
     {
-        // The host loaded the contract assembly by path through hostfxr, which
-        // does NOT register it for by-name binding - so hand the binder the
-        // exact already-loaded instance. Framework assemblies: default context.
+        // The host loaded Waffle.Scripting by path via hostfxr, so it is not registered for by-name binding - hand back the loaded instance. Framework assemblies: default context.
         if (name.Name == "Waffle.Scripting")
             return typeof(WaffleBehaviour).Assembly;
 

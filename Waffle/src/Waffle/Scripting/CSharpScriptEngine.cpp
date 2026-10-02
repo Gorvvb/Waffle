@@ -23,15 +23,13 @@ namespace Waffle {
 
 	namespace
 	{
-		// True only while an ImGui text field owns the keyboard - typing in
-		// editor UI must not steer gameplay.
+		// True only while an ImGui text field owns the keyboard - editor typing must not steer gameplay.
 		bool GameplayKeyboardBlocked()
 		{
 			return ImGui::GetIO().WantTextInput;
 		}
 
-		// --- minimal platform layer so the host stays portable (Linux port
-		// only needs these four; hostfxr itself is cross-platform) ---
+		// Minimal platform layer keeps the host portable (Linux needs these four; hostfxr is cross-platform).
 #if defined(WF_PLATFORM_WINDOWS)
 		void* LoadSharedLibrary(const std::filesystem::path& path)
 		{
@@ -112,9 +110,7 @@ namespace Waffle {
 			return false;
 		}
 
-		// Highest-versioned hostfxr under <dotnet root>/host/fxr, where the
-		// root is tried as: the exe's own folder (self-contained layout),
-		// $DOTNET_ROOT, then the system install locations.
+		// Highest-versioned hostfxr under <root>/host/fxr; tries exe dir, $DOTNET_ROOT, then system installs.
 		std::filesystem::path FindHostFxr()
 		{
 			std::vector<std::filesystem::path> roots;
@@ -191,9 +187,7 @@ namespace Waffle {
 			return true;
 		}
 
-		// ScriptingRuntime folder: contract assembly + runtimeconfig + the
-		// project's GameScripts.dll. Env override wins, then the packaged
-		// layout next to the exe, then the repo dev layout, then the cwd.
+		// ScriptingRuntime dir (contract dll, runtimeconfig, GameScripts.dll): env override, exe dir, repo, cwd.
 		std::filesystem::path FindScriptingRuntimeDir()
 		{
 			std::vector<std::filesystem::path> candidates;
@@ -245,8 +239,7 @@ namespace Waffle {
 
 		bool LoadHostFxrAndContract();
 
-		// Where the contract assembly + staged GameScripts.dll live (found
-		// once at Init, reused by the packed-export fallback).
+		// Contract assembly + staged GameScripts.dll location; found once at Init, reused by packed-export fallback.
 		std::filesystem::path s_ScriptingRuntimeDir;
 
 		bool LoadHostFxrAndContract()
@@ -284,9 +277,7 @@ namespace Waffle {
 			return true;
 		}
 
-
-		// Script file path (relative to the asset root, with or without
-		// extension) -> full path on disk.
+		// Script file path (asset-root-relative, with or without .cs) -> full path on disk.
 		std::filesystem::path ResolveScriptPath(const std::string& scriptPath)
 		{
 			std::filesystem::path normalized = std::filesystem::path(scriptPath).make_preferred();
@@ -328,7 +319,7 @@ namespace Waffle {
 	// Defined in CSharpScriptBindings.cpp.
 	void PopulateHostFunctions(CSharpScriptHost::HostFunctions& fns);
 
-	// --- static state ---------------------------------------------------------
+	// Static state
 
 	Scene* CSharpScriptEngine::s_SceneContext = nullptr;
 	std::filesystem::path CSharpScriptEngine::s_AssetPath = "Assets";
@@ -383,10 +374,9 @@ namespace Waffle {
 		return "unknown error";
 	}
 
-	// --- contact listener ---------------------------------------------------------
+	// Contact listener
 
-	// Collision events are queued during b2World::Step and dispatched after it -
-	// running scripts mid-solve (body create/destroy/mutate) is UB in Box2D.
+	// Collision events queue during b2World::Step and dispatch after - scripts mid-solve is UB in Box2D.
 	class CSharpContactListener : public b2ContactListener
 	{
 	public:
@@ -416,8 +406,7 @@ namespace Waffle {
 				return;
 			}
 
-			// Swap so scripts fired here that produce new contacts append to the
-			// next batch instead of mutating the vector being iterated.
+			// Swap so contacts produced by scripts append to the next batch, not the vector being iterated.
 			std::vector<ContactEvent> events = std::move(m_Events);
 			m_Events.clear();
 
@@ -458,7 +447,7 @@ namespace Waffle {
 
 	static CSharpContactListener* s_ContactListener = nullptr;
 
-	// --- init / shutdown -----------------------------------------------------------
+	// Init / shutdown
 
 	bool CSharpScriptEngine::Init()
 	{
@@ -547,14 +536,13 @@ namespace Waffle {
 		s_ManagedLastError = nullptr;
 		s_LoadAndGetFn = nullptr;
 
-		// Closing the context releases hostfxr's bookkeeping; the runtime
-		// itself stays in the process (unloading CoreCLR is not supported).
+		// Closing the context frees hostfxr bookkeeping; CoreCLR stays loaded (unload unsupported).
 		if (s_Context && s_CloseHost)
 			s_CloseHost(s_Context);
 		s_Context = nullptr;
 	}
 
-	// --- script compilation -------------------------------------------------------------
+	// Script compilation
 
 	bool CSharpScriptEngine::CompileProjectScripts()
 	{
@@ -567,9 +555,7 @@ namespace Waffle {
 		std::filesystem::path sourcesDir = s_AssetPath / "Scripts";
 		if (!std::filesystem::exists(sourcesDir))
 		{
-			// Packed export: there is no physical Assets/Scripts folder and
-			// nothing to compile - the pre-compiled assembly ships next to
-			// ScriptingRuntime. Point the managed runtime at it directly.
+			// Packed export: no Assets/Scripts folder to compile - point the runtime at the prebuilt assembly.
 			for (const std::filesystem::path& candidate : {
 				s_ScriptingRuntimeDir / "GameScripts" / "GameScripts.dll",
 				s_ScriptingRuntimeDir / "GameScripts.dll" })
@@ -601,7 +587,7 @@ namespace Waffle {
 		return std::filesystem::exists(outputDll);
 	}
 
-	// --- scene lifecycle -------------------------------------------------------------
+	// Scene lifecycle
 
 	void CSharpScriptEngine::LoadScriptsForEntity(Scene* scene, Entity entity)
 	{
@@ -620,10 +606,7 @@ namespace Waffle {
 			if (scriptPath.empty())
 				continue;
 
-			// The class comes from the compiled assembly, not the source
-			// file: in packed exports the .cs sources live inside the archive
-			// (or nowhere loose), so a failed resolve must not skip the
-			// instance - the stem still names the class.
+			// Class = file stem: packed exports may not resolve the source, but the instance must still load.
 			std::filesystem::path fullPath = ResolveScriptPath(scriptPath);
 			std::string typeName = VFS::Exists(fullPath)
 				? fullPath.stem().string()
@@ -677,15 +660,12 @@ namespace Waffle {
 		if (!scene || !s_Initialized)
 			return;
 
-		// Fresh assembly load every play: compile-on-play doubles as the
-		// editor's hot reload; the exported runtime short-circuits when the
-		// cached assembly is already up to date.
+		// Compile every play - doubles as editor hot reload; exported runtime skips when cache is current.
 		CompileProjectScripts();
 
 		s_ManagedRuntimeStart();
 
-		// Snapshot BEFORE scripts: OnStart can CreateEntity/InstantiatePrefab,
-		// reallocating the pool under a live view iterator (UB).
+		// Snapshot BEFORE scripts: OnStart can CreateEntity, reallocating the pool under a live view (UB).
 		std::vector<entt::entity> scriptedEntities;
 		{
 			auto view = scene->m_Registry.view<ScriptComponent>();
@@ -729,8 +709,7 @@ namespace Waffle {
 			return;
 		}
 
-		// Snapshot BEFORE scripts: OnDestroy can Create/DestroyEntity, mutating
-		// the pool under a live view iterator (UB).
+		// Snapshot BEFORE scripts: OnDestroy can Create/DestroyEntity under a live view (UB).
 		std::vector<entt::entity> scriptedEntities;
 		{
 			auto view = scene->m_Registry.view<ScriptComponent>();
@@ -753,8 +732,7 @@ namespace Waffle {
 		s_PendingDestroys.clear();
 		s_DelayedDestroys.clear();
 
-		// Drops the script ALC (Unload) + gizmo instances - PersistentData
-		// survives, exactly like the old Global table.
+		// Drops the script ALC (Unload) + gizmo instances; PersistentData survives like the old Global table.
 		if (s_ManagedRuntimeStop)
 			s_ManagedRuntimeStop();
 
@@ -763,8 +741,7 @@ namespace Waffle {
 
 	void CSharpScriptEngine::ProcessPendingDestroys(Scene* scene)
 	{
-		// Swap first: OnDestroy can DestroyEntity (push_back into the vector
-		// being iterated = UB); new requests wait for the next frame.
+		// Swap first: OnDestroy can DestroyEntity (push_back into the iterated vector = UB); new requests wait a frame.
 		std::vector<uint32_t> pendingDestroys = std::move(s_PendingDestroys);
 		s_PendingDestroys.clear();
 
@@ -774,8 +751,7 @@ namespace Waffle {
 			if (scene->m_Registry.valid(e))
 			{
 				Entity entity{ e, scene };
-				// Fire OnDestroy and drop the instance - prevents stale handles
-				// colliding with recycled entity ids.
+				// Fire OnDestroy and drop the instance - stale handles must not hit recycled entity ids.
 				if (scene->m_Registry.all_of<ScriptComponent>(e))
 					DestroyScriptsForEntity(scene, entity);
 				scene->DestroyEntity(entity);
@@ -790,13 +766,11 @@ namespace Waffle {
 
 		UpdateInputStates();
 
-		// Debug gizmos last a single frame: the editor drains them in its
-		// overlay pass; the exported runtime never reads them.
+		// Debug gizmos last one frame - the editor drains them in its overlay pass; the runtime never reads them.
 		s_DebugLines.clear();
 		s_DebugCircles.clear();
 
-		// --- Script update (skip disabled entities) - snapshot BEFORE scripts:
-		// OnUpdate can CreateEntity/InstantiatePrefab (UB under a live view).
+		// Script update (skips disabled) - snapshot BEFORE: OnUpdate can CreateEntity/prefabs (UB under a live view).
 		std::vector<entt::entity> scriptedEntities;
 		{
 			auto view = scene->m_Registry.view<ScriptComponent>();
@@ -809,8 +783,7 @@ namespace Waffle {
 
 		for (auto entityID : scriptedEntities)
 		{
-			// Re-check: an earlier script this frame may have destroyed or
-			// disabled this entity.
+			// Re-check: an earlier script this frame may have destroyed or disabled this entity.
 			if (!scene->m_Registry.valid(entityID))
 				continue;
 			if (scene->m_Registry.all_of<DisabledComponent>(entityID))
@@ -822,7 +795,7 @@ namespace Waffle {
 		// Timers pump (C#-side) - runs even when no entities are scripted.
 		s_ManagedFrame((float)ts);
 
-		// --- Tick delayed destroys ---
+		// Tick delayed destroys
 		for (auto& d : s_DelayedDestroys)
 			d.Remaining -= (float)ts;
 		for (auto& d : s_DelayedDestroys)
@@ -846,13 +819,12 @@ namespace Waffle {
 
 	void CSharpScriptEngine::FireEnable(uint32_t entityId, bool enabled)
 	{
-		// OnEnable / OnDisable fire only for script-initiated SetActive
-		// transitions (the SetActive binding routes through here).
+		// OnEnable/OnDisable fire only for script-initiated SetActive (the binding routes through here).
 		if (s_Initialized && s_RuntimeRunning && s_ManagedFireEnable)
 			s_ManagedFireEnable(entityId, enabled ? 1 : 0);
 	}
 
-	// --- editor hooks -----------------------------------------------------------------
+	// Editor hooks
 
 	void CSharpScriptEngine::OnEditorGizmos(Scene* scene)
 	{
@@ -866,8 +838,7 @@ namespace Waffle {
 		s_DebugLines.clear();
 		s_DebugCircles.clear();
 
-		// Recompile + drop cached gizmo instances when any script changed on
-		// disk (mirrors the Lua gizmo-env hot reload).
+		// Recompile + drop cached gizmo instances when a script changed on disk (mirrors the Lua hot reload).
 		{
 			bool stale = false;
 			std::error_code ec;
@@ -928,7 +899,7 @@ namespace Waffle {
 		s_SceneContext = previousContext;
 	}
 
-	// --- field scrape + live inspector values ---------------------------------------------
+	// Field scrape + live inspector values
 
 	static_assert(sizeof(CSharpScriptHost::ScriptFieldDef) == 64 + 4 + 4 + 4 + 4 + 4 + 256 + 4 + 4 + 4 + 128,
 		"ScriptFieldDef layout drift - mirror in ScriptRuntime.cs (StructLayout Sequential)");
@@ -957,8 +928,7 @@ namespace Waffle {
 		if (count <= 0)
 			return;
 
-		// Don't overwrite fields that were already loaded (e.g. from the scene
-		// file); respect UserModified like the Lua scraper did.
+		// Don't overwrite fields already loaded from the scene file; respect UserModified.
 		auto& fields = sc.Fields[scriptPath];
 		for (int i = 0; i < count; i++)
 		{
@@ -1029,7 +999,7 @@ namespace Waffle {
 		return true;
 	}
 
-	// --- misc -------------------------------------------------------------------------
+	// Misc
 
 	void CSharpScriptEngine::CallUIHandler(const std::string& handlerName, uint32_t buttonEntityID)
 	{
@@ -1040,10 +1010,7 @@ namespace Waffle {
 
 	bool CSharpScriptEngine::IsGameplayMouseBlocked()
 	{
-		// Input arbitration: WantCaptureMouse covers ANY ImGui window (incl.
-		// the viewport), so editor gameplay input is gated only outside the
-		// game viewport rect; the exported runtime has no viewport rect and
-		// is never gated.
+		// WantCaptureMouse covers any ImGui window (incl. the viewport); gate gameplay only outside the game viewport rect (exported runtime never gates).
 		ImGuiIO& io = ImGui::GetIO();
 		if (!io.WantCaptureMouse)
 			return false;

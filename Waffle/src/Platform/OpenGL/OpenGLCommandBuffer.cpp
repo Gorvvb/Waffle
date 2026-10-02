@@ -29,8 +29,7 @@ namespace Waffle {
 		if (m_Desc.DepthTest)
 		{
 			glEnable(GL_DEPTH_TEST);
-			// LEQUAL: 2D sprites are routinely coplanar (painter-sorted), the
-			// GL default of GL_LESS would discard the later sprite.
+			// LEQUAL: 2D sprites are often coplanar (painter-sorted); GL_LESS would drop the later one.
 			glDepthFunc(GL_LEQUAL);
 			glDepthMask(m_Desc.DepthWrite ? GL_TRUE : GL_FALSE);
 		}
@@ -119,8 +118,7 @@ namespace Waffle {
 
 	void OpenGLCommandBuffer::SetLineWidth(float width)
 	{
-		// Core GL guarantees only 1.0; clamp to the device range instead of
-		// raising GL_INVALID_VALUE.
+		// Core GL only guarantees 1.0; clamp to the device range to avoid GL_INVALID_VALUE.
 		static GLfloat range[2] = { 0.0f, 0.0f };
 		if (range[1] == 0.0f)
 			glGetFloatv(GL_LINE_WIDTH_RANGE, range);

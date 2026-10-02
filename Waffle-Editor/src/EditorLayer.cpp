@@ -54,10 +54,7 @@ namespace Waffle {
 		}
 	}
 
-
-	// Path relative to projectRoot with forward slashes when the path lives
-	// inside it (portable, shareable), otherwise the full path. Used for
-	// every path written INTO project files.
+	// Forward-slash path relative to projectRoot when inside it, else the full path; used for paths written into project files.
 	static std::string MakeProjectRelative(const std::filesystem::path& path, const std::filesystem::path& projectRoot)
 	{
 		std::error_code ec;
@@ -76,8 +73,7 @@ namespace Waffle {
 		return s;
 	}
 
-	// Inverse of MakeProjectRelative: resolves a stored (relative) path
-	// against projectRoot; absolute inputs pass through unchanged.
+	// Inverse of MakeProjectRelative: resolves a stored relative path against projectRoot; absolute paths pass through.
 	static std::filesystem::path ResolveFromProjectRoot(const std::string& stored, const std::filesystem::path& projectRoot)
 	{
 		std::filesystem::path p(stored);
@@ -85,7 +81,6 @@ namespace Waffle {
 			return projectRoot / p;
 		return p;
 	}
-
 
 	EditorLayer::EditorLayer()
 		: Layer("EditorLayer"), m_CameraController(1280.0f / 720.0f)
@@ -236,8 +231,7 @@ namespace Waffle {
 
 		m_fps = ts;
 
-		// Deferred prefab-scene release: safe spot between frames, before any
-		// command buffer recording starts (see m_PrefabScenePendingRelease).
+		// Deferred prefab-scene release: safe between frames, before command buffer recording (m_PrefabScenePendingRelease).
 		if (m_PrefabScenePendingRelease)
 			m_PrefabScenePendingRelease = nullptr;
 
@@ -323,8 +317,7 @@ namespace Waffle {
 		}
 		}
 
-		// Deferred Lua Quit(): stop play AFTER the frame completed
-		// (never from inside the click callback - registry corruption).
+		// Deferred Lua Quit(): stop play after the frame completes, never inside the click callback (registry corruption).
 		if (m_SceneState == SceneState::Play && CSharpScriptEngine::IsQuitRequested())
 		{
 			CSharpScriptEngine::ClearQuitRequest();
@@ -335,12 +328,7 @@ namespace Waffle {
 		Renderer::GetCommandBuffer()->EndRenderPass();
 	}
 
-	// Unprojects an ImGui-space mouse position to the world point on the
-	// z=0 plane through the editor camera, by casting a ray (near->far
-	// points) and intersecting the plane. Correct for both orthographic
-	// and perspective projections - a plain inverse-projection at a fixed
-	// NDC depth lands on a near-clip sliver with a perspective camera,
-	// which clamped all painting to a tiny box around the focal point.
+	// Unprojects an ImGui mouse pos onto the z=0 plane via a near->far ray; fixed-NDC projection breaks with perspective (near-clip sliver).
 	static bool ScreenToWorldEditor(const EditorCamera& camera,
 		const ImVec2& vpMin, const ImVec2& vpMax, const ImVec2& mouse, glm::vec2& out, float planeZ = 0.0f)
 	{
@@ -370,7 +358,7 @@ namespace Waffle {
 	// ImGui
 	void EditorLayer::OnImGuiRender()
 	{
-		// -- DockSpace setup -------------------------------------------------
+		// DockSpace setup
 		static bool        dockSpaceOpen = true;
 		static bool        opt_fullscreen = true;
 		static bool        opt_padding = false;
@@ -422,7 +410,7 @@ namespace Waffle {
 			style.WindowMinSize.x = minWinSizeX;
 		}
 
-		// -- Menu bar --------------------------------------------------------
+		// Menu bar
 		if (ImGui::BeginMenuBar())
 		{
 			if (ImGui::BeginMenu("File"))
@@ -498,7 +486,7 @@ namespace Waffle {
 			ImGui::EndMenuBar();
 		}
 
-		// -- New Project modal ------------------------------------------------
+		// New Project modal
 		if (m_ShowNewProjectModal)
 		{
 			ImGui::OpenPopup("New Project");
@@ -528,7 +516,7 @@ namespace Waffle {
 			ImGui::EndPopup();
 		}
 
-		// -- Project Settings window ------------------------------------------
+		// Project Settings window
 		UI_ProjectSettings();
 
 		if (m_ShowAnimationEditor)
@@ -540,17 +528,16 @@ namespace Waffle {
 		if (m_ShowTilePalette)
 			UI_TilePalette();
 
-		// -- Export modal -----------------------------------------------------
+		// Export modal
 		UI_ExportModal();
 
-		// -- Stats -------------------------------------------------------------
+		// Stats
 		ImGui::Begin("Stats");
 		{
 			float frameTimeMs = m_fps * 1000.0f;
 			float fps = m_fps > 0.0f ? 1.0f / m_fps : 0.0f;
 
-			// Performance headline: FPS tinted green when smooth, amber when
-			// dropping below 50.
+			// FPS tinted green when smooth, amber below 50.
 			ImVec4 fpsTint = (fps >= 50.0f) ? UI::Theme::Success : UI::Theme::Accent;
 			ImGui::TextColored(fpsTint, "%.1f FPS", fps);
 			ImGui::SameLine(0.0f, 8.0f);
@@ -580,7 +567,7 @@ namespace Waffle {
 
 		UI_SettingsPanel();
 
-		// -- Viewport ----------------------------------------------------------
+		// Viewport
 		ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2{ 0, 0 });
 		ImGui::Begin("Viewport");
 		{
@@ -636,8 +623,7 @@ namespace Waffle {
 			}
 
 			void* textureID = m_Framebuffer->GetImGuiAttachmentId();
-			// Post-processing is per camera: the viewport preview uses the
-			// primary camera's CameraComponent::PostProcessing settings.
+			// Post-processing is per camera: the preview uses the primary camera's CameraComponent::PostProcessing.
 			m_ViewportPostSettings = PostProcessingSettings();
 			if (m_ActiveScene)
 			{
@@ -692,10 +678,7 @@ namespace Waffle {
 						{
 							if (target.HasComponent<TilemapComponent>())
 							{
-								// Dropping a texture on a tilemap sets its
-								// tilesheet - never a full-sheet sprite
-								// renderer (that would give the map a
-								// fixed, scaled size).
+								// Texture drop on a tilemap sets its tilesheet, never a full-sheet sprite renderer (fixed size).
 								auto& tm = target.GetComponent<TilemapComponent>();
 								tm.TilesetTexture = Texture2D::Create(path.string(), tm.FilterMode);
 								tm.TexturePath = GetNormalizedAssetPath(path.string());
@@ -736,10 +719,7 @@ namespace Waffle {
 			// Transform gizmos
 			Entity selectedEntity = m_SceneHierarchyPanel.GetSelectedEntity();
 
-			// Collider edit mode: the gizmo drives the SELECTED entity's
-			// collider instead of its transform (Translate = offset,
-			// Scale = size / radius). Rotating a symmetric 2D collider is
-			// meaningless, so only those two operations act.
+			// Collider edit mode: the gizmo drives the collider, not the transform (Translate = offset, Scale = size/radius); no rotate.
 			if (m_ColliderEditMode && selectedEntity && m_SceneState == SceneState::Edit)
 			{
 				const bool editBox = m_ColliderEditTarget == ColliderEditTarget::Box && selectedEntity.HasComponent<BoxCollider2DComponent>();
@@ -804,8 +784,7 @@ namespace Waffle {
 							glm::value_ptr(rotationDeg),
 							glm::value_ptr(scale));
 
-						// Undo the body rotation so the offset stays
-						// body-local, exactly like the physics setup does.
+						// Undo the body rotation so the offset stays body-local, like the physics setup.
 						glm::vec2 delta = glm::vec2(translation.x, translation.y) - glm::vec2(frame.Position);
 						glm::vec2 localOffset(
 							cosf(-frame.Rotation) * delta.x - sinf(-frame.Rotation) * delta.y,
@@ -910,7 +889,7 @@ namespace Waffle {
 				}
 			}
 
-			// -- Tile painting -------------------------------------------------
+			// Tile painting
 			if (m_SceneState == SceneState::Edit && m_TilePaintMode != 0)
 			{
 				Entity tileEnt = m_SceneHierarchyPanel.GetSelectedEntity();
@@ -1148,8 +1127,7 @@ namespace Waffle {
 
 	void EditorLayer::UI_Toolbar()
 	{
-	// Transport controls centered at the top of the viewport, amber accents
-	// while the game is running.
+	// Transport controls centered at the top of the viewport, amber accents while playing.
 	const float iconSize = 24.0f;
 	const float pad = 11.0f;
 	const float clusterW = 3.0f * (iconSize + pad) + pad;
@@ -1238,7 +1216,7 @@ namespace Waffle {
 		ImGui::SetNextWindowSize(ImVec2(540, 600), ImGuiCond_FirstUseEver);
 		ImGui::Begin("Project Settings", &m_ShowProjectTab);
 
-		// -- Identity ------------------------------------------------------
+		// Identity
 		ImGui::SeparatorText("Identity");
 
 		std::string appNameStr = m_ExportAppNameBuffer;
@@ -1326,7 +1304,7 @@ namespace Waffle {
 		}
 		ImGui::EndGroup();
 
-		// -- Physics -------------------------------------------------------
+		// Physics
 		ImGui::SeparatorText("Physics");
 		UI::BeginPropertyGrid();
 		if (UI::PropertyFloat("Gravity Y", m_ProjectGravity, 0.1f, -100.0f, 0.0f))
@@ -1337,10 +1315,9 @@ namespace Waffle {
 		}
 		UI::EndPropertyGrid();
 
-		// Post-processing moved out of project settings - it is now edited
-		// per camera in the CameraComponent inspector.
+		// Post-processing moved out of project settings - edited per camera in the CameraComponent inspector.
 
-		// -- Scene Order ---------------------------------------------------
+		// Scene Order
 		ImGui::SeparatorText("Scene Order");
 		ImGui::TextDisabled("Index 0 is the start scene. Drag rows or use arrows to reorder.");
 
@@ -1363,8 +1340,7 @@ namespace Waffle {
 			ImGui::TableSetupColumn("##dn", ImGuiTableColumnFlags_WidthFixed, 24.0f);
 			ImGui::TableHeadersRow();
 
-			// Cache the current-scene comparison - std::filesystem::equivalent
-			// is a filesystem syscall per call and this runs per row per frame.
+			// Cache the current-scene comparison - filesystem::equivalent is a syscall and this runs per row per frame.
 			std::filesystem::path normalizedEditorPath =
 				m_EditorScenePath.lexically_normal();
 			for (int i = 0; i < (int)m_SceneList.size(); i++)
@@ -1408,9 +1384,7 @@ namespace Waffle {
 						{
 							auto tmp = m_SceneList[from];
 							m_SceneList.erase(m_SceneList.begin() + from);
-							// After erasing, rows below `from` shifted up by
-							// one - compensate so the drop always inserts at
-							// the target row's slot in BOTH drag directions.
+							// Erasing shifts rows below 'from' up one - compensate so the drop inserts at the target row either way.
 							int to = (from < i) ? i - 1 : i;
 							m_SceneList.insert(m_SceneList.begin() + to, tmp);
 							SaveProjectSettings();
@@ -1454,7 +1428,7 @@ namespace Waffle {
 			ImGui::TextColored(ImVec4(0.9f, 0.6f, 0.2f, 1.0f),
 				"No .waffle scenes found. Save a scene first.");
 
-		// -- Export shortcut ------------------------------------------------
+		// Export shortcut
 		ImGui::Spacing();
 		ImGui::Separator();
 		if (ImGui::Button("Export Project...", ImVec2(-1.0f, 0.0f)))
@@ -1534,8 +1508,7 @@ namespace Waffle {
 		ImGui::InputText("Application Name",
 			m_ExportAppNameBuffer, sizeof(m_ExportAppNameBuffer));
 
-		// Start scene - choosing a scene here rotates it to index 0 in m_SceneList,
-		// so "Scenes[0]" and "StartScene" in project.wfp always agree.
+		// Start scene: choosing one rotates it to index 0 in m_SceneList, so Scenes[0] and StartScene in project.wfp agree.
 		if (!m_SceneList.empty())
 		{
 			std::vector<std::string> names;
@@ -1677,9 +1650,7 @@ namespace Waffle {
 		if (m_SceneState == SceneState::Play) return false;
 		if (e.GetRepeatCount() > 0)           return false;
 
-		// Never fire editor shortcuts while an ImGui text input (rename box,
-		// console input, path fields) owns the keyboard - Q/W/E/R, Ctrl+S etc.
-		// would be typed straight into gameplay actions.
+		// No editor shortcuts while an ImGui text input owns the keyboard - Q/W/E/R, Ctrl+S would leak into gameplay.
 		ImGuiIO& io = ImGui::GetIO();
 		if (io.WantTextInput)
 			return false;
@@ -1717,8 +1688,7 @@ namespace Waffle {
 
 	bool EditorLayer::OnMouseButtonPressed(MouseButtonPressedEvent& e)
 	{
-		// Tile painting owns the click - clicking must not reselect (and
-		// thereby steal) the tilemap mid-brush.
+		// Tile painting owns the click - don't reselect (steal) the tilemap mid-brush.
 		if (m_TilePaintMode != 0 && m_ViewportHovered && !ImGuizmo::IsOver())
 		{
 			Entity tileEnt = m_SceneHierarchyPanel.GetSelectedEntity();
@@ -1784,8 +1754,7 @@ namespace Waffle {
 			}
 		}
 
-		// Collider outline of the SELECTED entity (green normally, amber
-		// while its collider is being edited with the gizmo).
+		// Collider outline of the selected entity - green normally, amber while its collider is being edited.
 		if (Entity sel = m_SceneHierarchyPanel.GetSelectedEntity())
 		{
 			ColliderFrame frame = GetColliderFrame(m_ActiveScene->GetWorldTransform(sel));
@@ -1816,8 +1785,7 @@ namespace Waffle {
 			}
 		}
 
-		// Debug gizmos (Gizmo.DrawRay / DrawLine / DrawWireCircle) -
-		// queued by scripts, drawn here and ONLY in the editor.
+		// Debug gizmos (Gizmo.DrawRay/DrawLine/DrawWireCircle): queued by scripts, drawn here, editor only.
 		{
 			const auto& lines = CSharpScriptEngine::GetPendingDebugLines();
 			for (const auto& l : lines)
@@ -1837,9 +1805,7 @@ namespace Waffle {
 		{
 			if (Entity sel = m_SceneHierarchyPanel.GetSelectedEntity())
 			{
-				// No selection box on Camera entities or Tilemaps - a
-				// tilemap is an infinite grid, not a sized object; it is
-				// selected by clicking one of its tiles or via hierarchy.
+				// No selection box on Cameras or Tilemaps - a tilemap is an infinite grid, picked via its tiles or the hierarchy.
 				if (sel && !sel.HasComponent<CameraComponent>() && !sel.HasComponent<TilemapComponent>())
 				{
 					glm::vec4 outlineColor = m_SelectionOutlineColor;
@@ -2009,8 +1975,7 @@ namespace Waffle {
 						m_SceneList.clear();
 						for (auto node : project["Scenes"])
 						{
-							// Stored project-root-relative (older files may hold
-							// absolute paths - those still resolve directly).
+						// Stored project-root-relative; older files may hold absolute paths, which still resolve directly.
 							std::filesystem::path p = ResolveFromProjectRoot(
 								node.as<std::string>(), m_ProjectPath);
 							if (std::filesystem::exists(p))
@@ -2018,8 +1983,7 @@ namespace Waffle {
 						}
 					}
 
-					// Post-processing lives on the scene's cameras now
-					// (CameraComponent::PostProcessing) - nothing to load here.
+					// Post-processing lives on the scene's cameras (CameraComponent) - nothing to load here.
 				}
 			}
 			catch (...) {}
@@ -2101,9 +2065,7 @@ namespace Waffle {
 	// Scene management
 	void EditorLayer::NewScene()
 	{
-		// A fresh scene replaces the runtime one - stop playback first or the
-		// next OnUpdate would run OnUpdateRuntime on a scene that never had
-		// OnRuntimeStart (null physics world).
+		// Stop playback first: a fresh scene replaces the runtime one, and OnUpdateRuntime without OnRuntimeStart = null physics world.
 		if (m_InPrefabEditMode)
 			ClosePrefabEditor(true);
 
@@ -2173,9 +2135,7 @@ namespace Waffle {
 			return;
 		}
 
-		// Always serialize the editor scene. m_ActiveScene is the runtime copy
-		// while playing - saving it would bake physics-moved transforms and
-		// runtime state into the file.
+		// Always serialize the editor scene - m_ActiveScene is the runtime copy; saving it bakes physics-moved transforms in.
 		if (!m_EditorScenePath.empty())
 			SerializeScene(m_EditorScene, m_EditorScenePath);
 		else
@@ -2314,9 +2274,7 @@ namespace Waffle {
 		if (!m_ProjectPath.empty())
 		{
 			out << YAML::Key << "LastOpenedProject" << YAML::Value << m_ProjectPath.string();
-			// Portable hint: the same path relative to the config folder, so
-			// a moved/portable install (projects shipped next to the exe)
-			// still resolves after the absolute path breaks.
+			// Portable hint: same path relative to the config folder, so a moved install still resolves if the absolute path breaks.
 			std::error_code ec;
 			std::filesystem::path exeDir = configPath.parent_path();
 			std::filesystem::path rel = std::filesystem::relative(m_ProjectPath, exeDir, ec);
@@ -2358,8 +2316,7 @@ namespace Waffle {
 					std::string lastProjStr = cfg["LastOpenedProject"] ? cfg["LastOpenedProject"].as<std::string>() : "";
 					std::string lastSceneStr = cfg["LastOpenedScene"] ? cfg["LastOpenedScene"].as<std::string>() : "";
 
-					// The absolute path wins; if it broke (drive moved, folder
-					// renamed), the relative hints keep the install working.
+					// Absolute path wins; if it broke (drive moved, folder renamed), the relative hints keep things working.
 					if (!lastProjStr.empty() && !std::filesystem::exists(lastProjStr))
 					{
 						if (cfg["LastOpenedProjectRelative"])
@@ -2441,8 +2398,7 @@ namespace Waffle {
 
 		ExitColliderEditMode();
 
-		// Play runs the persisted scene - a prefab being edited is not one.
-		// The Back button saves & returns to the scene, then Play works.
+		// Play runs the persisted scene, not a prefab being edited - Back saves and returns first.
 		if (m_InPrefabEditMode)
 		{
 			WF_WARN("Exit prefab edit mode (Back) before entering play mode");
@@ -2483,16 +2439,11 @@ namespace Waffle {
 		m_SceneHierarchyPanel.SetContext(m_ActiveScene);
 		m_ContentBrowserPanel.SetContext(m_ActiveScene);
 		m_AnimationEditorPanel.SetContext(m_ActiveScene);
-		// The hovered entity belongs to the runtime scene that was just
-		// dropped - keep it around and the next HasComponent() reads freed memory.
+		// Clear the hovered entity - it belongs to the dropped runtime scene; keeping it reads freed memory.
 		m_HoveredEntity = Entity();
 	}
 
-	// Prefab edit mode ------------------------------------------------------
-	// Double-clicking a .prefab in the Content Browser deserializes it into a
-	// temporary scene that becomes the editor context; Back (in the hierarchy
-	// header) serializes the root back into the .prefab file and restores the
-	// real scene. Original scene state stays untouched in m_EditorScene.
+	// Prefab edit mode: a double-clicked .prefab opens as a temporary scene; Back saves it back to the file, m_EditorScene stays untouched.
 
 	void EditorLayer::OpenPrefabForEditing(const std::filesystem::path& prefabPath)
 	{

@@ -59,7 +59,7 @@ namespace Waffle {
 			s_GLFWInitialized = true;
 		}
 
-		// ---- Window creation hints depend on API ----
+		// Window creation hints depend on API
 		if (RendererAPI::GetAPI() == RendererAPI::API::Vulkan)
 		{
 			// Tell GLFW not to create an OpenGL context
@@ -86,7 +86,7 @@ namespace Waffle {
 		if (!props.IconPath.empty())
 			SetIcon(props.IconPath);
 
-		// ---- GLFW callbacks ----
+		// GLFW callbacks
 		glfwSetWindowSizeCallback(m_Window, [](GLFWwindow* window, int width, int height)
 		{
 			WindowData& data = *(WindowData*)glfwGetWindowUserPointer(window);
@@ -192,10 +192,7 @@ namespace Waffle {
 	void WindowsWindow::Shutdown()
 	{
 		WF_PROFILE_FUNCTION();
-		// Destroy the graphics context BEFORE the window: VulkanContext's
-		// teardown destroys a VkSurfaceKHR created from this window, and the
-		// OpenGL HGLRC cannot outlive it either. Never deleting m_Context
-		// leaked the entire device every run.
+		// Destroy the context BEFORE the window - its VkSurfaceKHR/HGLRC is window-backed; this leak took the whole device.
 		delete m_Context;
 		m_Context = nullptr;
 
@@ -239,8 +236,7 @@ namespace Waffle {
 
 	void WindowsWindow::SetIcon(const std::string& path)
 	{
-		// GLFW expects top-down pixels; the texture loaders leave stb's
-		// GLOBAL vertical-flip flag on, which would mirror the icon.
+		// GLFW wants top-down pixels; stb's global flip flag (left on by texture loaders) would mirror the icon.
 		stbi_set_flip_vertically_on_load(0);
 		stbi_uc* pixels = nullptr;
 		int width = 0, height = 0, channels = 0;
@@ -258,9 +254,7 @@ namespace Waffle {
 			std::string iconPath = path;
 			if (!std::filesystem::exists(iconPath))
 			{
-				// The icon ships next to the executable - resolve relative to
-				// it, since the CWD depends on the launch context (VS uses
-				// the project folder, double-click uses the exe folder).
+				// Icon ships next to the exe; resolve relative to it - CWD varies by launch context (VS vs double-click).
 				char exeBuf[MAX_PATH] = {};
 				if (GetModuleFileNameA(NULL, exeBuf, MAX_PATH) > 0)
 				{

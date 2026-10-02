@@ -4,9 +4,7 @@
 
 namespace Waffle {
 
-	// Add buffers to events. Right now we use blocking, witch means when an event occurs it
-	// immediatly gets sipatched and must be delt with right then and there.
-	// Use the bus method insead to only process events during a "event" part of the update cycle.
+	// Events are currently blocking: dispatched and handled immediately. A bus would instead process them in the event phase of the update cycle.
 
 	enum class EventType
 	{

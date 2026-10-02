@@ -1,17 +1,6 @@
 #pragma once
 
-// -------------------------------------------------------------------------
-// CSharpScriptHost.h - the native<->managed ABI contract.
-//
-// HostFunctions is a flat table of C function pointers the engine hands to
-// the managed runtime at init; the managed side mirrors it as a
-// [StructLayout(Sequential)] struct and binds raw function pointers from it.
-// LAYOUT IS ABI: add new entries ONLY at the end, and update
-// Scripting/src/Waffle/Scripting/Internal/HostFunctions.cs in the same commit.
-//
-// All strings cross as UTF-8 (zero-terminated). Paths returned to callers are
-// filled into caller-owned buffers to avoid any allocation on either side.
-// -------------------------------------------------------------------------
+// Native<->managed ABI contract: HostFunctions is a flat C fn-pointer table mirrored by the managed [StructLayout(Sequential)] struct - layout is ABI (append-only, update HostFunctions.cs in the same commit); strings are UTF-8, out-buffers caller-owned.
 
 #include <cstdint>
 
@@ -27,8 +16,7 @@ namespace Waffle::CSharpScriptHost {
 		Field_Vec2 = 4,
 	};
 
-	// Mirror of Waffle.Scripting.Internal.ScriptFieldDef (managed) - the
-	// managed ScrapeFields entry fills an array of these for the inspector.
+	// Mirror of Waffle.Scripting.Internal.ScriptFieldDef (managed); the managed ScrapeFields entry fills an array of these for the inspector.
 	struct ScriptFieldDef
 	{
 		char Name[64];
@@ -55,17 +43,17 @@ namespace Waffle::CSharpScriptHost {
 
 	struct HostFunctions
 	{
-		// --- logging ---
+		// Logging
 		void (*LogInfo)(const char* utf8);
 		void (*LogWarn)(const char* utf8);
 		void (*LogError)(const char* utf8);
 
-		// --- scene / framework queries ---
+		// Scene / framework queries
 		void  (*GetViewportSize)(float* outW, float* outH);
 		void  (*ScreenToWorld)(float sx, float sy, float* outWx, float* outWy);
 		int   (*EditorGizmoPass)();               // managed gates mutating API with this
 
-		// --- input (codes are engine KeyCode/MouseCode values) ---
+		// Input (codes are engine KeyCode/MouseCode values)
 		int   (*IsKeyPressed)(int code);
 		int   (*IsMouseButtonPressed)(int code);
 		int   (*IsKeyJustPressed)(int code);
@@ -75,13 +63,13 @@ namespace Waffle::CSharpScriptHost {
 		void  (*GetMousePosition)(float* outX, float* outY);   // viewport-relative
 		float (*GetAxis)(const char* axisUtf8);
 
-		// --- scene management (deferred semantics live engine-side) ---
+		// Scene management (deferred semantics live engine-side)
 		void  (*ChangeScene)(int index);
 		int   (*GetCurrentSceneIndex)();
 		void  (*SetCurrentSceneIndex)(int index);
 		void  (*RequestQuit)();
 
-		// --- entity management (ids are entt ids; -1 = invalid/none) ---
+		// Entity management (ids are entt ids; -1 = invalid/none)
 		int   (*CreateEntity)(const char* nameUtf8, float x, float y);
 		void  (*DestroyEntity)(uint32_t entityId);             // deferred
 		void  (*DestroyEntityDelayed)(uint32_t entityId, float delay);
@@ -98,7 +86,7 @@ namespace Waffle::CSharpScriptHost {
 		void  (*SetActive)(uint32_t entityId, int active);
 		int   (*IsActive)(uint32_t entityId);
 
-		// --- transform ---
+		// Transform
 		void  (*Translate)(uint32_t entityId, float dx, float dy, float dz);
 		void  (*SetPosition)(uint32_t entityId, float x, float y, float z);
 		void  (*GetPosition)(uint32_t entityId, float* outX, float* outY, float* outZ);
@@ -108,7 +96,7 @@ namespace Waffle::CSharpScriptHost {
 		void  (*SetScale)(uint32_t entityId, float x, float y, float z);
 		void  (*GetScale)(uint32_t entityId, float* outX, float* outY, float* outZ);
 
-		// --- physics 2D ---
+		// Physics 2D
 		void  (*SetLinearVelocity)(uint32_t entityId, float vx, float vy);
 		void  (*GetLinearVelocity)(uint32_t entityId, float* outVx, float* outVy);
 		void  (*ApplyLinearImpulse)(uint32_t entityId, float ix, float iy);
@@ -132,32 +120,32 @@ namespace Waffle::CSharpScriptHost {
 		int   (*OverlapCircle)(float cx, float cy, float radius, uint32_t excludeId, uint32_t* outIds, int maxCount);
 		int   (*OverlapBox)(float cx, float cy, float halfW, float halfH, uint32_t excludeId, uint32_t* outIds, int maxCount);
 
-		// --- visual ---
+		// Visual
 		void  (*SetColor)(uint32_t entityId, float r, float g, float b, float a);
 		void  (*GetColor)(uint32_t entityId, float* outR, float* outG, float* outB, float* outA);
 		void  (*SetAlpha)(uint32_t entityId, float a);
 		void  (*SetTexture)(uint32_t entityId, const char* pathUtf8);
 
-		// --- game UI ---
+		// Game UI
 		void  (*SetUIText)(uint32_t entityId, const char* textUtf8);
 		int   (*GetUIText)(uint32_t entityId, char* buffer, int bufferSize);
 		void  (*SetUIProgress)(uint32_t entityId, float value);
 		void  (*SetUIImage)(uint32_t entityId, const char* pathUtf8);
 
-		// --- animation ---
+		// Animation
 		void  (*PlayAnimation)(uint32_t entityId, const char* clipUtf8);
 		void  (*StopAnimation)(uint32_t entityId);
 		void  (*PauseAnimation)(uint32_t entityId);
 		void  (*SetAnimationFrame)(uint32_t entityId, int frameIndex);
 		int   (*IsAnimationPlaying)(uint32_t entityId);
 
-		// --- audio ---
+		// Audio
 		int   (*PlaySound)(const char* pathUtf8, float volume, float pitch, int loop);
 		void  (*StopSound)(const char* pathUtf8);
 		void  (*SetSoundVolume)(const char* pathUtf8, float volume);
 		void  (*SetMasterVolume)(float volume);
 
-		// --- editor debug gizmos ---
+		// Editor debug gizmos
 		void  (*GizmoDrawRay)(float x, float y, float dx, float dy, float distance, float r, float g, float b, float a);
 		void  (*GizmoDrawLine)(float x1, float y1, float x2, float y2, float r, float g, float b, float a);
 		void  (*GizmoDrawWireCircle)(float x, float y, float radius, float r, float g, float b, float a);

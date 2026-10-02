@@ -17,18 +17,13 @@ namespace Waffle {
 	}
 
 	void FatalSignal::Timeout() {
-		// Called from the watchdog thread only - std::cerr may be fine here,
-		// but keep to stdio to stay consistent with the handler.
+		// Watchdog thread only - std::cerr may be fine here, but keep to stdio to match the handler.
 		std::fputs("FATAL SIGNAL TIMEOUT\n", stderr);
 		Die();
 	}
 
 	void FatalSignal::Handler(const char* what) {
-		// Runs from a signal handler / terminate handler. Creating threads,
-		// formatting into streams or touching the heap here can deadlock if
-		// the crash happened while the heap lock was held (common for heap
-		// corruption, which is what SIGSEGV usually is). Keep it to
-		// async-signal-safe calls: write() + _Exit().
+		// Signal/terminate handler context: no threads, stream formatting or heap (deadlocks if the heap lock was held); async-signal-safe calls only - write() + _Exit().
 		static std::atomic<bool> active{ false };
 		if (active.exchange(true))
 			Die(); // nested fault while handling - bail out immediately

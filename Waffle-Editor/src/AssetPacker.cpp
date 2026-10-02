@@ -171,9 +171,7 @@ namespace Waffle {
 			}
 		}
 
-		// A truncated pack (disk full, removable media) that still reports
-		// success is worse than failing here: the exporter deletes the loose
-		// assets afterwards, destroying the only complete copy.
+		// A truncated pack must fail hard: the exporter deletes loose assets afterwards, destroying the only complete copy.
 		out.flush();
 		if (!out)
 		{

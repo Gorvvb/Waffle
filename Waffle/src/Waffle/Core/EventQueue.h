@@ -22,8 +22,7 @@ namespace Waffle {
 		{
 			static_assert(std::is_base_of<Event, T>::value, "T must derive from Event");
 			std::lock_guard<std::mutex> lock(s_QueueMutex);
-			// Posts after Shutdown would accumulate forever (nothing
-			// dispatches them) - drop instead of leaking.
+			// Posts after Shutdown would accumulate forever (nothing dispatches them) - drop instead of leaking.
 			if (s_Shutdown)
 				return;
 			s_EventQueue.push_back(CreateScope<T>(std::forward<Args>(args)...));

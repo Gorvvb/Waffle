@@ -54,8 +54,7 @@ namespace Waffle {
 		m_ImGuiLayer = new ImGuiLayer;
 		PushOverlay(m_ImGuiLayer);
 
-		// Boot the .NET scripting runtime (CoreCLR). Failures are logged and
-		// non-fatal - the app runs, just without scripts.
+		// Boot the .NET scripting runtime (CoreCLR); failures are logged and non-fatal - the app just runs without scripts.
 		CSharpScriptEngine::Init();
 	}
 
@@ -119,8 +118,7 @@ namespace Waffle {
 			m_lastFrameTime = time;
 			Timestep timestep = std::min(rawDelta, 0.1f); // Cap timestep to 100ms to prevent dt explosion
 
-			// Advance input edge-detection state machines (keyboard/mouse/
-			// gamepad Pressed/Released transitions) for this frame.
+			// Advance input edge-detection (keyboard/mouse/gamepad Pressed/Released transitions) for this frame.
 			Input::Update();
 
 			// Dispatch queued deferred events from background threads / systems
@@ -147,8 +145,7 @@ namespace Waffle {
 				}
 				else
 				{
-					// A zero/negative fixed timestep would hang the loop -
-					// clamp instead of draining.
+					// A zero/negative fixed timestep would hang the loop - clamp instead of draining.
 					m_Accumulator = 0.0f;
 				}
 

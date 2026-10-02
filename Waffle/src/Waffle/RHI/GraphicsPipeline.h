@@ -5,17 +5,7 @@
 
 namespace Waffle {
 
-	// -------------------------------------------------------------------------
-	// GraphicsPipeline
-	// An explicit pipeline: shader + topology + fixed render state.
-	// Replaces the old implicit model where the backend resolved a pipeline
-	// from whatever shader / vertex array / render target happened to be
-	// "bound" in global state.
-	//   - Vulkan: front-loads shader & layout handles; the format-dependent
-	//     VkPipeline is resolved from the pipeline's internal cache at first
-	//     use against a render target (see VulkanGraphicsPipeline::Resolve).
-	//   - OpenGL: applies the program and fixed-function state on bind.
-	// -------------------------------------------------------------------------
+	// GraphicsPipeline - an explicit pipeline: shader + topology + fixed render state, replacing the old implicit model where the backend resolved a pipeline from whatever shader/vertex array/render target was globally "bound". Vulkan front-loads shader & layout handles; the format-dependent VkPipeline is resolved from the pipeline's internal cache at first use against a render target (see VulkanGraphicsPipeline::Resolve). OpenGL applies the program and fixed-function state on bind.
 	class GraphicsPipeline : public RefCounted
 	{
 	public:

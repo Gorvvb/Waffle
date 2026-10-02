@@ -55,8 +55,7 @@ namespace Waffle {
 
 	void Log::Init()
 	{
-		// spdlog::register_logger throws on duplicate names - a second Init
-		// (e.g. two apps in one process during tests) used to abort.
+		// spdlog::register_logger throws on duplicate names - a second Init (e.g. two apps in one process during tests) used to abort.
 		if (s_CoreLogger || s_ClientLogger)
 			return;
 

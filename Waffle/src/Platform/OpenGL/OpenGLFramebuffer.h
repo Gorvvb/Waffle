@@ -40,8 +40,7 @@ namespace Waffle {
 			return (void*)(uintptr_t)m_ColorAttachments[index];
 		}
 
-		// Raw GL texture name of a color attachment - only for use inside
-		// Platform/OpenGL (sampling a render target in post-processing etc.).
+		// Raw GL texture name of a color attachment - Platform/OpenGL use only (e.g. sampling in post-processing).
 		uint32_t GetColorAttachmentGLHandle(uint32_t index = 0) const
 		{
 			return (index < m_ColorAttachments.size()) ? m_ColorAttachments[index] : 0;

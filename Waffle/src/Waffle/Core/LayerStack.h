@@ -12,10 +12,7 @@ namespace Waffle {
 		LayerStack() = default;
 		~LayerStack();
 
-		// Push/pop are DEFERRED while the stack is being iterated (between
-		// BeginIteration/EndIteration): mutating the vector from inside a
-		// layer's OnUpdate/OnEvent/OnImGuiRender invalidates the active
-		// iterator and can delete the layer whose call is still on the stack.
+		// Push/pop are DEFERRED between BeginIteration/EndIteration: mutating mid-walk invalidates the active iterator and can delete a layer whose call is on the stack.
 		void PushLayer(Layer* layer);
 		void PushOverlay(Layer* overlay);
 		void PopLayer(Layer* layer);

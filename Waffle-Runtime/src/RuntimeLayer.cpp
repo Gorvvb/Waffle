@@ -42,10 +42,7 @@ namespace Waffle {
 						{
 							std::string path = node.as<std::string>();
 							std::replace(path.begin(), path.end(), '\\', '/');
-							// Older exports serialized project-root-relative paths with
-							// a leading separator - strip it so the scene resolves
-							// inside the export instead of falling back to the sorted
-							// scan (which loses the author's scene order).
+							// Older exports have a leading separator on scene paths - strip it or the sorted-scan fallback loses the author's order.
 							if (!path.empty() && path.front() == '/')
 								path.erase(0, 1);
 							if (VFS::Exists(path))
@@ -65,8 +62,7 @@ namespace Waffle {
 							m_SceneList.push_back(startScene);
 					}
 
-					// Post-processing settings live on each scene's camera
-					// (CameraComponent::PostProcessing) - read per frame below.
+					// Post-processing settings live on each scene's camera (CameraComponent::PostProcessing) - read per frame below.
 				}
 			}
 			catch (const std::exception& e)
@@ -96,8 +92,7 @@ namespace Waffle {
 						m_SceneList.push_back(entry.path().string());
 			}
 
-			// Both fallbacks iterate unordered maps / raw directory order -
-			// sort so ChangeScene(N) indices are deterministic across runs.
+			// Both fallbacks iterate unordered maps / raw dir order - sort so ChangeScene(N) indices are deterministic.
 			std::sort(m_SceneList.begin(), m_SceneList.end());
 		}
 
@@ -133,8 +128,7 @@ namespace Waffle {
 		m_Scene->OnRuntimeStart();
 
 		m_CurrentSceneIndex = index;
-		// Scripts read this via GetCurrentSceneIndex - without it every
-		// ChangeScene computed from a stale index (stuck at 0).
+		// Scripts read this via GetCurrentSceneIndex - without it ChangeScene computed from a stale index (stuck at 0).
 		CSharpScriptEngine::SetCurrentSceneIndex(index);
 	}
 
@@ -169,12 +163,7 @@ namespace Waffle {
 		}
 		cmd->SetClearColor(clearColor);
 
-		// ALWAYS render into the offscreen target (it carries the entity-ID
-		// attachment the 2D shaders write), then present - post-processed
-		// when the camera enables it, otherwise through a plain passthrough
-		// blit. Rendering straight into the swapchain is not an option: the
-		// swapchain has no second attachment, which trips validation and
-		// breaks entity picking.
+		// Always render into the offscreen target (it has the entity-ID attachment), then present - never straight to the swapchain, which has no second attachment and breaks validation + picking.
 		{
 			const auto& spec = m_Framebuffer->GetSpecification();
 			if (spec.Width != width || spec.Height != height)
@@ -187,8 +176,7 @@ namespace Waffle {
 			int pendingScene = m_Scene->OnUpdateRuntime(ts);
 			cmd->EndRenderPass();
 
-			// Deferred Quit: tearing the scene down inside a click callback
-			// corrupts the registry, so it runs after the frame.
+			// Deferred Quit: tearing the scene down inside a click callback corrupts the registry, so run after the frame.
 			if (CSharpScriptEngine::IsQuitRequested())
 			{
 				CSharpScriptEngine::ClearQuitRequest();

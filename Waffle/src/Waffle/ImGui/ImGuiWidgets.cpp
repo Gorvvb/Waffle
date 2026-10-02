@@ -34,8 +34,7 @@ namespace Waffle::UI {
 
 	void DrawVec3Control(const std::string& label, glm::vec3& values, float resetValue, float columnWidth)
 	{
-		// Pick the bold font BY NAME - font[1] is the Regular face here
-		// (Bold loads first), so the index-based pick never went bold.
+		// Pick the bold font BY NAME - font[1] is the Regular face here (Bold loads first), so an index-based pick never went bold.
 		ImFont* boldFont = ImGui::GetFont();
 		for (ImFont* font : ImGui::GetIO().Fonts->Fonts)
 		{

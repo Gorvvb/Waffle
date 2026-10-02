@@ -1,5 +1,4 @@
-// Replaces csproj ImplicitUsings now that the build is plain csc
-// (Scripts/BuildScripting.py) - keep in sync with the default set.
+// Replaces csproj ImplicitUsings (plain csc build via Scripts/BuildScripting.py); keep in sync with the default set.
 global using System;
 global using System.Collections.Generic;
 global using System.IO;

@@ -5,11 +5,7 @@
 
 namespace Waffle {
 
-	// Gribb-Hartmann plane extraction. glm::row() reads through GLM's
-	// column-major storage, so this stays correct regardless of index-order
-	// conventions - a hand-rolled m[i][j] variant silently extracts planes
-	// from the TRANSPOSED matrix and mis-culls everything once the camera
-	// moves away from the origin.
+	// Gribb-Hartmann plane extraction; glm::row() reads correctly through GLM's column-major storage. A hand-rolled m[i][j] variant would silently extract planes from the TRANSPOSED matrix and mis-cull everything once the camera moves off the origin.
 	Frustum2D Frustum2D::FromViewProjection(const glm::mat4& viewProj)
 	{
 		Frustum2D frustum;

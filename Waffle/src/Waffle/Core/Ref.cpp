@@ -4,10 +4,7 @@
 namespace Waffle {
 
 	namespace RefUtils {
-		// Tracking is always on: WeakRef::IsValid/Lock depend on it, and with
-		// it disabled they degenerated into `instance != nullptr` - a freed
-		// object "resurrected" through Lock() (UB). The mutex + set cost is
-		// negligible next to a heap allocation.
+		// Tracking is always on: WeakRef::IsValid/Lock depend on it, else Lock() resurrects freed objects (UB); cost is negligible next to a heap allocation.
 		struct LiveRefContext
 		{
 			std::unordered_set<void*> LiveReferences;

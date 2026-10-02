@@ -24,10 +24,7 @@ namespace Waffle {
 
 		uint32_t GetRefCount() const { return m_RefCount.load(std::memory_order_relaxed); }
 		void IncRefCount() const { m_RefCount.fetch_add(1, std::memory_order_relaxed); }
-		// Returns the PRE-decrement count: the caller that observes 1 is the
-		// one that dropped the last reference and must delete. Re-reading
-		// GetRefCount() after decrementing races another concurrent
-		// decrement and can double-delete.
+		// Returns the PRE-decrement count: the caller observing 1 dropped the last ref and must delete (re-reading GetRefCount() races -> double-delete).
 		uint32_t DecRefCount() const { return m_RefCount.fetch_sub(1, std::memory_order_acq_rel); }
 
 	private:

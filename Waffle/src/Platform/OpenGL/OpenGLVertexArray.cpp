@@ -93,10 +93,7 @@ namespace Waffle {
 				case ShaderDataType::Mat3:
 				case ShaderDataType::Mat4:
 				{
-					// A matrix attribute occupies one location per COLUMN of
-					// up to 4 components - never `count` components in a
-					// single location (glVertexAttribPointer's size must be
-					// 1..4; passing 9/16 is GL_INVALID_VALUE).
+					// Matrix columns take one location each - glVertexAttribPointer size must be 1..4; 9/16 is GL_INVALID_VALUE.
 					uint8_t columns = (element.Type == ShaderDataType::Mat3) ? 3 : 4;
 					uint8_t rows = 4;
 					for (uint8_t i = 0; i < columns; i++)

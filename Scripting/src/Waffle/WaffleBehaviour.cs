@@ -1,24 +1,6 @@
 namespace Waffle;
 
-/// <summary>
-/// Base class for all Waffle gameplay scripts.
-/// </summary>
-/// <remarks>
-/// Lifecycle methods are <b>magic messages</b>: declare them as plain methods
-/// and the engine discovers them by name - never write <c>override</c>.
-/// Current message set (all optional, public or private, instance methods):
-///
-///   void OnStart()                      - entity created / play started
-///   void OnUpdate() / OnUpdate(float)   - per frame (dt = seconds)
-///   void OnDestroy()                    - entity destroyed / play stopped
-///   void OnEnable() / void OnDisable()  - SetActive transitions
-///   void OnCollisionEnter2D(Entity other) / void OnCollisionExit2D(Entity other)
-///   void OnTriggerEnter2D(Entity other)  / void OnTriggerEnter2D(Entity other)
-///   void OnDrawGizmos()                 - editor-only debug drawing
-///
-/// Constructors and field initializers must be side-effect-free: the editor
-/// instantiates the type to read default field values for the inspector.
-/// </remarks>
+/// <summary>Base class for all Waffle gameplay scripts. Lifecycle methods are magic messages discovered by name - never write override: OnStart, OnUpdate/OnUpdate(float), OnDestroy, OnEnable/OnDisable, OnCollisionEnter2D/Exit2D, OnTriggerEnter2D/Exit2D, OnDrawGizmos (all optional, public or private instance methods). Constructors and field initializers must be side-effect-free: the editor instantiates the type to read inspector defaults.</summary>
 public abstract class WaffleBehaviour
 {
     /// <summary>The entity this instance is running on (bound by the engine).</summary>

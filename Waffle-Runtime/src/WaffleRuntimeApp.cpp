@@ -23,9 +23,7 @@ namespace Waffle {
 		}
 	};
 
-	// Game data lives next to the EXECUTABLE, not the caller's working
-	// directory - launching via a shortcut or the Hub with a different
-	// "Start in" silently found no game otherwise.
+	// Game data lives next to the EXECUTABLE, not the cwd - shortcut/Hub launches with a different "Start in" found no game otherwise.
 	static std::filesystem::path GetExecutableDir()
 	{
 		char buffer[MAX_PATH];

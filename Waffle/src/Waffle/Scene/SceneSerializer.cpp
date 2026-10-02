@@ -209,8 +209,7 @@ namespace Waffle {
 
 			out << YAML::EndMap; // TagComponent
 
-			// Hidden (SetActive / hierarchy dot) entities stay hidden in the
-			// editor, at runtime and in exported games.
+			// Hidden (SetActive / hierarchy dot) entities stay hidden in editor, runtime, exported games.
 			if (entity.HasComponent<DisabledComponent>())
 				out << YAML::Key << "Disabled" << YAML::Value << true;
 		}
@@ -249,9 +248,7 @@ namespace Waffle {
 
 			out << YAML::Key << "Primary" << YAML::Value << cameraComponent.Primary;
 			out << YAML::Key << "FixedAspectRatio" << YAML::Value << cameraComponent.FixedAspectRatio;
-			// Fixed-aspect cameras are never driven by OnViewportResize - the
-			// aspect must be persisted or it comes back as 0 (degenerate
-			// projection) after a reload.
+			// Fixed-aspect cameras never get OnViewportResize - persist the aspect or it reloads as 0.
 			if (cameraComponent.FixedAspectRatio)
 				out << YAML::Key << "AspectRatio" << YAML::Value << camera.GetAspectRatio();
 			out << YAML::Key << "BackgroundColor" << YAML::Value << cameraComponent.BackgroundColor;
@@ -458,8 +455,7 @@ namespace Waffle {
 
 			if (!sc.Fields.empty())
 			{
-				// sc.Fields is an unordered_map - emit in sorted key order so
-				// the file is deterministic across loads and machines.
+				// sc.Fields is an unordered_map - emit sorted so the file is deterministic.
 				std::vector<const std::pair<const std::string, std::vector<ScriptField>>*> sortedFields;
 				sortedFields.reserve(sc.Fields.size());
 				for (const auto& entry : sc.Fields)
@@ -559,8 +555,7 @@ namespace Waffle {
 			out << YAML::Key << "CurrentClip" << YAML::Value << animator.CurrentClip;
 			out << YAML::Key << "FramePivot" << YAML::Value << animator.FramePivot;
 
-			// animator.Clips is an unordered_map - emit sorted for
-			// deterministic output.
+			// animator.Clips is an unordered_map - emit sorted for deterministic output.
 			std::vector<const std::pair<const std::string, AnimationClip>*> sortedClips;
 			sortedClips.reserve(animator.Clips.size());
 			for (const auto& clipEntry : animator.Clips)
@@ -624,8 +619,7 @@ namespace Waffle {
 
 		auto view = m_Scene->m_Registry.view<TagComponent>();
 
-		// Emit in UUID order so the file is deterministic and the
-		// deserialized registry order matches what was saved.
+		// Emit in UUID order - deterministic file, and registry order matches the save.
 		std::vector<entt::entity> sortedEntities;
 		sortedEntities.reserve(view.size());
 		for (auto entityID : view)
@@ -681,8 +675,7 @@ namespace Waffle {
 		}
 		catch (const YAML::Exception& e)
 		{
-			// Catches ParserException, BadFile, InvalidNode, BadConversion -
-			// a missing/corrupt scene must fail to load, not kill the process.
+			// Catches ParserException, BadFile, etc - a corrupt scene must fail to load, not kill the process.
 			WF_CORE_ERROR("Failed to load scene file '{0}'\n     {1}", filepath, e.what());
 			return false;
 		}
@@ -699,8 +692,7 @@ namespace Waffle {
 		auto entities = data["Entities"];
 		if (entities)
 		{
-			// The recursive fallback scan below walks the whole asset tree
-			// per unresolved script path - cache it once per deserialize.
+			// The recursive fallback scan walks the whole asset tree - cache it once per deserialize.
 			std::unordered_map<std::string, std::filesystem::path> scriptScanCache;
 			bool scriptScanDone = false;
 			auto findScriptAnywhere = [&](const std::string& scriptPath) -> std::filesystem::path
@@ -725,8 +717,7 @@ namespace Waffle {
 
 			for (auto entity : entities)
 			{
-			// One malformed entity (missing key, wrong type) must not take
-			// the whole load down - skip it and keep going.
+			// One malformed entity must not take the whole load down - skip and continue.
 			try
 			{
 				uint64_t uuid = entity["Entity"].as<uint64_t>();
@@ -862,10 +853,7 @@ namespace Waffle {
 					if (cameraComponent["FixedAspectRatio"])
 						cc.FixedAspectRatio = cameraComponent["FixedAspectRatio"].as<bool>(false);
 
-					// Fixed-aspect cameras never receive OnViewportResize, so
-					// restore the persisted aspect (fall back to 16:9 for old
-					// files that never stored one) or the projection is
-					// degenerate (left == right == 0).
+					// Restore saved aspect (16:9 fallback for old files) - else the projection is degenerate.
 					if (cc.FixedAspectRatio)
 					{
 						float aspect = cameraComponent["AspectRatio"]
@@ -913,10 +901,7 @@ namespace Waffle {
 						std::filesystem::path p(texturePath);
 						std::string ext = p.extension().string();
 						std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
-						// stbi (and the editor) accept all of these - a
-						// narrower whitelist here silently dropped the path on
-						// the next save (TexturePath is only written when the
-						// texture loaded).
+						// stbi and the editor accept all of these - a narrower whitelist silently dropped paths on resave.
 						if (ext == ".png" || ext == ".jpg" || ext == ".jpeg" || ext == ".bmp" || ext == ".tga")
 					    {
 							std::filesystem::path resolved = ResolveTexturePath(texturePath);
@@ -1108,7 +1093,6 @@ namespace Waffle {
 						tmc.Restitution = tmcNode["Restitution"].as<float>(0.0f);
 				}
 
-
 				auto rigidbody2DComponent = entity["Rigidbody2DComponent"];
 				if (rigidbody2DComponent)
 				{
@@ -1236,8 +1220,7 @@ namespace Waffle {
 	{
 		if (!entity) return false;
 
-		// Depth-capped descendant collection - a hand-edited cycle in the
-		// hierarchy must not hang serialization.
+		// Depth-capped descendant collection - a hand-edited cycle must not hang serialization.
 		std::vector<Entity> descendants;
 		std::vector<UUID> stack{ entity.GetUUID() };
 		int depth = 0;
@@ -1286,14 +1269,11 @@ namespace Waffle {
 		return true;
 	}
 
-	// Component parsing shared by the prefab root and its embedded children.
-	// RelationshipComponent is intentionally NOT handled here - hierarchy is
-	// rebuilt from the serialized UUIDs after all entities exist.
+	// Shared by prefab root and children; RelationshipComponent is rebuilt later from serialized UUIDs.
 	static void DeserializePrefabComponents(Scene* scene, Entity& deserializedEntity, const YAML::Node& entityNode)
 	{
 		if (entityNode["Disabled"] && entityNode["Disabled"].as<bool>(false))
 			scene->SetEntityHidden(deserializedEntity, true);
-
 
 		auto transformComponent = entityNode["TransformComponent"];
 		if (transformComponent)
@@ -1511,7 +1491,6 @@ namespace Waffle {
 			uiBar.Padding = uiBarNode["Padding"].as<float>(2.0f);
 		}
 
-
 		auto rigidbody2DComponent = entityNode["Rigidbody2DComponent"];
 		if (rigidbody2DComponent)
 		{
@@ -1680,13 +1659,11 @@ namespace Waffle {
 			return {};
 		}
 
-		// prefab-internal UUID -> spawned Entity (hierarchy is rebuilt
-		// through this table after every entity exists).
+		// Prefab-internal UUID -> spawned Entity; hierarchy rebuilt through this table afterwards.
 		std::unordered_map<uint64_t, Entity> spawned;
 		Entity root{};
 
-		// One malformed entry must not leak a half-built entity into the
-		// scene - destroy everything spawned so far on failure.
+		// A malformed entry must not leak a half-built entity - destroy everything spawned on failure.
 		try
 		{
 			auto entityNode = data["Entity"];
@@ -1734,9 +1711,7 @@ namespace Waffle {
 				}
 			}
 
-			// Rebuild the hierarchy: parent each child to the remapped parent
-			// of its serialized relationship. References to UUIDs outside the
-			// prefab (e.g. the root's original parent) are dropped.
+			// Rebuild the hierarchy from remapped parents; UUIDs outside the prefab are dropped.
 			for (auto& [childUUID, node] : childNodes)
 			{
 				auto relationship = node["RelationshipComponent"];

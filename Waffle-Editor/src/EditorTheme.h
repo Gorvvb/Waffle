@@ -118,8 +118,7 @@ namespace Waffle::UI {
 		ImGui::Dummy(ImVec2(0, 3.0f + afterGap));
 	}
 
-	// Small rounded info chip (drawn, not interactive). Returns nothing;
-	// call inside a window layout - consumes one line.
+	// Small rounded info chip (drawn, not interactive); call inside a window layout - consumes one line.
 	inline void Chip(const char* text, const ImVec4& tint, const char* id = "##chip")
 	{
 		ImGui::PushStyleColor(ImGuiCol_Text, tint);

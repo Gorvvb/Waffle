@@ -2,30 +2,18 @@ using System.Diagnostics;
 
 namespace Waffle.Scripting.Internal;
 
-/// <summary>
-/// Compiles the project's Assets/Scripts/**/*.cs into GameScripts.dll by
-/// driving the Roslyn csc.dll that ships inside the .NET SDK. No csproj, no
-/// MSBuild, no Visual Studio - identical behaviour on Windows and Linux.
-/// Skips work when the compiled assembly is already newer than every source.
-/// </summary>
+/// <summary>Compiles Assets/Scripts/**/*.cs to GameScripts.dll via the .NET SDK's Roslyn csc.dll (no csproj/MSBuild); skips when the output is newer than every source.</summary>
 internal static class CompilerService
 {
     /// <summary>Path of the most recently requested output assembly.</summary>
     internal static string LastOutputPath { get; private set; } = string.Empty;
 
-    /// <summary>
-    /// Used by the engine to point the loader at a pre-compiled scripts
-    /// assembly in packed exports (no physical Assets/Scripts to compile).
-    /// </summary>
+    /// <summary>Points the loader at a pre-compiled scripts assembly in packed exports (nothing to compile).</summary>
     internal static void SetLastOutputPath(string path) => LastOutputPath = path;
 
     private static bool _sdkMissingLogged;
 
-    /// <summary>
-    /// Return codes (mirrored by the C++ host):
-    /// 0 = compiled, 2 = up to date / nothing to compile, -2 = no SDK,
-    /// 1 = compile failed (see ScriptRuntime.GetLastError).
-    /// </summary>
+    /// <summary>Return codes (mirrored by the C++ host): 0 = compiled, 2 = up to date, -2 = no SDK, 1 = failed (see ScriptRuntime.GetLastError).</summary>
     public static int Compile(string sourcesDir, string outputDll)
     {
         // The runtime's assembly loader requires absolute paths.
@@ -183,8 +171,7 @@ internal static class CompilerService
 
     private static List<string> CollectReferences()
     {
-        // Trusted platform assemblies = the exact framework set this process
-        // loaded; every entry is managed.
+        // Trusted platform assemblies = the exact framework set this process loaded; all managed.
         var references = new List<string>();
         if (AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES") is string tpa)
         {

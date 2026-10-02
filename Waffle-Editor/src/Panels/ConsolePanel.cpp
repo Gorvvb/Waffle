@@ -59,9 +59,7 @@ namespace Waffle {
 
 		ImGui::BeginChild("ScrollingRegion", ImVec2(0, 0), false, ImGuiWindowFlags_HorizontalScrollbar);
 
-		// Copy under lock, render outside it - holding the mutex across up to
-		// 1000 Text calls stalled producer threads for a frame under heavy
-		// logging.
+		// Copy under lock, render outside it - holding the mutex across 1000 Text calls stalled producers for a frame.
 		std::vector<ConsoleMessage> snapshot;
 		{
 			std::lock_guard<std::mutex> lock(s_MessageMutex);

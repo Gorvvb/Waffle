@@ -15,8 +15,7 @@ namespace Waffle {
 	{
 	private:
 		std::filesystem::path m_CurrentDirectory;
-		// Ref (not raw pointer): the panel outlives scene swaps and must never
-		// dereference a destroyed scene through a stale context.
+		// Ref, not a raw pointer: the panel outlives scene swaps - never deref a destroyed scene through a stale context.
 		Ref<Scene> m_SceneContext;
 
 		Ref<Texture2D> m_DirectoryIcon;
@@ -72,18 +71,15 @@ namespace Waffle {
 		// Loads a .spritesheet (regions, groups, texture) into the viewer.
 		void OpenSpritesheetViewer(const std::filesystem::path& sheetPath);
 
-
 		std::function<void(const std::filesystem::path&)> m_OpenSceneCallback;
 		std::function<void(const std::filesystem::path&, const std::filesystem::path&)> m_SceneRenamedCallback;
 		std::function<void(const std::filesystem::path&)> m_OpenSpritesheetEditorCallback;
 		std::function<void(const std::filesystem::path&)> m_OpenPrefabCallback;
 
-		// Color-swatch thumbnails (prefabs whose renderer only has a color),
-		// cached by quantized RGBA.
+		// Color-swatch thumbnails for prefabs whose renderer only has a color, cached by quantized RGBA.
 		Ref<Texture2D> GetColorSwatch(const glm::vec4& color);
 
-		// Prefab thumbnail: the sprite texture tinted with the renderer's
-		// color (CPU composite, downsampled) - matches how the sprite renders.
+		// Prefab thumbnail: the sprite texture tinted with the renderer's color (CPU composite, downsampled) - matches how the sprite renders.
 		Ref<Texture2D> GetTintedThumbnail(const std::filesystem::path& texturePath, const glm::vec4& color);
 
 	public:

@@ -7,13 +7,13 @@
 #include "Waffle/Core/Application.h"
 #include "Waffle/Renderer/RendererAPI.h"
 
-// ---- OpenGL path ----
+// OpenGL path
 #include "backends/imgui_impl_opengl3.h"
 #include "backends/imgui_impl_glfw.h"
 #include "GLFW/glfw3.h"
 #include "glad/glad.h"
 
-// ---- Vulkan path ----
+// Vulkan path
 #include "backends/imgui_impl_vulkan.h"
 #include "Platform/Vulkan/VulkanContext.h"
 
@@ -79,9 +79,7 @@ namespace Waffle {
 				.QueueFamily = ctx->GetGraphicsQueueFamily(),
 				.Queue = ctx->GetGraphicsQueue(),
 				.DescriptorPool = ctx->GetDescriptorPool(),
-				// ImGui requires MinImageCount >= ImageCount. With 3 swapchain
-				// images and only 2 frames in flight, the backend rotated its font
-				// descriptor sets through destroyed/uninitialized handles.
+				// ImGui requires MinImageCount >= ImageCount; with 3 swapchain images but only 2 frames in flight, the backend rotated its font descriptor sets through destroyed/uninitialized handles.
 				.MinImageCount = ctx->GetSwapChainImageCount(),
 				.ImageCount = ctx->GetSwapChainImageCount(),
 				.UseDynamicRendering = true
@@ -116,12 +114,7 @@ namespace Waffle {
 			ImGui_ImplGlfw_InitForOpenGL(window, true);
 			ImGui_ImplOpenGL3_Init("#version 460");
 
-			// Create a persistent nearest-neighbour sampler object.
-			// ImGui's OpenGL backend calls glBindTexture directly without
-			// touching sampler state. Binding this sampler to unit 0 before
-			// RenderDrawData forces GL_NEAREST for every texture ImGui draws,
-			// overriding whatever the texture object's own parameters say.
-			// A sampler object always takes precedence over glTexParameteri.
+			// Persistent nearest-neighbour sampler: ImGui's GL backend calls glBindTexture directly without touching sampler state, so this bound to unit 0 before RenderDrawData forces GL_NEAREST for every texture ImGui draws, overriding the texture's own parameters (a sampler object always takes precedence over glTexParameteri).
 			glGenSamplers(1, &s_NearestSampler);
 			glSamplerParameteri(s_NearestSampler, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
 			glSamplerParameteri(s_NearestSampler, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
@@ -221,17 +214,12 @@ namespace Waffle {
 		}
 		else
 		{
-			// Bind the nearest-neighbour sampler to unit 0 so that every
-			// texture ImGui draws (content browser thumbnails, spritesheet
-			// canvas, etc.) uses GL_NEAREST regardless of what ImGui's
-			// internal SetupRenderState does to the GL state.
-			// The sampler object takes precedence over per-texture parameters.
+			// Bind the nearest-neighbour sampler to unit 0 so every texture ImGui draws (thumbnails, spritesheet canvas, etc.) uses GL_NEAREST regardless of ImGui's internal SetupRenderState; a sampler object takes precedence over per-texture parameters.
 			glBindSampler(0, s_NearestSampler);
 
 			ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 
-			// Unbind the sampler so the scene renderer's Bind() calls
-			// (which also call glBindSampler(slot, 0)) work as expected.
+			// Unbind the sampler so the scene renderer's Bind() calls (which also call glBindSampler(slot, 0)) work as expected.
 			glBindSampler(0, 0);
 
 			if (io.ConfigFlags & ImGuiConfigFlags_ViewportsEnable)
@@ -246,10 +234,7 @@ namespace Waffle {
 
 	void ImGuiLayer::BeginTextureSamplerPassthrough(ImDrawList* drawList)
 	{
-		// Vulkan: the backend samples every texture with its own Linear
-		// sampler unless a draw callback switches it - request NEAREST for
-		// these pixel-art draws. GL: unbind the forced-nearest sampler so the
-		// texture's own filter applies.
+		// Vulkan: the backend samples every texture with its own Linear sampler unless a draw callback switches it - request NEAREST for these pixel-art draws. GL: unbind the forced-nearest sampler so the texture's own filter applies.
 		if (s_IsVulkan)
 		{
 			if (ImGui::GetPlatformIO().DrawCallback_SetSamplerNearest)
@@ -271,7 +256,7 @@ namespace Waffle {
 	{
 		auto& style = ImGui::GetStyle();
 
-		// ── Layout & spacing ─────────────────────────────────────────────
+		// Layout & spacing
 		style.WindowMinSize = ImVec2(160.0f, 100.0f);
 		style.WindowPadding = ImVec2(8.0f, 8.0f);
 		style.FramePadding = ImVec2(8.0f, 5.0f);
@@ -282,7 +267,7 @@ namespace Waffle {
 		style.ScrollbarSize = 13.0f;
 		style.GrabMinSize = 10.0f;
 
-		// ── Rounding ─────────────────────────────────────────────────────
+		// Rounding
 		style.WindowRounding = 6.0f;
 		style.ChildRounding = 6.0f;
 		style.FrameRounding = 6.0f;
@@ -291,7 +276,7 @@ namespace Waffle {
 		style.GrabRounding = 3.0f;
 		style.TabRounding = 6.0f;
 
-		// ── Borders & alignment ──────────────────────────────────────────
+		// Borders & alignment
 		style.WindowBorderSize = 1.0f;
 		style.ChildBorderSize = 1.0f;
 		style.FrameBorderSize = 0.0f;
@@ -307,12 +292,12 @@ namespace Waffle {
 		const ImVec4 accentHovered = ImVec4{ 0.965f, 0.690f, 0.278f, 1.0f };
 		const ImVec4 accentActive = ImVec4{ 0.835f, 0.540f, 0.145f, 1.0f };
 
-		// ── Text ─────────────────────────────────────────────────────────
+		// Text
 		colors[ImGuiCol_Text] = ImVec4{ 0.91f, 0.92f, 0.94f, 1.0f };
 		colors[ImGuiCol_TextDisabled] = ImVec4{ 0.46f, 0.49f, 0.54f, 1.0f };
 		colors[ImGuiCol_TextSelectedBg] = ImVec4{ accent.x, accent.y, accent.z, 0.30f };
 
-		// ── Backgrounds (charcoal, slightly blue-tinted) ──────────────────
+		// Backgrounds (charcoal, slightly blue-tinted)
 		colors[ImGuiCol_WindowBg] = ImVec4{ 0.086f, 0.094f, 0.114f, 1.0f };
 		colors[ImGuiCol_ChildBg] = ImVec4{ 0.102f, 0.110f, 0.133f, 1.0f };
 		colors[ImGuiCol_PopupBg] = ImVec4{ 0.118f, 0.128f, 0.153f, 0.985f };
@@ -321,22 +306,22 @@ namespace Waffle {
 		colors[ImGuiCol_BorderShadow] = ImVec4{ 0.0f, 0.0f, 0.0f, 0.0f };
 		colors[ImGuiCol_ModalWindowDimBg] = ImVec4{ 0.02f, 0.02f, 0.04f, 0.60f };
 
-		// ── Headers (tree nodes, selectables, collapsing headers) ────────
+		// Headers (tree nodes, selectables, collapsing headers)
 		colors[ImGuiCol_Header] = ImVec4{ 0.155f, 0.168f, 0.195f, 1.0f };
 		colors[ImGuiCol_HeaderHovered] = ImVec4{ 0.20f, 0.215f, 0.25f, 1.0f };
 		colors[ImGuiCol_HeaderActive] = ImVec4{ 0.235f, 0.25f, 0.29f, 1.0f };
 
-		// ── Buttons ──────────────────────────────────────────────────────
+		// Buttons
 		colors[ImGuiCol_Button] = ImVec4{ 0.155f, 0.168f, 0.195f, 1.0f };
 		colors[ImGuiCol_ButtonHovered] = ImVec4{ 0.21f, 0.225f, 0.26f, 1.0f };
 		colors[ImGuiCol_ButtonActive] = ImVec4{ 0.24f, 0.255f, 0.30f, 1.0f };
 
-		// ── Frames (inputs, drags, combos) ───────────────────────────────
+		// Frames (inputs, drags, combos)
 		colors[ImGuiCol_FrameBg] = ImVec4{ 0.13f, 0.14f, 0.165f, 1.0f };
 		colors[ImGuiCol_FrameBgHovered] = ImVec4{ 0.18f, 0.195f, 0.225f, 1.0f };
 		colors[ImGuiCol_FrameBgActive] = ImVec4{ 0.20f, 0.215f, 0.25f, 1.0f };
 
-		// ── Widgets ──────────────────────────────────────────────────────
+		// Widgets
 		colors[ImGuiCol_CheckMark] = accent;
 		colors[ImGuiCol_SliderGrab] = accent;
 		colors[ImGuiCol_SliderGrabActive] = accentHovered;
@@ -345,19 +330,19 @@ namespace Waffle {
 		colors[ImGuiCol_NavWindowingHighlight] = ImVec4{ 1.0f, 1.0f, 1.0f, 0.7f };
 		colors[ImGuiCol_NavWindowingDimBg] = ImVec4{ 0.2f, 0.2f, 0.2f, 0.5f };
 
-		// ── Tabs ─────────────────────────────────────────────────────────
+		// Tabs
 		colors[ImGuiCol_Tab] = ImVec4{ 0.110f, 0.120f, 0.143f, 1.0f };
 		colors[ImGuiCol_TabHovered] = ImVec4{ 0.20f, 0.215f, 0.25f, 1.0f };
 		colors[ImGuiCol_TabActive] = ImVec4{ 0.165f, 0.178f, 0.207f, 1.0f };
 		colors[ImGuiCol_TabUnfocused] = ImVec4{ 0.110f, 0.120f, 0.143f, 1.0f };
 		colors[ImGuiCol_TabUnfocusedActive] = ImVec4{ 0.150f, 0.162f, 0.190f, 1.0f };
 
-		// ── Title bars ───────────────────────────────────────────────────
+		// Title bars
 		colors[ImGuiCol_TitleBg] = ImVec4{ 0.070f, 0.076f, 0.092f, 1.0f };
 		colors[ImGuiCol_TitleBgActive] = ImVec4{ 0.078f, 0.085f, 0.102f, 1.0f };
 		colors[ImGuiCol_TitleBgCollapsed] = ImVec4{ 0.070f, 0.076f, 0.092f, 1.0f };
 
-		// ── Separators & resize grips ────────────────────────────────────
+		// Separators & resize grips
 		colors[ImGuiCol_Separator] = ImVec4{ 0.21f, 0.23f, 0.27f, 0.8f };
 		colors[ImGuiCol_SeparatorHovered] = ImVec4{ 0.32f, 0.34f, 0.40f, 1.0f };
 		colors[ImGuiCol_SeparatorActive] = accentActive;
@@ -365,17 +350,17 @@ namespace Waffle {
 		colors[ImGuiCol_ResizeGripHovered] = ImVec4{ 0.32f, 0.34f, 0.40f, 0.8f };
 		colors[ImGuiCol_ResizeGripActive] = accentActive;
 
-		// ── Scrollbars ───────────────────────────────────────────────────
+		// Scrollbars
 		colors[ImGuiCol_ScrollbarBg] = ImVec4{ 0.086f, 0.094f, 0.114f, 0.6f };
 		colors[ImGuiCol_ScrollbarGrab] = ImVec4{ 0.20f, 0.215f, 0.25f, 1.0f };
 		colors[ImGuiCol_ScrollbarGrabHovered] = ImVec4{ 0.28f, 0.30f, 0.35f, 1.0f };
 		colors[ImGuiCol_ScrollbarGrabActive] = accentActive;
 
-		// ── Docking ──────────────────────────────────────────────────────
+		// Docking
 		colors[ImGuiCol_DockingPreview] = ImVec4{ accent.x, accent.y, accent.z, 0.45f };
 		colors[ImGuiCol_DockingEmptyBg] = ImVec4{ 0.065f, 0.070f, 0.085f, 1.0f };
 
-		// ── Tables & plots ───────────────────────────────────────────────
+		// Tables & plots
 		colors[ImGuiCol_TableHeaderBg] = ImVec4{ 0.13f, 0.14f, 0.165f, 1.0f };
 		colors[ImGuiCol_TableBorderStrong] = ImVec4{ 0.21f, 0.23f, 0.27f, 1.0f };
 		colors[ImGuiCol_TableBorderLight] = ImVec4{ 0.17f, 0.185f, 0.215f, 1.0f };

@@ -12,20 +12,9 @@
 
 namespace Waffle {
 
-	// -------------------------------------------------------------------------
-	// CSharpScriptEngine - embedded .NET (CoreCLR) gameplay scripting.
-	//
-	// Static facade with the same integration surface the LuaScriptEngine used:
-	// Scene::OnRuntimeStart/Stop/UpdateRuntime, the editor's play/gizmo/viewport
-	// hooks, and exported-runtime quit/scene-index plumbing all call into this
-	// class. Managed dispatch + instance registry live on the C# side; this
-	// class owns the engine-side bookkeeping (deferred destroys, contact event
-	// queueing, debug draw queues, input edge tracking) and the hostfxr bridge.
-	// -------------------------------------------------------------------------
+	// CSharpScriptEngine - embedded .NET (CoreCLR) gameplay scripting facade: owns the hostfxr bridge and engine-side bookkeeping; managed dispatch lives in C#.
 
-	// Editor-only debug gizmos queued from scripts (Gizmos.DrawRay etc.).
-	// Drawn by the editor overlay while playing; the exported runtime never
-	// draws them and drops them every frame.
+	// Editor-only debug gizmos queued from scripts (Gizmos.DrawRay etc.); drawn by the editor overlay while playing, dropped every frame at runtime.
 	struct DebugDrawLine
 	{
 		glm::vec2 A;
@@ -50,39 +39,27 @@ namespace Waffle {
 	class CSharpScriptEngine
 	{
 	public:
-		// Boots the .NET runtime (idempotent, one attempt per process) and
-		// resolves all managed entry points. Returns false - logging why -
-		// when the runtime is unavailable; the app runs without scripts.
+		// Boots the .NET runtime (idempotent, one attempt per process), resolves all managed entry points; returns false (logged) and the app runs without scripts.
 		static bool Init();
 		static void Shutdown();
 
-		// --- scene lifecycle ------------------------------------------------
-		// CompileProjectScripts runs first (cheap no-op when sources are
-		// unchanged; warns and continues when no SDK is available), then all
-		// scripted entities get instances + OnStart.
+		// Scene lifecycle: CompileProjectScripts runs first (cheap no-op when unchanged, warns without SDK), then all scripted entities get instances + OnStart.
 		static void OnRuntimeStart(Scene* scene);
 		static void OnRuntimeStop(Scene* scene);
 		static void OnRuntimeUpdate(Scene* scene, Timestep ts);
 		static bool IsRuntimeRunning() { return s_RuntimeRunning; }
 
-		// Dispatch queued collision/trigger callbacks. MUST be called after
-		// b2World::Step returns (scripts run deferred, never inside the step).
+		// Dispatch queued collision/trigger callbacks; MUST be called after b2World::Step returns (scripts run deferred, never inside the step).
 		static void DrainCollisionEvents(Scene* scene);
 
-		// Load + OnStart for one entity - used when prefabs are instantiated
-		// at runtime so their scripts run immediately.
+		// Load + OnStart for one entity - used when prefabs are instantiated at runtime so their scripts run immediately.
 		static void InitScriptsForEntity(Scene* scene, Entity entity);
 
-		// --- editor hooks -----------------------------------------------------
-		// Unity-style OnDrawGizmos: runs each script's OnDrawGizmos while
-		// EDITING (no play). During this pass, mutating bindings are ignored
-		// with a warning. Recompiles + reloads when a script file changed.
+		// Editor hooks: Unity-style OnDrawGizmos runs each script's OnDrawGizmos while editing (no play); mutating bindings are ignored with a warning; recompiles when a script changed.
 		static void OnEditorGizmos(Scene* scene);
 		static bool IsEditorGizmoPass() { return s_EditorGizmoPass; }
 
-		// Editor field scrape: reflects the public fields of the script class
-		// (by type name from the file stem) into sc.Fields, preserving values
-		// the editor already stored (UserModified is respected).
+		// Field scrape: reflects the script class's public fields (type name from the file stem) into sc.Fields, preserving editor-stored values (UserModified).
 		static void ScrapeFieldsFromScript(const std::filesystem::path& fullPath,
 			const std::string& scriptPath, ScriptComponent& sc);
 
@@ -90,20 +67,13 @@ namespace Waffle {
 		static bool GetInstanceFieldValue(int handle, const ScriptField& field, ScriptField& outValue);
 		static bool SetInstanceFieldValue(int handle, const ScriptField& field);
 
-		// Compile Assets/Scripts/**/*.cs -> Assets/cache/Scripting/GameScripts.dll
-		// via the managed compiler service. Returns true when a compiled
-		// assembly is available afterwards.
+		// Compiles Assets/Scripts/**/*.cs -> Assets/cache/Scripting/GameScripts.dll via the managed compiler; true when a compiled assembly is available.
 		static bool CompileProjectScripts();
 
-		// Calls handlerName (method name on any script instance) for every
-		// scripted instance that defines it, passing the button's entity id.
-		// No-op outside runtime or with an empty name.
+		// Calls handlerName on every scripted instance that defines it, passing the button's entity id; no-op outside runtime or with an empty name.
 		static void CallUIHandler(const std::string& handlerName, uint32_t buttonEntityID);
 
-		// Game viewport rect in WINDOW coordinates. The editor sets this
-		// every frame; the exported runtime never does (window == viewport).
-		// Gameplay mouse queries are viewport-relative and gameplay-vs-GUI
-		// input arbitration uses the rect.
+		// Game viewport rect in WINDOW coordinates; set by the editor every frame, never by the exported runtime (window == viewport). Used by gameplay mouse queries and GUI arbitration.
 		static void SetGameViewport(const glm::vec2& origin, const glm::vec2& size)
 		{
 			s_GameViewportOrigin = origin;
@@ -130,8 +100,7 @@ namespace Waffle {
 		static bool IsQuitRequested() { return s_QuitRequested; }
 		static void ClearQuitRequest() { s_QuitRequested = false; }
 
-		// Context-aware Quit(): the editor installs a handler that stops play
-		// mode; a standalone game has none and terminates the app.
+		// Context-aware Quit(): the editor's handler stops play mode; a standalone game has none and terminates the app.
 		static void SetQuitHandler(const std::function<void()>& callback) { s_QuitHandler = callback; }
 
 		// OnEnable/OnDisable for script-initiated SetActive transitions.
@@ -149,8 +118,7 @@ namespace Waffle {
 		static void SetAssetPath(const std::filesystem::path& path) { s_AssetPath = path; }
 		static std::filesystem::path GetAssetPath() { return s_AssetPath; }
 
-		// Input edge tracking for IsKeyJustPressed/Released (called by the
-		// bindings; snapshots refresh once per frame in OnRuntimeUpdate).
+		// Input edge tracking for IsKeyJustPressed/Released (called by the bindings; snapshots refresh once per frame in OnRuntimeUpdate).
 		static void TrackKey(int code);
 		static void TrackMouse(int code);
 		static void UpdateInputStates();
@@ -158,7 +126,7 @@ namespace Waffle {
 		static double GetInitDurationMs() { return s_InitDurationMs; }
 		static bool IsInitialized() { return s_Initialized; }
 
-		// --- state shared with CSharpScriptBindings.cpp -----------------------
+		// State shared with CSharpScriptBindings.cpp
 		static Scene*                        s_SceneContext;
 		static std::filesystem::path         s_AssetPath;
 		static glm::vec2                     s_GameViewportOrigin;
@@ -192,7 +160,7 @@ namespace Waffle {
 		static void LoadScriptsForEntity(Scene* scene, Entity entity);
 		static void DestroyScriptsForEntity(Scene* scene, Entity entity);
 
-		// --- managed entry points (resolved once at Init) ---
+		// Managed entry points (resolved once at Init)
 		using wf_init_fn = int (*)(CSharpScriptHost::HostFunctions* hostFns);
 		using wf_shutdown_fn = void (*)();
 		using wf_frame_fn = void (*)(float dt);

@@ -2,10 +2,7 @@
 
 #include "RendererAPI.h"
 
-// Thin facade over the backend's RendererAPI for a handful of global-ish
-// calls that survive the RHI migration (clear color, viewport, device
-// limits). All drawing and state binding goes through
-// Waffle::CommandBuffer - see Waffle/RHI/CommandBuffer.h.
+// Thin facade over the backend's RendererAPI for a handful of global-ish calls that survived the RHI migration (clear color, viewport, device limits); all drawing and state binding goes through Waffle::CommandBuffer (see Waffle/RHI/CommandBuffer.h).
 
 namespace Waffle {
 

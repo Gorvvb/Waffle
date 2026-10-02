@@ -62,9 +62,7 @@ namespace Waffle {
 
 		virtual void ClearAttachment(uint32_t attachmentIndex, int value) = 0;
 
-		// Explicit bridge for displaying a color attachment through ImGui
-		// (viewport images, panel previews). Backend-specific payload - see
-		// Texture::GetImGuiTextureId. Not a storable ID.
+		// Explicit bridge for displaying a color attachment through ImGui (viewport images, panel previews); backend-specific payload - see Texture::GetImGuiTextureId. Not a storable ID.
 		virtual void* GetImGuiAttachmentId(uint32_t index = 0) const = 0;
 
 		virtual const FramebufferSpecification& GetSpecification() const = 0;

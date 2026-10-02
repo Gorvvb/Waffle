@@ -125,7 +125,6 @@ namespace Waffle {
 
 		glCreateFramebuffers(1, &m_RendererID);
 		glBindFramebuffer(GL_FRAMEBUFFER, m_RendererID);
-		
 
 		bool multisample = m_Specification.Samples > 1;
 
@@ -203,8 +202,7 @@ namespace Waffle {
 
 	int OpenGLFrameBuffer::ReadPixel(uint32_t attachmentIndex, int x, int y)
 	{
-		// Hard bounds check - the old assert compiles out in release and left
-		// an unchecked vector index.
+		// Hard bounds check - the old assert compiled out in release, leaving an unchecked vector index.
 		if (attachmentIndex >= m_ColorAttachments.size())
 			return -1;
 
@@ -221,18 +219,13 @@ namespace Waffle {
 		}
 		else
 		{
-			// Reading an RGBA8 attachment as RED_INTEGER/INT is an invalid
-			// combination - read as RGBA/UNSIGNED_BYTE instead.
+			// Reading an RGBA8 attachment as RED_INTEGER/INT is invalid - read as RGBA/UNSIGNED_BYTE instead.
 			unsigned char rgba[4] = { 0, 0, 0, 0 };
 			glReadPixels(x, y, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, rgba);
 			pixelData = rgba[0];
 		}
 
-		// Read-buffer state is PER framebuffer object: the caller's
-		// framebuffer was never touched (nothing to restore there), and this
-		// FBO must be left on an attachment it actually has. Restoring the
-		// DEFAULT framebuffer's read buffer (GL_BACK) onto this FBO raised
-		// GL_INVALID_OPERATION ("the required buffer is missing").
+		// Read-buffer state is per FBO; restoring GL_BACK here raised GL_INVALID_OPERATION.
 		glReadBuffer(GL_COLOR_ATTACHMENT0);
 		glBindFramebuffer(GL_READ_FRAMEBUFFER, previousFBO);
 		return pixelData;
@@ -250,9 +243,7 @@ namespace Waffle {
 		}
 		else
 		{
-			// glClearTexImage takes a pixel transfer format/type pair
-			// (GL_RGBA/GL_UNSIGNED_BYTE), not the internal format, and needs a
-			// full RGBA clear value.
+			// glClearTexImage wants a transfer format/type (GL_RGBA/GL_UNSIGNED_BYTE), not the internal format.
 			uint32_t rgba = 0;
 			unsigned char* c = (unsigned char*)&rgba;
 			c[0] = (unsigned char)(value & 0xFF);

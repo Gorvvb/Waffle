@@ -31,27 +31,17 @@ namespace Waffle {
 		glm::vec3 ColorGradingTint = glm::vec3(1.0f, 1.0f, 1.0f);
 	};
 
-	// Fullscreen post chain (bloom + composite), recorded through the RHI
-	// CommandBuffer so it runs identically on OpenGL and Vulkan. Operates on
-	// framebuffers, never on raw texture IDs - backend handles must not
-	// cross this boundary (that was the original GL/Vulkan ID corruption bug).
-	//
-	// Settings live on the camera (CameraComponent) - each camera that renders
-	// passes its own settings to Process/ProcessAndPresent.
+	// Fullscreen post chain (bloom + composite) recorded via the RHI CommandBuffer, identical on GL and Vulkan. Framebuffers in/out - never raw texture IDs (that was the GL/Vulkan ID corruption bug). Settings live on CameraComponent; each camera passes its own to Process/ProcessAndPresent.
 	class PostProcessing
 	{
 	public:
 		static void Init();
 		static void Shutdown();
 
-		// Runs the post chain over `src`'s color attachment and returns the
-		// framebuffer holding the result (for display inside an ImGui image).
-		// Returns nullptr when settings.EnablePostProcessing is off - callers
-		// should present the source framebuffer directly then.
+		// Runs the post chain over `src`'s color attachment and returns the result framebuffer (for ImGui display); nullptr when EnablePostProcessing is off - present the source directly then.
 		static Ref<Framebuffer> Process(const Ref<Framebuffer>& src, uint32_t attachmentIndex, uint32_t width, uint32_t height, const PostProcessingSettings& settings);
 
-		// Process + present the result to the screen (swapchain / default
-		// framebuffer). Runtime path.
+		// Process + present the result to the screen (swapchain). Runtime path.
 		static void ProcessAndPresent(const Ref<Framebuffer>& src, uint32_t attachmentIndex, uint32_t width, uint32_t height, const PostProcessingSettings& settings);
 
 	private:

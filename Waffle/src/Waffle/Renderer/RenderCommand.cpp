@@ -6,9 +6,7 @@
 
 namespace Waffle {
 
-	// Switch this to RendererAPI::API::Vulkan (and change s_RendererAPI below)
-	// to enable the Vulkan backend.  The API enum in RendererAPI.cpp controls
-	// which backend is reported via Renderer::GetAPI().
+	// Backend selection: the API enum in RendererAPI.cpp controls which backend Renderer::GetAPI() reports; this factory instantiates the matching RendererAPI at startup.
 	RendererAPI* RenderCommand::s_RendererAPI = []() -> RendererAPI*
 	{
 		// Read the desired API from the static member at startup

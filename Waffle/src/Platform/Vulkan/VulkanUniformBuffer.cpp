@@ -54,9 +54,7 @@ namespace Waffle {
 		vmaGetAllocationInfo(allocator, m_Allocation, &allocInfo);
 		m_MappedPtr = allocInfo.pMappedData;
 
-		// The shader owns its per-frame descriptor sets (reflected, dynamic
-		// UBO + samplers); this buffer only registers itself with the
-		// context so BindAndFlushDescriptors can point descriptors at it.
+		// Shader owns its descriptor sets; this buffer just registers with the context so BindAndFlushDescriptors can find it.
 		ctx->RegisterUniformBuffer(m_Binding, m_Buffer, m_Size, 0);
 	}
 
@@ -68,8 +66,7 @@ namespace Waffle {
 		if (dev != VK_NULL_HANDLE)
 			vkDeviceWaitIdle(dev);
 
-		// Drop our registration BEFORE destroying the VkBuffer - otherwise
-		// the context hands a dead handle to BindAndFlushDescriptors.
+		// Unregister BEFORE destroying the VkBuffer - else the context hands a dead handle to BindAndFlushDescriptors.
 		ctx->UnregisterUniformBuffer(m_Binding);
 
 		if (m_Buffer != VK_NULL_HANDLE)
@@ -84,9 +81,7 @@ namespace Waffle {
 		WF_CORE_ASSERT(m_MappedPtr, "Uniform buffer not mapped!");
 		WF_CORE_ASSERT(offset + size <= m_Size, "Uniform buffer write out of bounds!");
 
-		// Advance the ring: pick the next slice. A slice is reused only
-		// after kSliceCount updates; WaitForFrameUploads additionally covers
-		// the in-flight frames that may still read this slice.
+		// Advance the ring: a slice is reused only after kSliceCount updates; WaitForFrameUploads guards in-flight readers.
 		if (auto* ctx = VulkanContext::Get())
 			ctx->WaitForFrameUploads(ctx->GetCurrentFrameIndex());
 
@@ -95,8 +90,7 @@ namespace Waffle {
 
 		memcpy((uint8_t*)m_MappedPtr + sliceBase + offset, data, size);
 
-		// Re-register with the slice's dynamic offset - descriptor sets are
-		// bound with it at the next draw.
+		// Re-register with the slice's dynamic offset; descriptor sets bind with it at the next draw.
 		VulkanContext::Get()->RegisterUniformBuffer(m_Binding, m_Buffer, m_Size, sliceBase);
 	}
 

@@ -16,10 +16,7 @@ namespace Waffle {
         glm::vec2   Min = { 0.0f,  0.0f }; // Pixel coords in texture space
         glm::vec2   Max = { 32.0f, 32.0f }; // Pixel coords in texture space
 
-        // Custom pivot, normalized within the region (0,0 = top-left,
-        // 1,1 = bottom-right, image space y-down). Negative = unset: the
-        // frame inherits the animator's Frame Pivot. Set by dragging the
-        // pivot handle in the canvas.
+        // Custom pivot, normalized within the region (0,0 = top-left, y-down). Negative = unset: the frame inherits the animator's Frame Pivot. Set by dragging the pivot handle.
         glm::vec2   Pivot = { -1.0f, -1.0f };
     };
 
@@ -38,9 +35,7 @@ namespace Waffle {
 
         void OnImGuiRender();
 
-        // Opens a texture or .spritesheet asset for editing. Textures with
-        // sibling sprite metadata load that metadata instead of starting
-        // from a blank sheet.
+        // Opens a texture or .spritesheet asset for editing; textures with sibling sprite metadata load that metadata instead of a blank sheet.
         void Open(const std::filesystem::path& path);
 
     private:
@@ -67,8 +62,7 @@ namespace Waffle {
         glm::vec2 m_DragStartPixel = { 0.0f, 0.0f };
         glm::vec2 m_DragCurrentPixel = { 0.0f, 0.0f };
 
-        // Edge resize drag: index of the region being resized plus a
-        // bitmask of the edges being dragged (1=L, 2=R, 4=T, 8=B).
+        // Edge resize drag: region index plus bitmask of the edges being dragged (1=L, 2=R, 4=T, 8=B).
         int       m_ResizeRegionIndex = -1;
         int       m_ResizeEdges = 0;
 

@@ -2,11 +2,7 @@ using System.Runtime.InteropServices;
 
 namespace Waffle.Scripting.Internal;
 
-// -------------------------------------------------------------------------
-// Managed mirror of Waffle/src/Waffle/Scripting/CSharpScriptHost.h.
-// LAYOUT IS ABI: keep field-for-field in sync with the C++ HostFunctions
-// struct (append-only).
-// -------------------------------------------------------------------------
+// Managed mirror of Waffle/src/Waffle/Scripting/CSharpScriptHost.h. Layout is ABI: keep field-for-field in sync with the C++ HostFunctions struct (append-only).
 
 [StructLayout(LayoutKind.Sequential)]
 internal unsafe struct HostFunctions

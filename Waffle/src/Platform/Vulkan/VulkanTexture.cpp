@@ -77,8 +77,7 @@ namespace Waffle {
 		if (dev != VK_NULL_HANDLE)
 			vkDeviceWaitIdle(dev);
 
-		// Drop our registrations BEFORE destroying the handles - otherwise the
-		// context texture registry hands a dead view/sampler to descriptors.
+		// Unregister BEFORE destroying the handles - else the context registry hands out a dead view/sampler.
 		ctx->UnregisterTexture(m_ImageView, m_Sampler);
 
 		// Free ImGui descriptor set if allocated
@@ -117,9 +116,7 @@ namespace Waffle {
 
 		auto* ctx = VulkanContext::Get();
 
-		// In-flight frames may still be sampling this image in
-		// SHADER_READ_ONLY_OPTIMAL; wait before re-transitioning the layout
-		// (the single-time submits below have no dependency on those frames).
+		// In-flight frames may still sample this image - wait idle before re-transitioning the layout.
 		VkDevice dev = ctx->GetDevice();
 		if (dev != VK_NULL_HANDLE)
 			vkDeviceWaitIdle(dev);
@@ -169,9 +166,7 @@ namespace Waffle {
 
 	void VulkanTexture2D::SetFilter(TextureFilter filter)
 	{
-		// Idempotence guard: this path stalls the whole device
-		// (vkDeviceWaitIdle + sampler rebuild) and is invoked per frame by
-		// some UI code re-applying the same filter.
+		// Idempotence guard - this path stalls the device (waitIdle + sampler rebuild) and some UI re-applies the filter per frame.
 		if (filter == m_CurrentFilter && m_Sampler != VK_NULL_HANDLE)
 			return;
 		m_CurrentFilter = filter;
@@ -179,8 +174,7 @@ namespace Waffle {
 		auto* ctx = VulkanContext::Get();
 		VkDevice dev = ctx->GetDevice();
 
-		// The sampler may be referenced by in-flight descriptor sets and the
-		// ImGui set - wait, then rebuild every reference against the new one.
+		// Sampler may be referenced by in-flight descriptor sets and ImGui - wait, then rebuild every reference.
 		if (dev != VK_NULL_HANDLE)
 			vkDeviceWaitIdle(dev);
 
@@ -214,8 +208,7 @@ namespace Waffle {
 
 	bool VulkanTexture2D::operator==(const Texture& other) const
 	{
-		// Pointer form: a reference dynamic_cast throws std::bad_cast when
-		// `other` is a different Texture implementation.
+		// Pointer form: a reference dynamic_cast would throw when `other` is a different Texture implementation.
 		const VulkanTexture2D* otherVK = dynamic_cast<const VulkanTexture2D*>(&other);
 		return otherVK && m_Image == otherVK->m_Image;
 	}

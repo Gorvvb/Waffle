@@ -55,9 +55,7 @@ namespace Waffle {
 		void OnRuntimeStart();
 		void OnRuntimeStop();
 
-		// Creates the Box2D body/fixtures for an entity spawned while the scene
-		// is running (e.g. prefabs instantiated from scripts). No-op outside runtime
-		// or if the body already exists.
+		// Creates the Box2D body/fixtures for an entity spawned mid-runtime; no-op otherwise.
 		void CreateRuntimePhysicsBody(Entity entity);
 
 		int OnUpdateRuntime(Timestep ts);
@@ -78,9 +76,7 @@ namespace Waffle {
 
 		void SetGravity(float g) { m_GravityY = g; }
 
-		// Show/hide an entity (DisabledComponent - same state script SetActive
-		// uses). Hidden entities skip rendering, scripts, physics and camera
-		// selection, in the editor and at runtime.
+		// Show/hide an entity (DisabledComponent - same state as SetActive); skips render/scripts/physics.
 		void SetEntityHidden(Entity entity, bool hidden);
 
 		Entity GetPrimaryCameraEntity();
@@ -110,8 +106,7 @@ namespace Waffle {
 	private:
 		Entity DuplicateEntityRecursive(Entity entity, Entity parent);
 
-		// Draws one tilemap's tiles (called inside the sorted render pass
-		// at the tilemap's own sort slot).
+		// Draws one tilemap's tiles (inside the sorted render pass, at its own sort slot).
 		void DrawTilemapTiles(Entity entity, const glm::mat4& worldTransform);
 
 		template<typename T>

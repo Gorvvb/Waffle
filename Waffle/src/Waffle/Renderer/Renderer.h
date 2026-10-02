@@ -6,20 +6,12 @@
 
 namespace Waffle {
 
-	// -------------------------------------------------------------------------
-	// Renderer
-	// Owns renderer-wide services: the backend API handle, the main per-frame
-	// CommandBuffer (used by Renderer2D, PostProcessing and explicit render
-	// passes), and the 2D batcher.
-	// -------------------------------------------------------------------------
+	// Renderer: owns renderer-wide services - the backend API handle, the main per-frame CommandBuffer (used by Renderer2D, PostProcessing and explicit render passes), and the 2D batcher.
 	class Renderer
 	{
 	public:
 		static void Init();
-		// Must be called while the graphics context is still alive (i.e.
-		// before the Application's window is destroyed) - releases Renderer2D
-		// and PostProcessing GPU resources that would otherwise only die in
-		// static destructors, after the context is gone.
+		// Must be called while the graphics context is still alive (before the Application's window is destroyed) - releases Renderer2D and PostProcessing GPU resources that would otherwise only die in static destructors, after the context is gone.
 		static void Shutdown();
 		static void OnWindowResize(uint32_t width, uint32_t height);
 

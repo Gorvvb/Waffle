@@ -10,7 +10,6 @@
 #include <fstream>
 #include <algorithm>
 
-
 namespace Waffle {
 
     extern std::filesystem::path g_AssetPath;
@@ -31,8 +30,7 @@ namespace Waffle {
 
     void SpritesheetEditorPanel::LoadTexture(const std::filesystem::path& path)
     {
-        // A texture with sibling sprite metadata edits THAT sheet instead
-        // of starting from a fresh default grid.
+        // A texture with sibling sprite metadata edits THAT sheet instead of starting from a fresh default grid.
         std::filesystem::path sibling = path;
         sibling.replace_extension(".spritesheet");
         if (std::filesystem::exists(sibling))
@@ -48,8 +46,7 @@ namespace Waffle {
         m_SelectedRegionIndex = -1;
         m_SelectedGroupIndex = -1;
         m_Groups.clear();
-        // A freshly dropped texture starts from the default grid - not the
-        // dimensions left over from the previously loaded sheet.
+        // A freshly dropped texture starts from the default grid, not the previous sheet's leftover dimensions.
         m_GridCols = 4;
         m_GridRows = 4;
         m_PaddingX = 0;
@@ -142,8 +139,7 @@ namespace Waffle {
         }
     }
 
-    // Shared drag-and-drop handler for the canvas / drop-zone.
-    // Accepts image files and .spritesheet assets from the Content Browser.
+    // Shared drag-and-drop handler for the canvas / drop-zone: accepts image files and .spritesheet assets from the Content Browser.
     void SpritesheetEditorPanel::HandleContentBrowserDrop()
     {
         if (!ImGui::BeginDragDropTarget())
@@ -286,7 +282,7 @@ namespace Waffle {
     {
         ImGui::Begin("Spritesheet Editor");
 
-        // ── Top toolbar ───────────────────────────────────────────────────────
+        // Top toolbar
         {
             if (UI::GhostButton("Open...", ImVec2(92.0f, 31.0f)))
             {
@@ -334,7 +330,7 @@ namespace Waffle {
 
         ImGui::Spacing();
 
-        // ── Grid slicing row ───────────────────────────────────────────────────
+        // Grid slicing row
         {
             ImGui::TextColored(UI::Theme::TextDim, "Grid");
             ImGui::SameLine(0.0f, 10.0f);
@@ -383,21 +379,19 @@ namespace Waffle {
         ImGui::Separator();
         ImGui::Spacing();
 
-        // ── Layout sizes ──────────────────────────────────────────────────────
+        // Layout sizes
         const float availH = ImGui::GetContentRegionAvail().y;
         const float inspW = 260.0f;
         const float canvasW = ImGui::GetContentRegionAvail().x - inspW - 8.0f;
 
-        // =====================================================================
-        //  CANVAS child window
-        // =====================================================================
+        // CANVAS child window
         ImGui::BeginChild("##CanvasChild",
             ImVec2(canvasW, availH), true,
             ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
 
         if (!m_Texture)
         {
-            // ── Empty drop-zone ───────────────────────────────────────────────
+            // Empty drop-zone
             const ImVec2 zoneMin = ImGui::GetCursorScreenPos();
             const ImVec2 zoneMax = { zoneMin.x + canvasW - 2.0f,
                                      zoneMin.y + availH - 2.0f };
@@ -435,7 +429,7 @@ namespace Waffle {
         }
         else
         {
-            // ── Texture canvas ────────────────────────────────────────────────
+            // Texture canvas
             const float texW = (float)m_Texture->GetWidth();
             const float texH = (float)m_Texture->GetHeight();
 
@@ -614,8 +608,7 @@ namespace Waffle {
                 }
             }
 
-            // Left-click: resize handles / pivot of the selected region
-            // first, then select existing region, then start drag-draw.
+            // Left-click: resize handles / pivot of the selected region first, then select an existing region, then start drag-draw.
             const bool insideImage =
                 mousePos.x >= canvasPos.x &&
                 mousePos.x <= canvasPos.x + displayW &&
@@ -706,8 +699,7 @@ namespace Waffle {
                 m_PivotDragRegionIndex = -1;
             }
 
-            // Active edge resize: each flagged edge follows the mouse,
-            // clamped to the image and to a 1px minimum size.
+            // Active edge resize: each flagged edge follows the mouse, clamped to the image and to a 1px minimum size.
             if (m_ResizeRegionIndex >= 0 &&
                 m_ResizeRegionIndex < (int)m_Regions.size())
             {
@@ -804,17 +796,13 @@ namespace Waffle {
                 }
             }
 
-            // Allow dropping a replacement texture / spritesheet onto the canvas.
-            // The interaction InvisibleButton above is also the drop target - a second
-            // overlapping button would steal hover and break canvas interaction.
+            // Drop target is the interaction InvisibleButton above - a second overlapping button would steal hover and break canvas interaction.
             HandleContentBrowserDrop();
         }
 
         ImGui::EndChild(); // CanvasChild
 
-        // =====================================================================
-        //  INSPECTOR  (right panel)
-        // =====================================================================
+        // INSPECTOR (right panel)
         ImGui::SameLine();
         ImGui::BeginChild("##Inspector", ImVec2(inspW, availH), true);
 
@@ -929,7 +917,7 @@ namespace Waffle {
             }
         }
 
-        // ── Groups ────────────────────────────────────────────────────────────
+        // Groups
         char groupsLabel[64];
         snprintf(groupsLabel, sizeof(groupsLabel), "GROUPS   %zu", m_Groups.size());
         UI::SectionLabel(groupsLabel);

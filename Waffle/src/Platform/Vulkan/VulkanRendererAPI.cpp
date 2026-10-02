@@ -7,8 +7,7 @@ namespace Waffle {
 	void VulkanRendererAPI::Init()
 	{
 		WF_PROFILE_FUNCTION();
-		// The VulkanContext handles all initialisation.
-		// Nothing extra needed here.
+		// VulkanContext handles all initialisation - nothing to do here.
 	}
 
 	uint32_t VulkanRendererAPI::GetMaxTextureSlots() const

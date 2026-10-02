@@ -163,8 +163,7 @@ namespace Waffle {
 	{
 		WF_PROFILE_FUNCTION();
 
-	// "#type" only counts at the start of a line - a commented-out shader
-	// block mentioning the token must not corrupt parsing.
+	// "#type" only counts at the start of a line - commented-out shader blocks must not corrupt parsing.
 	auto findTypeToken = [&source](size_t from) -> size_t
 	{
 		size_t p = source.find("#type", from);
@@ -213,10 +212,7 @@ namespace Waffle {
 		shaderData.clear();
 		for (auto&& [stage, source] : shaderSources)
 		{
-			// Shaders built from in-memory source strings have no file identity;
-			// an empty filename would make every runtime-compiled shader share
-			// one cache entry and load each other's SPIR-V. Only file-backed
-			// shaders participate in the cache.
+			// Only file-backed shaders hit the cache; in-memory shaders share an empty filename and would collide.
 			const bool canCache = !m_FilePath.empty();
 			std::filesystem::path shaderFilePath = m_FilePath;
 			std::filesystem::path cachedPath = canCache
@@ -345,9 +341,7 @@ namespace Waffle {
 				m_OpenGLSourceCode[stage] = glslCompiler.compile();
 				auto& source = m_OpenGLSourceCode[stage];
 
-				// Pass the OpenGL-target options - compiling under default
-				// Vulkan semantics works for simple shaders but diverges
-				// obscurely as soon as GLSL/SPIR-V feature sets differ.
+				// Use the OpenGL-target options - default Vulkan semantics diverge obscurely as feature sets differ.
 				shaderc::SpvCompilationResult module = compiler.CompileGlslToSpv(source, Utils::GLShaderStageToShaderC(stage), m_FilePath.c_str(), options);
 				if (module.GetCompilationStatus() != shaderc_compilation_status_success)
 				{
@@ -453,7 +447,6 @@ namespace Waffle {
 		}
 	}
 
-
 	void OpenGLShader::Bind() const
 	{
 		WF_PROFILE_FUNCTION();
@@ -522,10 +515,7 @@ namespace Waffle {
 		UploadUniformMat4(name, value);
 	}
 
-	// Looks up (and memoizes) a uniform location. The program is immutable
-	// once linked, so the cache never goes stale; glGetUniformLocation is a
-	// string-keyed driver query that was previously issued per uniform per
-	// draw call.
+	// Memoized lookup - the program is immutable once linked, and glGetUniformLocation is a slow string query.
 	GLint OpenGLShader::GetUniformLocation(const std::string& name) const
 	{
 		auto it = m_UniformLocationCache.find(name);

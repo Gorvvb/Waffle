@@ -12,9 +12,7 @@ namespace Waffle {
 	{
 		if (!layer) return;
 
-		// Deferred while iterating - see header. NOTE: ownership of `layer`
-		// transfers at call time either way; the layer is kept alive in the
-		// pending list until the flush applies it.
+		// Deferred while iterating - see header. Ownership of `layer` transfers at call time either way; the pending list keeps it alive until the flush applies it.
 		if (IsIterating())
 		{
 			m_PendingOps.push_back({ PendingOp::PushLayer, layer });
@@ -114,9 +112,7 @@ namespace Waffle {
 
 	void LayerStack::FlushPendingOperations()
 	{
-		// Swap first: OnAttach/OnDetach may (legally) push or pop more layers,
-		// which append to the (fresh) pending list and flush at the next
-		// EndIteration boundary.
+		// Swap first: OnAttach/OnDetach may (legally) push or pop more layers, which append to the fresh list and flush at the next EndIteration.
 		std::vector<std::pair<PendingOp, Layer*>> ops = std::move(m_PendingOps);
 		m_PendingOps.clear();
 

@@ -33,8 +33,7 @@ namespace Waffle {
 		}
 		out << YAML::EndSeq;
 
-		// Post-processing settings live on the scene's cameras now
-		// (CameraComponent), not on the project.
+		// Post-processing settings live on the scene's cameras now (CameraComponent), not on the project.
 
 		out << YAML::EndMap; // Project
 		out << YAML::EndMap;
@@ -60,8 +59,7 @@ namespace Waffle {
 		}
 		catch (const YAML::Exception& e)
 		{
-			// BadFile / ParserException / InvalidNode alike: a corrupt project
-			// file must fail to load, not crash the app at startup.
+			// BadFile / ParserException / InvalidNode alike: a corrupt project file must fail to load, not crash the app at startup.
 			WF_CORE_ERROR("Failed to load project file '{0}': {1}", filepath.string(), e.what());
 			return false;
 		}
@@ -70,8 +68,7 @@ namespace Waffle {
 		if (!projectNode)
 			return false;
 
-		// Every read below is a conversion that can throw on a truncated or
-		// hand-edited file - keep one bad field from killing the whole load.
+		// Every read below is a conversion that can throw on a truncated or hand-edited file - keep one bad field from killing the whole load.
 		try
 		{
 		if (projectNode["Name"])
@@ -107,8 +104,7 @@ namespace Waffle {
 			}
 		}
 
-		// Legacy "PostProcessing" keys in old project files are ignored -
-		// per-camera settings moved into CameraComponent.
+		// Legacy "PostProcessing" keys in old project files are ignored - per-camera settings moved into CameraComponent.
 		}
 		catch (const YAML::Exception& e)
 		{

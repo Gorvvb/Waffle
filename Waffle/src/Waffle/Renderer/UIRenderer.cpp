@@ -20,9 +20,7 @@ namespace Waffle {
 
 	namespace
 	{
-		// Canvas geometry for one frame. Canvas units are design pixels; the
-		// uniform Scale maps them to real screen pixels with the UI centered
-		// (letterboxed) in the viewport.
+		// Canvas geometry for one frame. Canvas units are design pixels; Scale maps them to screen pixels with the UI centered (letterboxed) in the viewport.
 		struct CanvasLayout
 		{
 			glm::vec2 Viewport{ 0.0f };
@@ -44,8 +42,7 @@ namespace Waffle {
 			}
 		};
 
-		// Anchor point as fractions of the reference rect. Y grows downward,
-		// so "Top" is y=0.
+		// Anchor point as fractions of the reference rect; Y grows downward, so "Top" is y=0.
 		glm::vec2 AnchorFractions(UIAnchor anchor)
 		{
 			switch (anchor)
@@ -101,12 +98,7 @@ namespace Waffle {
 			return true;
 		}
 
-		// Screen rect of a UI element in canvas units (Y down). The element's
-		// TransformComponent drives the layout: Translation = offset from the
-		// anchor in canvas pixels (+Y up, flipped into screen space here),
-		// Scale = size in canvas pixels, Rotation.z = tilt. Anchors reference
-		// the parent's rect when the parent has a RectTransform, else the
-		// canvas.
+		// Screen rect of a UI element in canvas units (Y down), driven by TransformComponent: Translation = offset from the anchor in canvas pixels (+Y up, flipped into screen space here), Scale = size, Rotation.z = tilt. Anchors reference the parent's rect when it has a RectTransform, else the canvas.
 		UIRect ComputeRect(Scene* scene, Entity entity, const CanvasLayout& layout,
 			std::unordered_map<uint32_t, UIRect>& cache)
 		{
@@ -200,8 +192,7 @@ namespace Waffle {
 		void DrawCenteredText(const std::string& text, float fontSize, const glm::vec4& color,
 			const UIRect& rect, const CanvasLayout& layout, int entityID)
 		{
-			// Bake the font at the on-screen size so scaling the canvas down
-			// does not blur the glyphs.
+			// Bake the font at the on-screen size so scaling the canvas down does not blur the glyphs.
 			float effectiveSize = fontSize * layout.Scale.y;
 			Ref<Font> font = Font::Resolve(std::string(), effectiveSize);
 			if (!font)

@@ -9,9 +9,7 @@ namespace Waffle {
 
 	class OpenGLFrameBuffer;
 
-	// -------------------------------------------------------------------------
 	// OpenGLGraphicsPipeline - program + fixed-function state, applied on bind.
-	// -------------------------------------------------------------------------
 	class OpenGLGraphicsPipeline : public GraphicsPipeline
 	{
 	public:
@@ -22,9 +20,7 @@ namespace Waffle {
 		void Apply() const;
 	};
 
-	// -------------------------------------------------------------------------
 	// OpenGLCommandBuffer - executes every call immediately.
-	// -------------------------------------------------------------------------
 	class OpenGLCommandBuffer : public CommandBuffer
 	{
 	public:

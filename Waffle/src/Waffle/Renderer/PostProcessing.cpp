@@ -9,17 +9,9 @@
 
 namespace Waffle {
 
-	// All post shaders live in Assets/shaders as regular .glsl files
-	// (PostComposite.glsl, BloomDownsample.glsl, BloomUpsample.glsl) - one
-	// GLSL source per stage for BOTH backends: samplers carry Vulkan
-	// set/binding decorations (GL ignores `set`, honours `binding` as the
-	// texture unit), and per-pass parameters live in a std140 UBO at
-	// binding 2 (Vulkan: set 0 / binding 2 - a ring-sliced UniformBuffer, so
-	// every recorded pass keeps its own parameter set; see CommandBuffer::
-	// UpdateUniformBuffer).
+	// Post shaders are plain .glsl files shared by both backends: Vulkan set/binding decorations (GL maps binding to the unit), per-pass params in a ring-sliced std140 UBO at binding 2 (see CommandBuffer::UpdateUniformBuffer).
 
-	// std140 mirrors of the Params blocks. Field order and padding must
-	// match the GLSL exactly (bool == 4 bytes, vec3 aligned to 16).
+	// std140 mirrors of the Params blocks; field order and padding must match the GLSL exactly (bool = 4 bytes, vec3 aligned to 16).
 	struct DownsampleParams
 	{
 		glm::vec2 TexelSize;
@@ -36,10 +28,7 @@ namespace Waffle {
 	};
 	static_assert(sizeof(UpsampleParams) == 16, "std140 mismatch");
 
-	// std140 packing note: a vec3 must START at a 16-byte boundary, but the
-	// member AFTER it only needs 4-byte alignment - scalars pack tightly
-	// following a vec3. Getting this wrong shifts every later setting by one
-	// slot (the vignette smoothness slider was completely dead because of it).
+	// std140: a vec3 must start on a 16-byte boundary, but the scalar after it packs at 4 bytes - get it wrong and every later field shifts (once killed the vignette smoothness slider).
 	struct CompositeParams
 	{
 		int32_t EnablePostProcessing; // 0
@@ -62,9 +51,7 @@ namespace Waffle {
 	};
 	static_assert(sizeof(CompositeParams) == 112, "std140 mismatch");
 
-	// =========================================================================
 	// Resources
-	// =========================================================================
 
 	struct BloomMip
 	{
@@ -152,14 +139,12 @@ namespace Waffle {
 		uint32_t indices[6] = { 0, 1, 2, 3, 4, 5 };
 		s_Data.QuadVertexArray->SetIndexBuffer(IndexBuffer::Create(indices, 6));
 
-		// Shaders load through the central ShaderLibrary (path resolution +
-		// hot reload) like every other shader in the engine.
+		// Load through the central ShaderLibrary (path resolution + hot reload) like every other shader.
 		s_Data.CompositeShader  = ShaderLibrary::Get().Load("assets/shaders/PostComposite.glsl");
 		s_Data.DownsampleShader = ShaderLibrary::Get().Load("assets/shaders/BloomDownsample.glsl");
 		s_Data.UpsampleShader   = ShaderLibrary::Get().Load("assets/shaders/BloomUpsample.glsl");
 
-		// A failed load (missing/corrupt file) must leave the chain disabled
-		// rather than crash later on null pipelines.
+		// A failed load (missing/corrupt file) leaves the chain disabled instead of crashing later on null pipelines.
 		if (!s_Data.CompositeShader || !s_Data.DownsampleShader || !s_Data.UpsampleShader)
 		{
 			WF_CORE_ERROR("PostProcessing: shader resources unavailable - post chain disabled.");
@@ -225,9 +210,7 @@ namespace Waffle {
 			mip.Target = nullptr;
 	}
 
-	// =========================================================================
 	// Post chain
-	// =========================================================================
 
 	Ref<Framebuffer> PostProcessing::Process(const Ref<Framebuffer>& src, uint32_t attachmentIndex, uint32_t width, uint32_t height, const PostProcessingSettings& settings)
 	{
@@ -236,8 +219,7 @@ namespace Waffle {
 		if (!src || width == 0 || height == 0)
 			return nullptr;
 
-		// The composite shader would pass the frame through unchanged anyway;
-		// skipping the chain entirely saves the extra blit.
+		// The composite shader would pass through unchanged anyway; skip the chain and save the blit.
 		if (!settings.EnablePostProcessing)
 			return nullptr;
 
@@ -251,14 +233,12 @@ namespace Waffle {
 		if (!cmd)
 			return nullptr;
 
-		// -----------------------------------------------------------------
 		// 1. Bloom multi-pass downsample & upsample chain
-		// -----------------------------------------------------------------
 		if (settings.EnablePostProcessing && settings.EnableBloom)
 		{
 			DownsampleParams dsParams{};
 
-			// ---- Downsample chain (opaque, each mip cleared) ----
+			// Downsample chain (opaque, each mip cleared)
 			cmd->BindPipeline(s_Data.DownsamplePipeline);
 			for (int i = 0; i < PostProcessingData::BloomMipLevels; i++)
 			{
@@ -282,7 +262,7 @@ namespace Waffle {
 				cmd->EndRenderPass();
 			}
 
-			// ---- Upsample chain (ADDITIVE into the previous mip: no clear) ----
+			// Upsample chain (ADDITIVE into the previous mip: no clear)
 			UpsampleParams upParams{};
 			upParams.FilterRadius = 1.0f;
 			cmd->BindPipeline(s_Data.UpsamplePipeline);
@@ -298,9 +278,7 @@ namespace Waffle {
 			}
 		}
 
-		// -----------------------------------------------------------------
 		// 2. Final composite pass
-		// -----------------------------------------------------------------
 		CompositeParams params{};
 		params.EnablePostProcessing = settings.EnablePostProcessing ? 1 : 0;
 		params.EnableBloom = settings.EnableBloom ? 1 : 0;
@@ -337,10 +315,7 @@ namespace Waffle {
 		Ref<Framebuffer> processed = Process(src, attachmentIndex, width, height, settings);
 		if (!processed)
 		{
-			// Post chain disabled - present the source framebuffer through a
-			// plain passthrough blit instead of drawing the scene straight
-			// into the swapchain (the swapchain has no entity-ID attachment,
-			// and the 2D shaders write one).
+			// Post chain disabled - blit the source through a passthrough composite; the swapchain has no entity-ID attachment and the 2D shaders write one.
 			EnsureResources();
 			if (!s_Data.CompositePipeline)
 				return;
@@ -363,8 +338,7 @@ namespace Waffle {
 
 		CommandBuffer* cmd = Renderer::GetCommandBuffer();
 
-		// Present: composite the processed image straight onto the present
-		// surface with post effects disabled (pure blit).
+		// Present: composite the processed image onto the swapchain with effects disabled (pure blit).
 		CompositeParams params{};
 		params.EnablePostProcessing = 0;
 		cmd->UpdateUniformBuffer(s_Data.ParamsUniformBuffer, &params, sizeof(params), 0);
@@ -372,8 +346,7 @@ namespace Waffle {
 		cmd->BeginSwapchainPass(width, height);
 		cmd->BindPipeline(s_Data.CompositePipeline);
 		cmd->BindFramebufferAttachment(0, processed, 0);
-		// The shader declares u_BloomTexture even when unused (disabled
-		// path); give the descriptor a valid binding.
+		// The shader declares u_BloomTexture even when unused; give the descriptor a valid binding.
 		cmd->BindFramebufferAttachment(1, processed, 0);
 		cmd->DrawIndexed(s_Data.QuadVertexArray, 6, 0);
 		cmd->EndRenderPass();

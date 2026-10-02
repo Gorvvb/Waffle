@@ -32,8 +32,7 @@ namespace Waffle {
 			Settings
 		};
 
-		// Template choices for the New Project tab.
-		// Extend this enum and the card-rendering loop when more templates are added.
+		// Template choices for the New Project tab; extend this enum and the card-rendering loop when adding more.
 		enum class ProjectTemplate
 		{
 			Blank2D = 0
@@ -53,8 +52,7 @@ namespace Waffle {
 		// Tracks which starter template the user has selected on the New Project tab.
 		ProjectTemplate m_SelectedTemplate = ProjectTemplate::Blank2D;
 
-		// Remove-confirmation modal state.
-		// -1 means no removal is pending.
+		// Remove-confirmation modal state; -1 means no removal is pending.
 		int  m_PendingRemoveIndex = -1;
 		bool m_ShowRemoveModal    = false;
 	};

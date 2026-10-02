@@ -170,9 +170,7 @@ namespace Waffle {
 
 		glm::vec4 result = windowPx; // fallback: treat the whole window as content
 
-		// Keyframe paths are asset-relative; resolve them against the active
-		// project before giving up (the working directory is usually the
-		// editor binary's folder, not the project's).
+		// Keyframe paths are asset-relative; resolve them against the active project before giving up (the working directory is usually the editor binary's folder, not the project's).
 		std::string scanPath = path;
 		std::error_code ec;
 		if (!std::filesystem::exists(scanPath, ec))
@@ -185,12 +183,7 @@ namespace Waffle {
 		if (std::filesystem::exists(scanPath, ec))
 		{
 			int width = 0, height = 0, channels = 0;
-			// Force RGBA so the alpha test below always applies; images
-			// without an alpha channel decode as fully opaque and return
-			// the full window.
-			// The texture loaders enable stb's GLOBAL vertical-flip flag
-			// (and leave it on) - without forcing it off here the scan
-			// would measure the image upside down.
+			// Force RGBA so the alpha test below always applies (no alpha channel decodes as fully opaque and returns the full window); the texture loaders enable stb's GLOBAL vertical-flip flag and leave it on, so force it off here or the scan measures the image upside down.
 			stbi_set_flip_vertically_on_load(0);
 			unsigned char* pixels = stbi_load(scanPath.c_str(), &width, &height, &channels, 4);
 			stbi_set_flip_vertically_on_load(1);

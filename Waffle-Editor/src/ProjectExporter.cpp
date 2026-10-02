@@ -62,9 +62,7 @@ struct GRPICONDIR {
 #pragma pack(pop)
 
 struct ResItem {
-	// The enum callbacks hand out pointers INTO the loaded module image -
-	// they die with FreeLibrary. Keep values: integer IDs as numbers (the
-	// common case), string names copied out.
+	// Enum callback type/name pointers die with FreeLibrary - keep int IDs as numbers, copy string names.
 	bool typeIsInt = false, nameIsInt = false;
 	uintptr_t typeInt = 0, nameInt = 0;
 	std::wstring typeStr, nameStr;
@@ -158,8 +156,7 @@ static std::vector<uint8_t> ResizeRGBA(const uint8_t* src, int srcW, int srcH, i
 	return dst;
 }
 
-// Collects all existing RT_ICON and RT_GROUP_ICON resources from the exe
-// so we can purge them inside the same update session that writes the new icon.
+// Collects existing RT_ICON/RT_GROUP_ICON resources so they can be purged in the same update session.
 static std::vector<ResItem> CollectExistingIconResources(const std::filesystem::path& exePath)
 {
 	std::vector<ResItem> items;
@@ -179,8 +176,7 @@ static bool EmbedIconInExecutable(const std::filesystem::path& exePath, const st
 	if (!std::filesystem::exists(exePath, ec) || !std::filesystem::exists(iconPath, ec))
 		return false;
 
-	// Collect existing icon resources BEFORE opening the update handle,
-	// then purge + write in ONE session so nothing gets re-applied between sessions.
+	// Collect existing icons BEFORE opening the update handle; purge + write happen in one session.
 	std::vector<ResItem> existingItems = CollectExistingIconResources(exePath);
 
 	std::ifstream iconFile(iconPath, std::ios::binary | std::ios::ate);
@@ -204,9 +200,7 @@ static bool EmbedIconInExecutable(const std::filesystem::path& exePath, const st
 		MAKELANGID(LANG_ENGLISH, SUBLANG_ENGLISH_US)
 	};
 
-	// --- Build the icon payload (grpBuffer + per-image data) ---
-	// We need this ready before opening the update handle so we can
-	// do purge + write atomically in one session.
+	// Build the icon payload (grpBuffer + per-image data) up front so purge + write stay atomic.
 
 	struct IconResData {
 		int width, height;
@@ -228,10 +222,7 @@ static bool EmbedIconInExecutable(const std::filesystem::path& exePath, const st
 				const ICONDIRENTRY* entries = reinterpret_cast<const ICONDIRENTRY*>(
 					fileData.data() + sizeof(ICONDIRHEADER));
 
-				// Collect only entries whose data window lies inside the
-				// file (uint64 arithmetic - uint32 offset+size wraps), and
-				// assign GRPICON IDs ONLY to entries that actually get
-				// written, so directory IDs always match RT_ICON IDs.
+				// Keep only in-file entries (uint32 offset+size wraps); GRP IDs match the written RT_ICON IDs.
 				for (uint16_t i = 0; i < count; i++)
 				{
 					uint64_t dataEnd = (uint64_t)entries[i].dwImageOffset + entries[i].dwBytesInRes;
@@ -285,9 +276,7 @@ static bool EmbedIconInExecutable(const std::filesystem::path& exePath, const st
 
 	if (!isIco)
 	{
-		// Raster image path: resize to standard sizes and encode as PNG.
-		// Decode from the already-read buffer - stbi_load takes an ANSI path
-		// and silently fails for non-ASCII icon paths.
+		// Raster path: resize to standard sizes + PNG; decode from memory (stbi_load fails on non-ASCII paths).
 		int width = 0, height = 0, channels = 0;
 		stbi_uc* srcPixels = stbi_load_from_memory(fileData.data(), (int)fileSize, &width, &height, &channels, 4);
 		if (!srcPixels)
@@ -349,7 +338,7 @@ static bool EmbedIconInExecutable(const std::filesystem::path& exePath, const st
 		}
 	}
 
-	// --- Single update session: purge old icons then write new ones ---
+	// Single update session: purge old icons then write new ones
 	HANDLE hUpdate = BeginUpdateResourceW(exePath.wstring().c_str(), FALSE);
 	if (!hUpdate)
 	{
@@ -398,9 +387,7 @@ static bool EmbedIconInExecutable(const std::filesystem::path& exePath, const st
 
 #endif
 
-// Byte offset of the LAST "Assets" path segment in a forward-slashed path,
-// or npos. A plain substring search matched names like "D:/GameAssets/..."
-// and produced wrong runtime-relative scene paths.
+// Byte offset of the LAST "Assets" path segment, or npos - a plain find matched "D:/GameAssets/..." and broke runtime scene paths.
 static size_t FindLastAssetsSegment(const std::string& s)
 {
 	size_t best = std::string::npos;
@@ -429,11 +416,7 @@ static std::filesystem::path FindRuntimeExecutable()
 	std::filesystem::path exeDir = std::filesystem::current_path();
 #endif
 
-	// Order matters: the repo dev layout's Dist/Release runtimes first, so
-	// exports NEVER ship the Debug build (console window + validation-layer
-	// spam) just because it happens to sit next to the editor exe. The
-	// exeDir/"../Waffle-Runtime" sibling only matches in deployed layouts,
-	// where no bin/ tree exists.
+	// Order matters: Dist/Release before Debug so exports never ship the Debug runtime; the "../Waffle-Runtime" sibling only fits deployed layouts.
 	candidates = {
 		exeDir / "../../bin/Dist-windows-x86_64/Waffle-Runtime/Waffle-Runtime.exe",
 		exeDir / "../../bin/Release-windows-x86_64/Waffle-Runtime/Waffle-Runtime.exe",
@@ -457,8 +440,7 @@ static std::filesystem::path FindRuntimeExecutable()
 			auto canon = std::filesystem::canonical(path, ec);
 			std::filesystem::path chosen = ec ? path : canon;
 
-			// A Debug runtime means a console window and validation-layer
-			// logging in the player's face - say so loudly.
+			// Debug runtime = console window + validation spam in the player's face - warn loudly.
 			std::string chosenStr = chosen.string();
 			if (chosenStr.find("Debug-windows") != std::string::npos)
 				WF_CORE_WARN("ProjectExporter: shipping the DEBUG runtime - "
@@ -468,9 +450,7 @@ static std::filesystem::path FindRuntimeExecutable()
 		}
 	}
 
-	// Last resort: bounded upward search that skips heavyweight directories
-	// (vendored dependencies, VCS metadata, build intermediates) so this
-	// cannot burn minutes scanning an entire drive.
+	// Last resort: bounded upward search that skips vendor/.git/build dirs so it can't burn minutes scanning the drive.
 	try
 	{
 		auto isPruned = [](const std::filesystem::path& dir)
@@ -486,8 +466,7 @@ static std::filesystem::path FindRuntimeExecutable()
 		for (int depth = 0; depth < 4 && current.has_parent_path(); ++depth)
 		{
 			std::error_code ec;
-			// operator* yields a CONST entry - pruning is an iterator
-			// operation, so walk the iterator explicitly.
+			// operator* yields a CONST entry; pruning is an iterator operation, so walk the iterator explicitly.
 			for (auto it = std::filesystem::recursive_directory_iterator(current, ec);
 				it != std::filesystem::recursive_directory_iterator(); ++it)
 			{
@@ -561,17 +540,14 @@ static std::filesystem::path FindRuntimeExecutable()
 			return false;
 		}
 
-		// 2b. Ship runtime DLLs the exe links against. shaderc_shared.dll
-		// resolves from the Vulkan SDK on dev machines via PATH - a player
-		// has neither, so the export must carry it to run out of the box.
+		// 2b. Ship runtime DLLs the exe links against; shaderc_shared.dll resolves via the Vulkan SDK, which players lack.
 		{
 			const char* requiredDlls[] = { "shaderc_shared.dll" };
 			std::filesystem::path sdkBin;
 			if (const char* sdk = getenv("VULKAN_SDK"))
 				sdkBin = std::filesystem::path(sdk) / "Bin";
 
-			// The editor's own directory often carries the DLL (it links the
-			// same shaderc and must be able to run).
+			// The editor's own directory often carries the DLL (it links the same shaderc).
 			char editorModuleBuffer[MAX_PATH];
 			GetModuleFileNameA(nullptr, editorModuleBuffer, MAX_PATH);
 			std::filesystem::path editorDir = std::filesystem::path(editorModuleBuffer).parent_path();
@@ -600,9 +576,7 @@ static std::filesystem::path FindRuntimeExecutable()
 					}
 				}
 
-				// A missing DLL must fail the export LOUDLY: the packaged
-				// game would not start on a machine without the Vulkan SDK,
-				// and the old silent skip produced exactly that.
+				// A missing DLL must fail the export LOUDLY: the packaged game wouldn't start without the Vulkan SDK.
 				if (!shipped)
 				{
 					outErrorMessage = std::string("Could not find ") + dll +
@@ -695,10 +669,7 @@ static std::filesystem::path FindRuntimeExecutable()
 			}
 		}
 
-
-		// 7. Copy extra .cs scripts outside Assets/ into targetAssets/Scripts.
-		// Preserve the project-relative directory structure - a flat copy
-		// silently overwrites same-named scripts from different folders.
+		// 7. Copy extra .cs scripts outside Assets/ into targetAssets/Scripts, keeping relative dirs (flat copy clobbers same names).
 		if (std::filesystem::exists(activeProjectPath))
 		{
 			std::filesystem::path targetScripts = targetAssets / "Scripts";
@@ -744,11 +715,7 @@ static std::filesystem::path FindRuntimeExecutable()
 			}
 		}
 
-		// 7b. Stage the embedded .NET runtime so exported games run with no
-		// SDK or .NET install on the player machine: the self-contained
-		// layout the engine host resolves next to the exe
-		// (<exe dir>/host/fxr + shared/Microsoft.NETCore.App), plus the
-		// ScriptingRuntime contract folder.
+		// 7b. Stage the embedded .NET runtime (<exe dir>/host/fxr + shared/Microsoft.NETCore.App) + ScriptingRuntime folder so exports need no .NET install.
 		{
 			// Locate the dev dotnet root the same way the engine host does.
 			std::filesystem::path dotnetRoot;
@@ -801,8 +768,7 @@ static std::filesystem::path FindRuntimeExecutable()
 				std::filesystem::path sharedVersion = highestVersion(sharedDir);
 				if (!fxrVersion.empty() && !sharedVersion.empty())
 				{
-					// std::filesystem::copy does NOT create missing intermediate
-					// parents - without these the copies fail silently into ec.
+					// std::filesystem::copy does NOT create missing parents - without these the copies fail silently into ec.
 					std::filesystem::create_directories(exportsDir / "host" / "fxr", stageEc);
 					std::filesystem::create_directories(exportsDir / "shared" / "Microsoft.NETCore.App", stageEc);
 					std::filesystem::copy(fxrVersion, exportsDir / "host" / "fxr" / fxrVersion.filename(),
@@ -817,8 +783,7 @@ static std::filesystem::path FindRuntimeExecutable()
 				}
 			}
 
-			// ScriptingRuntime contract folder: search next to the editor exe
-			// (packaged layout) then the repo dev layout (bin/ScriptingRuntime).
+			// ScriptingRuntime contract folder: next to the editor exe (packaged), then the repo bin/ScriptingRuntime.
 			std::filesystem::path editorExe = std::filesystem::path(GetModuleFileNameA_()).parent_path();
 			std::vector<std::filesystem::path> candidates = {
 				editorExe / "ScriptingRuntime",
@@ -836,10 +801,7 @@ static std::filesystem::path FindRuntimeExecutable()
 				}
 			}
 
-			// Stage the compiled game scripts where the engine's packed-export
-			// fallback looks for them: packed exports have no physical
-			// Assets/Scripts folder to compile, so GameScripts.dll must sit
-			// beside ScriptingRuntime.
+			// Stage GameScripts.dll where the engine's packed-export fallback looks: packed exports have no Assets/Scripts to compile.
 			std::filesystem::path scriptDll = activeProjectPath / "Assets" / "cache" / "Scripting" / "GameScripts.dll";
 			if (std::filesystem::exists(scriptDll, stageEc))
 			{
@@ -859,10 +821,7 @@ static std::filesystem::path FindRuntimeExecutable()
 			}
 		}
 
-		// 8. Resolve icon: custom > project logo > editor logo > nothing
-		//    The Waffle-Runtime.exe already has the Waffle logo compiled in as a
-		//    PE resource.  We only call EmbedIconInExecutable when there is
-		//    actually a custom icon to use - otherwise the compiled-in logo stays.
+		// 8. Resolve icon: custom > project logo > editor logo; the exe ships with the Waffle logo compiled in, only re-embed when one is found.
 		std::string           relativeIconPath;
 		std::filesystem::path chosenIconPath;
 
@@ -894,8 +853,7 @@ static std::filesystem::path FindRuntimeExecutable()
 		{
 			chosenIconPath = activeProjectPath / "Assets/Images/logo.png";
 		}
-		// If neither condition matched, chosenIconPath stays empty and the
-		// Waffle logo that was compiled into Waffle-Runtime.exe is kept as-is.
+		// No match: chosenIconPath stays empty and the compiled-in Waffle logo is kept as-is.
 
 		if (!chosenIconPath.empty())
 		{
@@ -908,8 +866,7 @@ static std::filesystem::path FindRuntimeExecutable()
 				relativeIconPath = "Assets/app_icon" + chosenIconPath.extension().string();
 
 #if defined(WF_PLATFORM_WINDOWS)
-			// Replace the PE icon resource so Explorer / taskbar show the right icon.
-			// Purge and write happen inside one BeginUpdateResource session.
+			// Replace the PE icon resource so Explorer/taskbar show the right icon; purge + write in one BeginUpdateResource session.
 			if (!EmbedIconInExecutable(targetExePath, chosenIconPath))
 			{
 				WF_CORE_WARN("Icon embedding failed for '{0}' - exported exe will keep the Waffle logo.",
@@ -968,8 +925,7 @@ static std::filesystem::path FindRuntimeExecutable()
 		}
 		out << YAML::EndSeq;
 
-		// Post-processing settings live on the scene's cameras
-		// (CameraComponent::PostProcessing) and travel with the scenes.
+		// Post-processing settings live on the scene's cameras (CameraComponent::PostProcessing).
 
 		out << YAML::EndMap;
 		out << YAML::EndMap;
@@ -978,11 +934,7 @@ static std::filesystem::path FindRuntimeExecutable()
 		fout << out.c_str();
 		fout.close();
 
-		// 11. Pack all exported assets into game.wpack
-		// Compile the game scripts first so the staged GameScripts.dll (and
-		// the copy inside the pack) are current. Non-fatal: a failed compile
-		// falls back to the last good assembly, and the staging below warns
-		// when there is nothing to ship.
+		// 11. Pack all exported assets into game.wpack; compile scripts first (a failed compile is non-fatal - staging below warns if nothing to ship).
 		CSharpScriptEngine::CompileProjectScripts();
 
 		AssetPackerOptions packOptions;

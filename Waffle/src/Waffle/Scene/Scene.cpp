@@ -25,9 +25,7 @@
 
 namespace Waffle {
 
-	// Resolves a sprite's optional custom shader (SpriteRendererComponent::
-	// CustomShaderPath). Paths resolve like texture paths (asset-relative),
-	// and the ShaderLibrary hot-reloads the shader when the file changes.
+	// Resolves a sprite's optional CustomShaderPath (asset-relative, hot-reloaded via ShaderLibrary).
 	static Ref<Shader> ResolveCustomShader(const SpriteRendererComponent& src)
 	{
 		if (src.CustomShaderPath.empty())
@@ -73,8 +71,7 @@ namespace Waffle {
 
 			if constexpr (std::is_empty_v<Component>)
 			{
-				// Tag components (DisabledComponent): entt get() yields void
-				// for empties - just emplace the tag on the destination.
+				// Tag components (DisabledComponent): entt yields void for empties - just emplace the tag.
 				dst.emplace_or_replace<Component>(dstEnttID);
 			}
 			else
@@ -88,9 +85,7 @@ namespace Waffle {
 	template<typename Component>
 	static void CopyComponentIfExists(Entity dst, Entity src)
 	{
-		// NOTE: tag (empty) components are copied by the callers through the
-		// registry directly - Entity::AddOrReplaceComponent returns T& and
-		// entt yields void for empty types.
+		// Tag (empty) components are copied via the registry - AddOrReplaceComponent returns T&.
 		if constexpr (!std::is_empty_v<Component>)
 		{
 			if (src.HasComponent<Component>())
@@ -98,9 +93,7 @@ namespace Waffle {
 		}
 	}
 
-	// entt returns void from emplace for empty components, so component
-	// add/remove for DisabledComponent goes through here instead of
-	// Entity::AddComponent.
+	// entt yields void when emplacing empty components, so DisabledComponent add/remove lives here.
 	void Scene::SetEntityHidden(Entity entity, bool hidden)
 	{
 		if (!entity)
@@ -157,9 +150,7 @@ namespace Waffle {
 		CopyComponent<TilemapComponent>(dstSceneRegistry, srcSceneRegistry, enttMap);
 		CopyComponent<TilemapColliderComponent>(dstSceneRegistry, srcSceneRegistry, enttMap);
 
-		// Preserve disabled state in the play-mode copy (Lua SetActive) -
-		// dropping it re-enabled entities mid-play. Tag component: copied
-		// through the registry (see CopyComponentIfExists note).
+		// Preserve disabled state in the play-mode copy - dropping it re-enables entities mid-play.
 		{
 			auto tagView = srcSceneRegistry.view<DisabledComponent>();
 			for (auto e : tagView)
@@ -170,8 +161,7 @@ namespace Waffle {
 			}
 		}
 
-		// Never carry live native-script instances across scenes: the copied
-		// pointer belongs to (and points into) the source scene.
+		// Never carry live native-script instances across scenes - the pointer belongs to the source.
 		{
 			auto nscView = dstSceneRegistry.view<NativeScriptComponent>();
 			for (auto e : nscView)
@@ -193,9 +183,7 @@ namespace Waffle {
 		entity.AddComponent<TransformComponent>();
 		auto& tag = entity.AddComponent<TagComponent>();
 		tag.Tag = name.empty() ? "Empty Entity" : name;
-		// Duplicated UUIDs (hand-edited files, pasted prefab blocks) would
-		// silently orphan the earlier entity - all its relationships re-point
-		// at the new one.
+		// Duplicate UUIDs orphan the earlier entity - its relationships re-point at the new one.
 		auto existing = m_EntityMap.find(uuid);
 		if (existing != m_EntityMap.end() && m_Registry.valid(existing->second))
 			WF_CORE_WARN("Scene: duplicate UUID {0} (entity '{1}') - previous entity becomes unreachable by UUID", (uint64_t)uuid, tag.Tag);
@@ -255,8 +243,7 @@ namespace Waffle {
 		if (!child || !parent || child == parent)
 			return;
 
-		// Cycle detection (depth-capped like GetWorldTransform - a
-		// hand-edited cyclic hierarchy must not hang the editor forever)
+		// Cycle detection, depth-capped like GetWorldTransform - a cyclic hierarchy must not hang us.
 		Entity currentParent = parent;
 		int depth = 0;
 		while (currentParent && currentParent.HasComponent<RelationshipComponent>() && depth++ < 64)
@@ -361,8 +348,7 @@ namespace Waffle {
 	void Scene::OnRuntimeStart()
 	{
 		m_IsRunning = true;
-		// A stop -> start on the same scene object must not replay leftover
-		// time as up to 12 catch-up physics steps.
+		// Stop -> start on the same scene must not replay leftover time as catch-up physics steps.
 		m_PhysicsAccumulator = 0.0f;
 		m_PhysicsWorld = new b2World({ 0.0f, m_GravityY });
 		m_BodyEntityMap.clear();
@@ -375,9 +361,7 @@ namespace Waffle {
 			CreateRuntimePhysicsBody(Entity{ e, this });
 		}
 
-		// Tilemap colliders: merge the solid tiles of each Tilemap with a
-		// TilemapColliderComponent into a few large static fixtures
-		// (greedy rectangle merge) instead of one fixture per tile.
+		// Tilemap colliders: merge solid tiles into a few large static fixtures (greedy rectangle merge).
 		{
 			auto tmView = m_Registry.view<TilemapComponent, TilemapColliderComponent>(entt::exclude<DisabledComponent>);
 			for (auto e : tmView)
@@ -406,8 +390,7 @@ namespace Waffle {
 				bodyDef.position.Set(origin.x, origin.y);
 				b2Body* body = m_PhysicsWorld->CreateBody(&bodyDef);
 
-				// Register the body so Lua raycasts and collision events
-				// resolve hits on tilemap fixtures back to this entity.
+				// Register the body so Lua raycasts/collision events resolve tilemap hits to this entity.
 				m_BodyEntityMap[body] = (uint32_t)e;
 
 				std::set<std::pair<int, int>> consumed;
@@ -453,9 +436,7 @@ namespace Waffle {
 		CSharpScriptEngine::OnRuntimeStart(this);
 	}
 
-	// Creates the Box2D body + fixtures for an entity. Safe to call for entities
-	// spawned mid-runtime (e.g. prefabs instantiated from scripts); no-ops when
-	// the physics world doesn't exist or the body was already created.
+	// Creates the Box2D body + fixtures; safe for mid-runtime spawns, no-op if no world or body exists.
 	void Scene::CreateRuntimePhysicsBody(Entity entity)
 	{
 		if (!m_PhysicsWorld || !entity || !entity.HasComponent<Rigidbody2DComponent>() || !entity.HasComponent<TransformComponent>())
@@ -567,8 +548,7 @@ namespace Waffle {
 	{
 		m_IsRunning = false;
 
-		// Fire OnDestroy and release native script instances - without this
-		// every NSC instance leaked when the played scene was discarded.
+		// Fire OnDestroy and release native script instances - otherwise every NSC leaks on stop.
 		m_Registry.view<NativeScriptComponent>().each([](auto entity, auto& nsc)
 		{
 			if (nsc.Instance)
@@ -624,8 +604,7 @@ namespace Waffle {
 				{
 					CSharpScriptEngine::OnRuntimeUpdate(this, ts);
 
-					// Snapshot: OnCreate can create/destroy scripted entities
-					// and reallocate the pool under a live view iterator.
+					// Snapshot: OnCreate can create/destroy entities and reallocate the pool mid-iteration.
 					std::vector<entt::entity> nativeScripted;
 					for (auto e : m_Registry.view<NativeScriptComponent>())
 						nativeScripted.push_back(e);
@@ -635,8 +614,7 @@ namespace Waffle {
 						if (!m_Registry.valid(entity))
 							continue;
 						auto& nsc = m_Registry.get<NativeScriptComponent>(entity);
-						// Unbound components (no Bind() call) have null
-						// function pointers - calling through them is UB.
+						// Unbound components (no Bind()) have null pointers - calling them is UB.
 						if (!nsc.InstanciateScript)
 							continue;
 						if (!nsc.Instance)
@@ -650,8 +628,7 @@ namespace Waffle {
 					}
 				}
 
-			// Lifetime - tick down and destroy expired entities.
-			// Collect first, then destroy, to avoid invalidating the view mid-iteration.
+			// Lifetime - collect first, then destroy, so the view isn't invalidated mid-iteration.
 			{
 				std::vector<Entity> expired;
 				auto lifetimeView = m_Registry.view<LifetimeComponent>();
@@ -678,8 +655,7 @@ namespace Waffle {
 
 					while (m_PhysicsAccumulator >= m_PhysicsFixedStep)
 					{
-						// Snapshot the pre-step body state for render
-						// interpolation (see the transform sync below).
+						// Snapshot the pre-step body state for render interpolation (see sync below).
 						{
 							auto rbView = m_Registry.view<Rigidbody2DComponent>();
 							for (auto pe : rbView)
@@ -698,8 +674,7 @@ namespace Waffle {
 						m_PhysicsWorld->Step(m_PhysicsFixedStep, velocityIterations, positionIterations);
 						m_PhysicsAccumulator -= m_PhysicsFixedStep;
 
-						// Dispatch collision/trigger Lua callbacks AFTER the step -
-						// they are queued during Step and must never run inside it.
+						// Dispatch collision/trigger Lua callbacks AFTER the step - queued during Step, never inside it.
 						CSharpScriptEngine::DrainCollisionEvents(this);
 					}
 				}
@@ -708,8 +683,7 @@ namespace Waffle {
 				for (auto e : view)
 				{
 					Entity entity = { e, this };
-					// The hierarchy panel allows removing Transform from a
-					// rigidbody entity - that must crash the physics sync.
+					// The hierarchy panel allows removing Transform from a rigidbody - don't crash the sync.
 					if (!entity.HasComponent<TransformComponent>())
 						continue;
 					auto& transform = entity.GetComponent<TransformComponent>();
@@ -720,8 +694,7 @@ namespace Waffle {
 					{
 						if (!m_PhysicsWorld)
 							continue;
-						// Entity was spawned mid-runtime (e.g. prefab instantiated
-						// from a script) - create its body now instead of crashing.
+						// Spawned mid-runtime (e.g. prefab from a script) - create the body now, don't crash.
 						CreateRuntimePhysicsBody(entity);
 						body = (b2Body*)rb2d.RuntimeBody;
 						if (!body)
@@ -730,11 +703,7 @@ namespace Waffle {
 
 					const auto& position = body->GetPosition();
 
-					// Interpolate between the previous and current physics
-					// states by the leftover accumulator fraction, so
-					// rendering lands BETWEEN fixed steps. Without this,
-					// bodies stair-step at the physics rate and cameras
-					// following them wobble for a few frames.
+					// Interpolate prev->current physics by the accumulator fraction so render lands between fixed steps.
 					b2Vec2 renderPos = position;
 					float renderAngle = body->GetAngle();
 					if (rb2d.RuntimePrevValid && m_PhysicsFixedStep > 0.0f)
@@ -745,8 +714,7 @@ namespace Waffle {
 						renderAngle = rb2d.RuntimePrevAngle + (body->GetAngle() - rb2d.RuntimePrevAngle) * alpha;
 					}
 
-					// Physics reports world-space transforms; convert back to
-					// parent-relative (local) space for parented entities.
+					// Physics reports world-space transforms; convert back to parent-relative local space.
 					Entity parent = GetParent(entity);
 					if (parent && parent.HasComponent<TransformComponent>())
 					{
@@ -771,17 +739,14 @@ namespace Waffle {
 					}
 				}
 
-			// Advance ALL animators here (not in the render loop): off-screen
-			// entities' animations keep playing, and the render section runs
-			// even while paused - animators must not.
+			// Advance ALL animators here, not in the render loop - the render pass runs even while paused.
 			{
 				auto animatorView = m_Registry.view<AnimatorComponent>(entt::exclude<DisabledComponent>);
 				for (auto e : animatorView)
 					animatorView.get<AnimatorComponent>(e).Update(ts);
 			}
 
-			// Button hover/click bookkeeping runs with gameplay, not while
-			// paused; the render section below still runs when paused.
+			// Button hover/click bookkeeping runs with gameplay, not while paused.
 			UIRenderer::UpdateUIInteraction(this);
 		}
 
@@ -790,8 +755,7 @@ namespace Waffle {
 		glm::mat4 cameraTransform;
 		CameraComponent* mainCameraComp = nullptr;
 		{
-			// A disabled camera must not drive rendering either - the render
-			// passes exclude DisabledComponent, the camera pick must match.
+			// A disabled camera must not drive rendering - exclude DisabledComponent like the render passes.
 			auto view = m_Registry.view<TransformComponent, CameraComponent>(entt::exclude<DisabledComponent>);
 			for (auto entity : view)
 			{
@@ -829,10 +793,7 @@ namespace Waffle {
 				int SortingOrder = 0;
 				float Z = 0.0f;
 				glm::mat4 WorldTransform;
-				// Persistent tie-breaker: registry iteration order differs
-				// between a live editing session and a deserialized scene
-				// (entt iterates in reverse creation order), which made
-				// same-layer/order draws flip after every save/load.
+				// Persistent tie-breaker: entt iterates in reverse creation order, draws would flip on save/load.
 				uint64_t UUID = 0;
 			};
 
@@ -876,8 +837,7 @@ namespace Waffle {
 				renderItems.back().UUID = (uint64_t)m_Registry.get<IDComponent>(entity).ID;
 			}
 
-			// Gather tilemaps - each renders all its tiles at its sort slot
-			// (SortingLayer / Order / Z mix with sprites).
+			// Gather tilemaps - each renders all its tiles at its sort slot (mixes with sprites).
 			{
 				auto tmView = m_Registry.view<TilemapComponent>(entt::exclude<DisabledComponent>);
 				for (auto e : tmView)
@@ -900,9 +860,7 @@ namespace Waffle {
 				return a.UUID < b.UUID;
 			});
 
-			// Draw all sorted items. Animators were advanced in a pre-pass
-			// (inside the pause guard) - updating them here would run them
-			// while paused and skip culled (off-screen) entities.
+			// Draw all sorted items; animators were advanced in the pre-pass (would run while paused here).
 			for (const auto& item : renderItems)
 			{
 				if (item.Type == RenderItem::ItemType::Sprite)
@@ -960,8 +918,7 @@ namespace Waffle {
 		if (!tm.TilesetTexture || tm.Tiles.empty()) return;
 
 		glm::vec2 origin(worldTransform[3].x, worldTransform[3].y);
-		// Tile size = entity scale (per axis); Z comes from the transform so
-		// tilemaps layer against sprites in the sorted pass.
+		// Tile size = entity scale (per axis); Z from the transform so tilemaps layer against sprites.
 		glm::vec2 T(glm::length(worldTransform[0]), glm::length(worldTransform[1]));
 		if (T.x <= 0.0f || T.y <= 0.0f) return;
 		const float z = worldTransform[3].z;
@@ -1005,8 +962,7 @@ namespace Waffle {
 	{
 		Renderer2D::BeginScene(camera);
 
-		// Advance animators for ALL entities (not just visible ones) before
-		// the culled gather pass.
+		// Advance animators for ALL entities (not just visible ones) before the culled gather.
 		{
 			auto animatorView = m_Registry.view<AnimatorComponent>(entt::exclude<DisabledComponent>);
 			for (auto e : animatorView)
@@ -1037,10 +993,7 @@ namespace Waffle {
 			int SortingOrder = 0;
 			float Z = 0.0f;
 			glm::mat4 WorldTransform;
-			// Persistent tie-breaker: registry iteration order differs
-			// between a live editing session and a deserialized scene
-			// (entt iterates in reverse creation order), which made
-			// same-layer/order draws flip after every save/load.
+			// Persistent tie-breaker: entt iterates in reverse creation order, draws would flip on save/load.
 			uint64_t UUID = 0;
 		};
 
@@ -1083,8 +1036,7 @@ namespace Waffle {
 			renderItems.back().UUID = (uint64_t)m_Registry.get<IDComponent>(entity).ID;
 		}
 
-		// Gather tilemaps - each renders all its tiles at its sort slot
-		// (SortingLayer / Order / Z mix with sprites).
+		// Gather tilemaps - each renders all its tiles at its sort slot (mixes with sprites).
 		{
 			auto tmView = m_Registry.view<TilemapComponent>(entt::exclude<DisabledComponent>);
 			for (auto e : tmView)
@@ -1107,8 +1059,7 @@ namespace Waffle {
 			return a.UUID < b.UUID;
 		});
 
-		// Draw all sorted items. Animator pre-pass above keeps off-screen
-		// animations advancing and out of the draw loop.
+		// Draw all sorted items; the animator pre-pass keeps off-screen animations advancing.
 		for (const auto& item : renderItems)
 		{
 			if (item.Type == RenderItem::ItemType::Sprite)
@@ -1149,8 +1100,7 @@ namespace Waffle {
 
 	void Scene::OnViewportResize(uint32_t width, uint32_t height)
 	{
-		// Zero viewports occur during editor layout/minimize - keep the
-		// last good size instead of feeding GLM an aspect of zero.
+		// Zero viewports occur during editor layout/minimize - keep the last good size.
 		if (width == 0 || height == 0)
 			return;
 
@@ -1178,9 +1128,7 @@ namespace Waffle {
 		std::string name = entity.GetName();
 		Entity newEntity = CreateEntity(name);
 
-		// Copy everything except RelationshipComponent - copying it verbatim would
-		// corrupt the hierarchy (children pointing at the original parent, the
-		// duplicate claiming the original's children, etc.).
+		// Copy everything except RelationshipComponent - verbatim copy would corrupt the hierarchy.
 		CopyComponentIfExists<ScriptComponent>(newEntity, entity);
 		CopyComponentIfExists<LifetimeComponent>(newEntity, entity);
 		CopyComponentIfExists<TransformComponent>(newEntity, entity);
@@ -1202,18 +1150,15 @@ namespace Waffle {
 		CopyComponentIfExists<TilemapComponent>(newEntity, entity);
 		CopyComponentIfExists<TilemapColliderComponent>(newEntity, entity);
 
-		// Preserve Lua-disabled state in duplicates too (tag component -
-		// direct registry emplace, see CopyComponentIfExists note).
+		// Preserve Lua-disabled state in duplicates too (tag component via direct registry emplace).
 		if (entity.HasComponent<DisabledComponent>())
 			m_Registry.emplace_or_replace<DisabledComponent>((entt::entity)newEntity);
 
-		// A duplicated native script must not share the original's live
-		// instance - its m_Entity points at the ORIGINAL entity.
+		// A duplicated native script must not share the original's instance - it points at the original.
 		if (newEntity.HasComponent<NativeScriptComponent>())
 			newEntity.GetComponent<NativeScriptComponent>().Instance = nullptr;
 
-		// The copies must not share the original's Box2D body/fixture pointers -
-		// that would corrupt the simulation and double-destroy bodies later.
+		// Copies must not share the original's Box2D body/fixture pointers - corrupts the simulation.
 		if (newEntity.HasComponent<Rigidbody2DComponent>())
 		{
 			newEntity.GetComponent<Rigidbody2DComponent>().RuntimeBody = nullptr;
@@ -1226,8 +1171,7 @@ namespace Waffle {
 		if (newEntity.HasComponent<PolygonCollider2DComponent>())
 			newEntity.GetComponent<PolygonCollider2DComponent>().RuntimeFixture = nullptr;
 
-		// Link into the hierarchy directly (not via ParentEntity, which would
-		// reinterpret the copied local transform as a world transform).
+		// Link into the hierarchy directly - ParentEntity would treat the copied local transform as world.
 		if (parent)
 		{
 			auto& childRel = newEntity.HasComponent<RelationshipComponent>()
@@ -1258,8 +1202,7 @@ namespace Waffle {
 
 	Entity Scene::GetPrimaryCameraEntity()
 	{
-		// Disabled cameras are excluded from rendering - they must not drive
-		// it either.
+		// Disabled cameras are excluded from rendering - they must not drive it either.
 		auto view = m_Registry.view<CameraComponent>(entt::exclude<DisabledComponent>);
 		for (auto entity : view)
 		{

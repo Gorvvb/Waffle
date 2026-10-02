@@ -39,8 +39,7 @@ namespace Waffle {
 			auto* vkvb = dynamic_cast<VulkanVertexBuffer*>(vb.get());
 			WF_CORE_ASSERT(vkvb, "Vertex array holds a non-Vulkan vertex buffer!");
 
-			// Dynamic vertex buffers are ring-sliced; the draw must read the
-			// slice its batch was uploaded to, not offset 0.
+			// Dynamic vertex buffers are ring-sliced - the draw must read the slice its batch was uploaded to, not offset 0.
 			buffers.push_back(vkvb->GetVulkanBuffer());
 			offsets.push_back(vkvb ? vkvb->GetCurrentOffset() : 0);
 		}
@@ -85,10 +84,7 @@ namespace Waffle {
 
 		if (ctx->IsRenderingActive())
 		{
-			// A pass is still open - close it so layouts stay consistent
-			// before rendering to the present surface. The framebuffer's
-			// Unbind owns vkCmdEndRendering AND its layout transitions;
-			// ending rendering manually here as well would double-end.
+			// A pass is still open - its Unbind owns vkCmdEndRendering and layout transitions; ending manually too would double-end.
 			if (m_ActiveFramebuffer)
 			{
 				m_ActiveFramebuffer->Unbind();
@@ -104,8 +100,7 @@ namespace Waffle {
 		VkClearDepthStencilValue depth{ 1.0f, 0 };
 		ctx->BeginSwapChainRendering(ctx->GetClearColor(), depth);
 
-		// Negative height maps Vulkan's Y-down NDC onto the engine's Y-up
-		// camera convention (same flip the RendererAPI applies).
+		// Negative height maps Vulkan's Y-down NDC onto the engine's Y-up convention (same flip RendererAPI applies).
 		VkViewport vp
 		{
 			.x = 0.0f, .y = (float)height,

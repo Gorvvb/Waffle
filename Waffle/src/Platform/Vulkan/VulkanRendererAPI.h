@@ -6,8 +6,7 @@
 #endif
 #include <Volk/volk.h>
 
-// Drawing and pipeline binding live in VulkanCommandBuffer (RHI). This class
-// only carries the legacy global-ish calls still reachable via RenderCommand.
+// Drawing and pipeline binding live in VulkanCommandBuffer (RHI); this class only carries legacy RenderCommand calls.
 
 namespace Waffle {
 

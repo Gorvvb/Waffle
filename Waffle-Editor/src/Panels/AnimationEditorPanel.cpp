@@ -51,7 +51,7 @@ namespace Waffle {
 
 		auto& animator = m_SelectedEntity.GetComponent<AnimatorComponent>();
 
-		// ── Header: entity name + transport controls ─────────────────────────
+		// Header: entity name + transport controls
 		{
 			ImGui::BeginGroup();
 			ImGui::SetWindowFontScale(1.12f);
@@ -78,7 +78,7 @@ namespace Waffle {
 
 		ImGui::Spacing();
 
-		// ── Clip bar: clip chips + new clip ──────────────────────────────────
+		// Clip bar: clip chips + new clip
 		UI::SectionLabel("CLIPS");
 
 		{
@@ -124,7 +124,7 @@ namespace Waffle {
 
 		auto& clip = animator.Clips[m_SelectedClipName];
 
-		// ── Clip settings row ────────────────────────────────────────────────
+		// Clip settings row
 		{
 			ImGui::SetNextItemWidth(170.0f);
 			ImGui::DragFloat("FPS", &clip.FPS, 0.5f, 0.1f, 120.0f, "%.1f");
@@ -155,7 +155,7 @@ namespace Waffle {
 
 		ImGui::Spacing();
 
-		// ── Timeline strip ───────────────────────────────────────────────────
+		// Timeline strip
 		UI::SectionLabel("TIMELINE   drag images from the Content Browser onto frames");
 
 		const int frameCount = (int)clip.KeyframeImagePaths.size();
@@ -280,7 +280,7 @@ namespace Waffle {
 			ImGui::EndChild();
 		}
 
-		// ── Playhead ─────────────────────────────────────────────────────────
+		// Playhead
 		ImGui::Spacing();
 		if (!clip.SubTextures.empty())
 		{

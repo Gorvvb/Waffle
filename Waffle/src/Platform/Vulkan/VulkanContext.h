@@ -219,10 +219,7 @@ namespace Waffle {
 			VkSemaphore     ImageAvailableSemaphore = VK_NULL_HANDLE;
 			VkFence         InFlightFence = VK_NULL_HANDLE;
 			uint64_t        LastTimelineValue = 0; // Used to gate host writes to shared mapped buffers.
-			// Swapchain image this slot acquired. PER FRAME SLOT: reading the
-			// global index at submit/present time returns the OTHER slot's
-			// image once two frames are in flight, which breaks the
-			// acquire/present pairing (validation: non-acquired image used).
+			// Swapchain image this slot acquired - the global index points at the other slot's image with 2 frames in flight.
 			uint32_t        ImageIndex = 0;
 		};
 		std::vector<FrameData> m_Frames;

@@ -114,8 +114,7 @@ namespace Waffle {
 		std::filesystem::path defaultDir = ProjectManager::GetDefaultProjectsDirectory();
 		strcpy_s(m_NewProjectPathBuffer, sizeof(m_NewProjectPathBuffer), defaultDir.string().c_str());
 
-		// Resolve next to the executable first - the CWD depends on how
-		// the Hub was launched (VS uses the project folder).
+		// Resolve next to the executable first - the CWD depends on how the Hub was launched (VS uses the project folder).
 		std::filesystem::path logoPath = "Resources/Icons/logo.png";
 		if (!std::filesystem::exists(logoPath))
 		{
@@ -204,10 +203,7 @@ namespace Waffle {
 
 		if (m_ShowRemoveModal)
 		{
-			// Must be opened in THIS window scope - the same scope the
-			// modal's BeginPopupModal uses. Opening it inside the content
-			// child (where the Remove buttons live) registers it under a
-			// different ID and the modal never appears.
+			// Must be opened in THIS window scope, the same one BeginPopupModal uses - inside the content child it gets a different ID and never appears.
 			ImGui::OpenPopup("##RemoveProject");
 			m_ShowRemoveModal = false;
 		}
@@ -233,8 +229,7 @@ namespace Waffle {
 			{
 				ImVec2 cp = ImGui::GetCursorPos();
 				ImGui::SetCursorPos(ImVec2(cp.x + 9.0f, cp.y + 9.0f));
-				// UVs flipped: engine textures load top-down-flipped for the
-				// GL renderer, ImGui expects unflipped by default.
+				// UVs flipped: engine textures load top-down-flipped for GL, ImGui expects unflipped.
 				ImGui::Image((ImTextureID)m_LogoTexture->GetImGuiTextureId(), ImVec2(34, 34), ImVec2(0, 1), ImVec2(1, 0));
 				ImGui::SetCursorPosY(ImGui::GetCursorPosY() - 9.0f);
 			}
@@ -260,9 +255,7 @@ namespace Waffle {
 		ImGui::SameLine();
 		ImGui::SetCursorPosX(ImGui::GetWindowWidth() - ImGui::GetStyle().WindowPadding.x - totalW - 4.0f);
 
-		// All three tabs share one explicit Y: SameLine alone aligns to the
-		// previous LINE, which left the first tab a line-spacing lower than
-		// the other two.
+		// All three tabs share one explicit Y - SameLine aligns to the previous line, which left the first tab lower.
 		const float tabY = ImGui::GetCursorPosY() + 8.0f;
 
 		auto TabButton = [&](const char* label, HubTab tab)

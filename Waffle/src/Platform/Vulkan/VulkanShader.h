@@ -46,9 +46,7 @@ namespace Waffle {
 		// Vulkan-specific accessors (used by VulkanRendererAPI)
 		VkPipelineLayout GetPipelineLayout() const { return m_PipelineLayout; }
 
-		// Returns (or creates) a VkPipeline for the given vertex-array input
-		// layout, active render target formats and fixed state. Cached per
-		// combination - each is created exactly once.
+		// Returns (creates and caches) a VkPipeline for the given input layout, target formats and fixed state.
 		VkPipeline GetOrCreatePipeline(
 			const VulkanVertexArray* vertexArray,
 			VkPrimitiveTopology topology,
@@ -58,8 +56,7 @@ namespace Waffle {
 			bool depthTest,
 			bool depthWrite);
 
-		// Flush push constants into the current command buffer.
-		// Called by VulkanRendererAPI just before a draw call.
+		// Flush push constants into the current command buffer (called before draw calls).
 		void FlushPushConstants(VkCommandBuffer cmd) const;
 
 		// Update and bind per-shader descriptor sets before draw calls

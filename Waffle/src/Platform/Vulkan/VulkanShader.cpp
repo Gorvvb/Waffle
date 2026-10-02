@@ -9,8 +9,7 @@
 #include <spirv_cross/spirv_cross.hpp>
 #include <spirv_cross/spirv_glsl.hpp>
 
-// Stage keys are local - the GL loader headers do not belong in the
-// Vulkan backend.
+// Stage keys are local - the GL loader headers do not belong in the Vulkan backend.
 #include <glm/gtc/type_ptr.hpp>
 
 #include "Waffle/Core/Timer.h"
@@ -18,13 +17,10 @@
 
 namespace Waffle {
 
-	// Local stage keys (previously GLenums via glad - an OpenGL loader does
-	// not belong in the Vulkan backend).
+	// Local stage keys (previously GLenums via glad - an OpenGL loader does not belong here).
 	enum Stage : uint32_t { Stage_Vertex = 0, Stage_Fragment = 1 };
 
-	// -------------------------------------------------------------------------
 	// Stage helpers
-	// -------------------------------------------------------------------------
 	static uint32_t ShaderTypeFromString(const std::string& type)
 	{
 		if (type == "vertex")                      return Stage_Vertex;
@@ -53,9 +49,7 @@ namespace Waffle {
 		return "unknown";
 	}
 
-	// -------------------------------------------------------------------------
 	// Cache
-	// -------------------------------------------------------------------------
 	const char* VulkanShader::GetVulkanCacheDirectory()
 	{
 		return "assets/cache/shader/vulkan";
@@ -80,9 +74,7 @@ namespace Waffle {
 		return ".cached_vulkan";
 	}
 
-	// -------------------------------------------------------------------------
 	// Constructors
-	// -------------------------------------------------------------------------
 	VulkanShader::VulkanShader(const std::string& filepath)
 		: m_FilePath(filepath)
 	{
@@ -149,33 +141,24 @@ namespace Waffle {
 		if (m_VertModule) vkDestroyShaderModule(dev, m_VertModule, nullptr);
 		if (m_FragModule) vkDestroyShaderModule(dev, m_FragModule, nullptr);
 
-		// Descriptor sets are allocated per bind and freed through the
-		// context's deferred queue - nothing pre-allocated to release here.
+		// Descriptor sets are allocated per bind and freed via the context's deferred queue.
 	}
 
-	// -------------------------------------------------------------------------
 	// Bind / Unbind
-	// -------------------------------------------------------------------------
 	void VulkanShader::Bind() const
 	{
-		// No-op on Vulkan: pipelines are bound explicitly through the RHI
-		// CommandBuffer (BindPipeline), not via global shader state.
-		// (GL needs glUseProgram before glUniform* calls; Vulkan uniform
-		// writes go to push-constant staging, which needs no bind.)
+		// No-op on Vulkan: pipelines are bound via the RHI CommandBuffer, not global shader state.
 	}
 
 	void VulkanShader::Unbind() const {}
 
-	// -------------------------------------------------------------------------
 	// SetXxx - write into the push-constant staging buffer
-	// -------------------------------------------------------------------------
 	void VulkanShader::WritePushConstant(const std::string& name, const void* data, uint32_t size)
 	{
 		auto it = m_PushConstantMembers.find(name);
 		if (it == m_PushConstantMembers.end())
 		{
-			// Fallback: write at the running end of push constant block
-			// (handles unnamed / untracked members gracefully)
+			// Fallback: write at the running end of the push-constant block (handles untracked members).
 			WF_CORE_WARN("VulkanShader: push constant '{0}' not found in reflection data, skipping.", name);
 			return;
 		}
@@ -208,9 +191,7 @@ namespace Waffle {
 	void VulkanShader::SetMat4(const std::string& name, const glm::mat4& value)
 	{ WritePushConstant(name, glm::value_ptr(value), sizeof(glm::mat4)); }
 
-	// -------------------------------------------------------------------------
 	// FlushPushConstants
-	// -------------------------------------------------------------------------
 	void VulkanShader::FlushPushConstants(VkCommandBuffer cmd) const
 	{
 		if (m_TotalPushConstantSize == 0 || m_PushConstantData.empty()) return;
@@ -234,13 +215,7 @@ namespace Waffle {
 			VkDescriptorSetLayout layout = m_DescriptorSetLayouts[setIdx];
 			if (layout == VK_NULL_HANDLE) continue;
 
-			// A FRESH set per bind. The slot-registry contents change between
-			// draws (each batch maps slots differently), and a descriptor set
-			// that is already bound in the current recording must NEVER be
-			// updated again - that invalidates the whole command buffer
-			// (no UPDATE_AFTER_BIND). Allocating per bind and deferring the
-			// free until this frame slot wraps (its fence has been waited by
-			// then) guarantees every update targets a set nothing references.
+			// Fresh set per bind - a bound set must never be updated (no UPDATE_AFTER_BIND); free is deferred past the frame fence.
 			VkDescriptorSet ds = VK_NULL_HANDLE;
 			{
 				VkDescriptorSetAllocateInfo allocInfo
@@ -266,14 +241,10 @@ namespace Waffle {
 			std::vector<VkWriteDescriptorSet> writes;
 			std::vector<VkDescriptorBufferInfo> bufferInfos;
 			std::vector<std::vector<VkDescriptorImageInfo>> imageInfoArrays;
-			// One dynamic offset per dynamic descriptor IN THE SET LAYOUT,
-			// in binding order (vkCmdBindDescriptorSets requirement) - even
-			// for bindings whose buffer was never registered (offset 0).
+			// One dynamic offset per dynamic descriptor, in binding order - offset 0 if the buffer was never registered.
 			std::vector<uint32_t> dynamicOffsets;
 
-			// Reserve BEFORE the fill loop: writes store pointers into
-			// bufferInfos, so a push_back reallocation would dangle every
-			// previously stored pBufferInfo before vkUpdateDescriptorSets reads them.
+			// Reserve first: writes hold pointers into bufferInfos, so a realloc would dangle them.
 			bufferInfos.reserve(m_ReflectedDescriptors.size() * 2);
 			imageInfoArrays.reserve(m_ReflectedDescriptors.size());
 			writes.reserve(m_ReflectedDescriptors.size());
@@ -289,10 +260,7 @@ namespace Waffle {
 					{
 						dynamicOffsets.push_back((uint32_t)ubo.DynamicOffset);
 
-						// The UBO is a ring of slices; the slice is chosen by
-						// the dynamic offset at bind time. This is what lets
-						// several passes per frame each read the camera data
-						// written for THEM.
+						// The UBO is a ring of slices; the dynamic offset picks one at bind, so each pass reads its own camera data.
 						VkDescriptorBufferInfo bInfo{};
 						bInfo.buffer = ubo.Buffer;
 						bInfo.offset = 0;
@@ -321,18 +289,12 @@ namespace Waffle {
 					bool bindingValid = true;
 					for (uint32_t slot = 0; slot < count; slot++)
 					{
-						// Slot convention: slot N of a sampler binding B reads
-						// registry entry (B + N). For the 2D batcher's
-						// u_Textures[32] at binding 0 this is the plain slot
-						// 0..31; a second single-sampler binding (post chain)
-						// reads the slot equal to its binding index.
+						// Slot N of binding B reads registry entry B+N: u_Textures[32] -> slots 0..31, a single sampler its binding index.
 						auto tex = ctx->GetTexture(d.Binding + slot);
 						if (tex.ImageView == VK_NULL_HANDLE || tex.Sampler == VK_NULL_HANDLE)
 							tex = ctx->GetTexture(0);
 
-						// Nothing bound at this slot or at slot 0: writing a
-						// null imageView/sampler is a validation error and an
-						// undefined draw - skip the binding instead.
+						// Nothing bound here or at slot 0: a null imageView/sampler is a validation error - skip the binding.
 						if (tex.ImageView == VK_NULL_HANDLE || tex.Sampler == VK_NULL_HANDLE)
 						{
 							bindingValid = false;
@@ -373,16 +335,12 @@ namespace Waffle {
 				(uint32_t)dynamicOffsets.size(),
 				dynamicOffsets.empty() ? nullptr : dynamicOffsets.data());
 
-			// Deferred free: queued for this frame slot; executed after that
-			// slot's fence has been waited (2 frames from now), i.e. long
-			// after this submission has completed.
+			// Deferred free: runs after this frame slot's fence has been waited (2 frames later), past this submission.
 			ctx->SafeFreeDescriptorSet(ds);
 		}
 	}
 
-	// -------------------------------------------------------------------------
 	// GetOrCreatePipeline - lazy pipeline cache
-	// -------------------------------------------------------------------------
 	VkPipeline VulkanShader::GetOrCreatePipeline(
 		const VulkanVertexArray* vertexArray,
 		VkPrimitiveTopology topology,
@@ -407,9 +365,7 @@ namespace Waffle {
 					fmt = ctx->GetSwapChainFormat();
 			}
 		}
-		// UNDEFINED is meaningful here: it means the active render target
-		// has NO depth attachment (e.g. bloom mip chains) - pipelines must
-		// be created without one, so no substitution takes place.
+		// UNDEFINED is meaningful: the target has no depth attachment (bloom mips) - create pipelines without one.
 
 		PipelineKey key;
 		key.Bindings     = vertexArray ? vertexArray->GetBindingDescriptions()   : std::vector<VkVertexInputBindingDescription>();
@@ -427,7 +383,7 @@ namespace Waffle {
 			return it->second;
 		}
 
-		// ---------- Create the pipeline ----------
+		// Create the pipeline
 		VkDevice dev = ctx->GetDevice();
 
 		// Shader stages
@@ -487,10 +443,7 @@ namespace Waffle {
 		depthStencil.sType                 = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
 		depthStencil.depthTestEnable       = depthTest ? VK_TRUE : VK_FALSE;
 		depthStencil.depthWriteEnable      = (depthTest && depthWrite) ? VK_TRUE : VK_FALSE;
-		// LEQUAL, matching the OpenGL backend: 2D content is routinely
-		// coplanar (UI text over its button quad, sprites at z=0), and
-		// strict LESS discards the later fragment at equal depth - which
-		// made button labels vanish on Vulkan only.
+		// LEQUAL, matching GL: coplanar 2D content (UI text over button quads) vanished with strict LESS on Vulkan.
 		depthStencil.depthCompareOp        = VK_COMPARE_OP_LESS_OR_EQUAL;
 		depthStencil.depthBoundsTestEnable = VK_FALSE;
 		depthStencil.stencilTestEnable     = VK_FALSE;
@@ -528,9 +481,7 @@ namespace Waffle {
 					blendAttachments[i].dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
 				}
 				blendAttachments[i].colorBlendOp = VK_BLEND_OP_ADD;
-				// Keep the framebuffer attachment alpha untouched: translucent
-				// draws (selection fill, sprites) must not lower it, or ImGui
-				// displays the whole viewport washed out / gray.
+				// Keep attachment alpha untouched: translucent draws must not lower it or ImGui washes out the viewport.
 				blendAttachments[i].srcAlphaBlendFactor = VK_BLEND_FACTOR_ZERO;
 				blendAttachments[i].dstAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
 				blendAttachments[i].alphaBlendOp        = VK_BLEND_OP_ADD;
@@ -586,9 +537,7 @@ namespace Waffle {
 		return pipeline;
 	}
 
-	// -------------------------------------------------------------------------
 	// Descriptor set layout accessor
-	// -------------------------------------------------------------------------
 	VkDescriptorSetLayout VulkanShader::GetDescriptorSetLayout(uint32_t set) const
 	{
 		if (set < m_DescriptorSetLayouts.size())
@@ -596,9 +545,7 @@ namespace Waffle {
 		return VK_NULL_HANDLE;
 	}
 
-	// =========================================================================
 	// Private implementation
-	// =========================================================================
 
 	std::string VulkanShader::ReadFile(const std::string& filepath)
 	{
@@ -646,10 +593,7 @@ namespace Waffle {
 
 		std::filesystem::path cacheDir = GetVulkanCacheDirectory();
 
-		// Shaders built from in-memory source strings have no file identity;
-		// an empty filename would make every runtime-compiled shader share one
-		// cache entry and load each other's SPIR-V. Only file-backed shaders
-		// participate in the cache.
+		// In-memory shaders aren't cached: an empty filename would make runtime shaders share one cache entry.
 		const bool canCache = !m_FilePath.empty();
 
 		for (auto& [stage, src] : sources)
@@ -776,15 +720,12 @@ namespace Waffle {
 		if (m_TotalPushConstantSize > 0)
 			m_PushConstantData.resize(m_TotalPushConstantSize, 0);
 
-		// ---------- Descriptor set layouts (UBOs, samplers) ----------
-		// Reflect from the vertex SPIR-V (could extend to merge all stages)
-		// For now create one descriptor set layout per set used (max set index + 1)
+		// Descriptor set layouts (UBOs, samplers) - reflected from vertex SPIR-V, one per set (max index + 1)
 		uint32_t maxSet = 0;
 		struct DescriptorInfo { uint32_t set; uint32_t binding; VkDescriptorType type; VkShaderStageFlags stages; uint32_t count; };
 		std::map<std::pair<uint32_t, uint32_t>, DescriptorInfo> mergedDescriptors;
 
-		// spirv_cross::Compiler throws on malformed SPIR-V (bad cache file,
-		// truncated shader); Reflect guards for this, the layout pass must too.
+		// spirv_cross::Compiler throws on malformed SPIR-V (bad cache); the layout pass must guard like Reflect does.
 		try
 		{
 		for (auto& [stage, spirv] : m_SPIRV)
@@ -812,8 +753,7 @@ namespace Waffle {
 				}
 				else
 				{
-					// DYNAMIC: descriptors are bound with per-pass ring-slice offsets
-				// (must match the descriptor WRITE type in BindAndFlushDescriptors).
+					// DYNAMIC: bound with per-pass ring-slice offsets (must match the write type in BindAndFlushDescriptors).
 				mergedDescriptors[key] = { set, binding, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, uboStages, count };
 				}
 				maxSet = std::max(maxSet, set);
@@ -872,13 +812,13 @@ namespace Waffle {
 			m_ReflectedDescriptors.push_back({ d.set, d.binding, d.type, d.count });
 		}
 
-		// ---------- Push constant range ----------
+		// Push constant range
 		VkPushConstantRange pcRange{};
 		pcRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
 		pcRange.offset     = 0;
 		pcRange.size       = m_TotalPushConstantSize > 0 ? m_TotalPushConstantSize : 4; // min 4 bytes
 
-		// ---------- Pipeline layout ----------
+		// Pipeline layout
 		VkPipelineLayoutCreateInfo pipelineLayoutInfo{};
 		pipelineLayoutInfo.sType                  = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
 		pipelineLayoutInfo.setLayoutCount         = (uint32_t)m_DescriptorSetLayouts.size();
@@ -896,9 +836,7 @@ namespace Waffle {
 		}
 	}
 
-	// -------------------------------------------------------------------------
 	// Pipeline key hash / comparison
-	// -------------------------------------------------------------------------
 	static bool EqualBindings(const std::vector<VkVertexInputBindingDescription>& a,
 		const std::vector<VkVertexInputBindingDescription>& b)
 	{

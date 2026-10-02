@@ -64,8 +64,7 @@ namespace Waffle {
 		glGetIntegerv(GL_VERTEX_ARRAY_BINDING, &currentVAO);
 		glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &currentFBO);
 
-		// The message is only guaranteed for `length` chars - don't rely on a
-		// terminator the driver may not have written.
+		// Message is only guaranteed for `length` chars - don't rely on a driver-written terminator.
 		std::string msg((length > 0) ? std::string(message, (size_t)length) : std::string(message));
 
 		static std::unordered_set<std::string> s_LoggedMessages;
@@ -94,7 +93,6 @@ namespace Waffle {
 		}
 	}
 
-
 	void OpenGLRendererAPI::Init()
 	{
 		WF_PROFILE_FUNCTION();
@@ -111,15 +109,11 @@ namespace Waffle {
 		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
 		glEnable(GL_DEPTH_TEST);
-		// LEQUAL, not the default GL_LESS: 2D sprites are routinely coplanar
-		// (entities default to z=0 and are painter-sorted back-to-front), and
-		// equal depths fail GL_LESS - the later sprite would be discarded
-		// wherever it overlaps the earlier one.
+		// LEQUAL, not GL_LESS: coplanar painter-sorted sprites (z=0) would fail the depth test and vanish.
 		glDepthFunc(GL_LEQUAL);
 		glEnable(GL_LINE_SMOOTH);
 
-		// Query the real sampler limit - GL guarantees only 16 texture image
-		// units; batching must clamp to whatever this device actually has.
+		// GL only guarantees 16 texture units - query the real limit so batching clamps to this device.
 		GLint maxUnits = 32;
 		glGetIntegerv(GL_MAX_TEXTURE_IMAGE_UNITS, &maxUnits);
 		if (maxUnits > 0)

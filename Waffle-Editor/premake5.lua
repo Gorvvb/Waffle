@@ -45,9 +45,7 @@ project "Waffle-Editor"
 		"{COPYFILE} \"imgui.ini\" \"%{cfg.targetdir}/imgui.ini\""
 	}
 	
-	-- The exe loads shaderc_shared.dll through the engine's shader compilation;
-	-- a player machine has neither the SDK nor it on PATH, so the DLL must
-	-- sit next to the exe.
+	-- shaderc_shared.dll must ship next to the exe (players don't have the Vulkan SDK).
 	local shadercDll = os.getenv("VULKAN_SDK")
 	shadercDll = shadercDll and (shadercDll .. "/Bin/shaderc_shared.dll") or nil
 	if shadercDll and os.isfile(shadercDll) then

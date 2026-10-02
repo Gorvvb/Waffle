@@ -39,8 +39,7 @@ namespace Waffle {
 		Entity GetSelectedEntity() const { return m_SelectionContext; }
 		void SetSelectedEntity(Entity entity);
 
-		// Collider edit mode hooks - the toggle state lives in EditorLayer
-		// because the viewport gizmo acts on it (Unity-style "Edit Collider").
+		// Collider edit mode hooks - toggle state lives in EditorLayer because the viewport gizmo acts on it (Unity-style "Edit Collider").
 		void SetColliderEditHooks(
 			std::function<bool(int)> isEditing,
 			std::function<void(int, bool)> setEditing)
@@ -49,8 +48,7 @@ namespace Waffle {
 			m_SetEditingCollider = std::move(setEditing);
 		}
 
-		// Prefab edit mode: the header shows a Back button + which prefab is
-		// being edited (and the scene it came from) instead of the scene name.
+		// Prefab edit mode: the header shows a Back button + the prefab being edited (and its source scene) instead of the scene name.
 		void SetPrefabEditMode(bool active, const std::string& prefabName = "",
 			const std::string& sourceSceneName = "",
 			std::function<void()> onBack = nullptr)
@@ -67,8 +65,7 @@ namespace Waffle {
 		void DrawEntityNode(Entity entity);
 		void DrawComponents(Entity entity);
 
-		// Creates a UI element entity (RectTransform + mirrored transform),
-		// parented to the scene's UI canvas when one exists.
+		// Creates a UI element entity (RectTransform + mirrored transform), parented to the scene's UI canvas when one exists.
 		Entity CreateUIElement(const std::string& name);
 	};
 }

@@ -39,8 +39,7 @@ namespace Waffle {
 
 		inline void SetViewportSize(float width, float height)
 		{
-			// A zero viewport (collapsed panel, startup layout, minimized window)
-			// would divide by zero in glm::perspective.
+			// A zero viewport (collapsed panel, startup layout, minimized window) would divide by zero in glm::perspective.
 			if (width <= 0.0f || height <= 0.0f)
 				return;
 			m_ViewportWidth = width;

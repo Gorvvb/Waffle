@@ -3,10 +3,7 @@ using Waffle.Scripting.Internal;
 
 namespace Waffle;
 
-/// <summary>
-/// Lightweight handle to a scene entity. Blittable uint wrapper - entities are
-/// never managed objects, so passing them around allocates nothing.
-/// </summary>
+/// <summary>Lightweight handle to a scene entity - a blittable uint wrapper, so passing it around allocates nothing.</summary>
 public readonly struct Entity : IEquatable<Entity>
 {
     internal readonly uint Id;

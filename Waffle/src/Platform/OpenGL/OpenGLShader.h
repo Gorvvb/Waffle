@@ -5,7 +5,6 @@
 #include <glad/glad.h>
 #include <unordered_map>
 
-
 namespace Waffle {
 
 	class OpenGLShader : public Shader
@@ -20,8 +19,7 @@ namespace Waffle {
 
 		std::unordered_map<GLenum, std::string> m_OpenGLSourceCode;
 
-		// Cached glGetUniformLocation results (the program is immutable
-		// after linking, so a name->location map never goes stale).
+		// Cached glGetUniformLocation results (program is immutable after linking, so the map never goes stale).
 		mutable std::unordered_map<std::string, int32_t> m_UniformLocationCache;
 	public:
 		OpenGLShader(const std::string& filepath);

@@ -63,9 +63,7 @@ namespace Waffle {
 		auto* window = static_cast<GLFWwindow*>(Application::Get().GetWindow().GetNativeWindow());
 		if (!window) return;
 
-		// Snapshot keyboard/mouse level state for edge queries
-		// (IsKeyReleased / IsActionJustPressed previously had no real edges:
-		// Released was just "!down", true every frame a key was simply up).
+		// Snapshot key/mouse level state for edge queries - "Released" used to be just "!down", true every frame.
 		s_KeyDownPrev = s_KeyDownCurr;
 		s_KeyDownCurr.clear();
 		for (int key = GLFW_KEY_SPACE; key <= GLFW_KEY_LAST; ++key)
@@ -170,10 +168,7 @@ namespace Waffle {
 
 	bool Input::IsKeyPressed(const KeyCode key)
 	{
-		// Level semantics (key is down) - kept deliberately: camera panning,
-		// modifier checks and gameplay scripts all expect held behavior from
-		// this name. True release edges live in IsKeyReleased; for a true
-		// press edge use IsActionJustPressed with a bound action.
+		// Deliberately level semantics (held) - camera/scripts expect that; true edges: IsKeyReleased / IsActionJustPressed.
 		return IsKeyDown(key);
 	}
 
@@ -302,9 +297,7 @@ namespace Waffle {
 
 	bool Input::IsActionJustPressed(const std::string& actionName)
 	{
-		// Real press edge (prev down, curr up... prev up && curr down) using
-		// the per-frame snapshots - previously this was identical to
-		// IsActionPressed and fired on every held frame.
+		// Real press edge (prev up, curr down) via the snapshots - used to be identical to IsActionPressed.
 		auto it = s_ActionBindings.find(actionName);
 		if (it == s_ActionBindings.end())
 			return false;
@@ -329,8 +322,7 @@ namespace Waffle {
 		std::string name = axisName;
 		for (auto& c : name) c = (char)tolower((unsigned char)c);
 
-		// Look up with the lowercased name - the map may have been bound
-		// with either casing.
+		// Look up with the lowercased name - bindings may use either casing.
 		auto it = s_AxisBindings.find(name);
 		if (it == s_AxisBindings.end())
 			it = s_AxisBindings.find(axisName);
@@ -385,8 +377,7 @@ namespace Waffle {
 	std::string Input::GetControllerName(int id)
 	{
 		const Controller* ctrl = GetController(id);
-		// Returns by value: a view into the Controller would dangle as soon
-		// as Update() erases the entry on disconnect.
+		// By value: a reference would dangle once Update() erases a disconnected controller.
 		return ctrl ? ctrl->Name : std::string();
 	}
 
@@ -448,8 +439,7 @@ namespace Waffle {
 
 	void Input::SetControllerDeadzone(int controllerID, int axis, float deadzone)
 	{
-		// Only touch EXISTING controllers - operator[] would insert a ghost
-		// entry that made IsControllerPresent(id) lie for an absent pad.
+		// Only touch existing controllers - operator[] would insert a ghost entry that fooled IsControllerPresent.
 		auto it = s_Controllers.find(controllerID);
 		if (it != s_Controllers.end())
 			it->second.DeadZones[axis] = deadzone;

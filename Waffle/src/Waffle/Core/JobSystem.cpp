@@ -58,8 +58,7 @@ namespace Waffle {
 	{
 		if (!job) return;
 
-		// A job submitted after Shutdown has no workers left to run it -
-		// enqueueing it would wedge any later Wait() forever.
+		// A job submitted after Shutdown has no workers left to run it - enqueueing it would wedge any later Wait() forever.
 		if (s_Shutdown.load(std::memory_order_acquire))
 		{
 			WF_CORE_WARN("JobSystem::Execute called after shutdown - job dropped");
@@ -107,8 +106,7 @@ namespace Waffle {
 				s_JobQueue.pop();
 			}
 
-			// A throwing job must not escape the thread (std::terminate) nor
-			// skip the completion accounting below (Wait() would hang).
+			// A throwing job must not escape the thread (std::terminate) nor skip the completion accounting below (Wait() would hang).
 			try
 			{
 				job();
@@ -122,10 +120,7 @@ namespace Waffle {
 				WF_CORE_ERROR("JobSystem: job threw an unknown exception");
 			}
 
-			// Decrement + notify under the queue mutex: Wait() evaluates the
-			// predicate under this same mutex, so an unlocked notify can land
-			// in the window between the predicate check and the sleep and be
-			// lost forever.
+			// Decrement + notify under the queue mutex: Wait() checks its predicate under the same mutex, so an unlocked notify can land in the check-to-sleep window and be lost forever.
 			{
 				std::lock_guard<std::mutex> lock(s_QueueMutex);
 				s_ActiveJobs--;

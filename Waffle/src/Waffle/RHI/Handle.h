@@ -5,19 +5,7 @@
 
 namespace Waffle::RHI {
 
-	// -------------------------------------------------------------------------
-	// Typed, backend-agnostic resource handles.
-	//
-	// Raw native handles (GLuones fit in 32 bits; VkBuffer/VkImage/VkDescriptorSet
-	// are 64-bit pointers) must never cross the backend boundary - the original
-	// "IDs break between OpenGL and Vulkan" bug was exactly such a crossing
-	// (a VkDescriptorSet pointer round-tripped through uint32_t). Handles are
-	// index+generation pairs into a backend-owned resource table, so:
-	//   - no native handle size leaks into public APIs,
-	//   - truncation is unrepresentable,
-	//   - a stale handle to a destroyed/recreated resource is detected by
-	//     generation mismatch instead of silently aliasing a new resource.
-	// -------------------------------------------------------------------------
+	// Typed, backend-agnostic resource handles: index+generation pairs into a backend-owned table. Raw native handles (GLuints, VkBuffer/VkImage/VkDescriptorSet pointers) must never cross the backend boundary - the original "IDs break between OpenGL and Vulkan" bug was exactly that (a VkDescriptorSet pointer round-tripped through uint32_t). Handles keep native handle sizes out of public APIs, make truncation unrepresentable, and detect a stale handle to a destroyed/recreated resource by generation mismatch instead of silently aliasing a new resource.
 	template<typename Tag>
 	struct Handle
 	{

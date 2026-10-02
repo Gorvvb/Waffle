@@ -8,11 +8,7 @@
 
 namespace Waffle {
 
-	// Baked bitmap font for runtime game text (UI). A TTF is rasterized once
-	// per (path, pixel size) into an RGBA atlas texture and queried per glyph.
-	// Coordinates are in the engine's UI space: origin top-left, Y down, the
-	// pen sitting on the baseline (glyph boxes extend into negative Y above
-	// the baseline).
+	// Baked bitmap font for runtime UI text: a TTF rasterized once per (path, pixel size) into an RGBA atlas and queried per glyph. Coordinates are UI space: origin top-left, Y down, pen on the baseline (glyph boxes extend above it into negative Y).
 	class Font : public RefCounted
 	{
 	public:
@@ -30,8 +26,7 @@ namespace Waffle {
 
 		bool LoadFromFile(const std::string& path, float pixelSize);
 
-		// Resolves and caches a font. An empty requestedPath falls back to
-		// the engine default font. Returns nullptr when nothing can be loaded.
+		// Resolves and caches a font; empty requestedPath falls back to the engine default. Returns nullptr when nothing can be loaded.
 		static Ref<Font> Resolve(const std::string& requestedPath, float pixelSize);
 		static void ClearCache();
 

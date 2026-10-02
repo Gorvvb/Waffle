@@ -14,8 +14,7 @@
 
 namespace Waffle {
 
-	// Converts an ANSI filter ("Name\0*.ext\0" with a double-null
-	// terminator) to its wide form for the W dialog APIs.
+	// Converts an ANSI filter ("Name\0*.ext\0", double-null terminated) to wide for the W dialog APIs.
 	static std::wstring WideFileFilter(const char* filter)
 	{
 		std::string narrow;
@@ -39,8 +38,7 @@ namespace Waffle {
 
 	std::string FileDialogs::OpenFile(const char* filter)
 	{
-		// W (wide) API: the ANSI dialogs mangled paths outside the user's
-		// code page (CJK, Cyrillic, ...) into '?' substitutions.
+		// Wide API - the ANSI dialogs mangled non-codepage paths (CJK, Cyrillic, ...) into '?'.
 		std::wstring wFilter = WideFileFilter(filter);
 		wchar_t szFile[MAX_PATH] = { 0 };
 		OPENFILENAMEW ofn;
@@ -83,8 +81,7 @@ namespace Waffle {
 		if (std::filesystem::exists(initPath))
 			ofn.lpstrInitialDir = initDir.c_str();
 
-		// No OFN_FILEMUSTEXIST on a save dialog - it expects a possibly-new
-		// name; OVERWRITEPROMPT guards accidental replacement instead.
+		// No OFN_FILEMUSTEXIST on save - new names expected; OVERWRITEPROMPT guards replacement instead.
 		ofn.Flags = OFN_PATHMUSTEXIST | OFN_OVERWRITEPROMPT | OFN_NOCHANGEDIR;
 		if (GetSaveFileNameW(&ofn) == TRUE)
 		{
