@@ -8,7 +8,6 @@ namespace Waffle {
 	std::queue<std::function<void()>> JobSystem::s_JobQueue;
 	std::mutex JobSystem::s_QueueMutex;
 	std::condition_variable JobSystem::s_Condition;
-	std::condition_variable JobSystem::s_WaitCondition;
 	std::atomic<uint32_t> JobSystem::s_ActiveJobs{ 0 };
 	std::atomic<bool> JobSystem::s_Shutdown{ false };
 	uint32_t JobSystem::s_ThreadCount = 0;
@@ -58,7 +57,7 @@ namespace Waffle {
 	{
 		if (!job) return;
 
-		// A job submitted after Shutdown has no workers left to run it - enqueueing it would wedge any later Wait() forever.
+		// A job submitted after Shutdown has no workers left to run it - dropping is the only safe option.
 		if (s_Shutdown.load(std::memory_order_acquire))
 		{
 			WF_CORE_WARN("JobSystem::Execute called after shutdown - job dropped");
@@ -74,18 +73,7 @@ namespace Waffle {
 		s_Condition.notify_one();
 	}
 
-	void JobSystem::Wait()
-	{
-		std::unique_lock<std::mutex> lock(s_QueueMutex);
-		s_WaitCondition.wait(lock, []() {
-			return s_JobQueue.empty() && s_ActiveJobs == 0;
-		});
-	}
 
-	bool JobSystem::IsBusy()
-	{
-		return s_ActiveJobs > 0;
-	}
 
 	void JobSystem::WorkerLoop()
 	{
@@ -120,12 +108,11 @@ namespace Waffle {
 				WF_CORE_ERROR("JobSystem: job threw an unknown exception");
 			}
 
-			// Decrement + notify under the queue mutex: Wait() checks its predicate under the same mutex, so an unlocked notify can land in the check-to-sleep window and be lost forever.
+			// Decrement under the queue mutex.
 			{
 				std::lock_guard<std::mutex> lock(s_QueueMutex);
 				s_ActiveJobs--;
 			}
-			s_WaitCondition.notify_all();
 		}
 	}
 

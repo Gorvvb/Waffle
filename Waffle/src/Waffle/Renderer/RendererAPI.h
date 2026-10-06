@@ -27,6 +27,8 @@ namespace Waffle {
 		virtual uint32_t GetMaxTextureSlots() const = 0;
 
 		inline static API GetAPI() { return s_API; }
+		// Must be called BEFORE Renderer::Init (backend is chosen once per process).
+		static void SetAPI(API api);
 	private:
 		static API s_API;
 	};

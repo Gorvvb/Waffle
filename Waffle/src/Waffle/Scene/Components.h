@@ -11,6 +11,7 @@
 #include <string>
 #include <vector>
 #include <map>
+#include <random>
 #include <unordered_map>
 #include <yaml-cpp/yaml.h>
 
@@ -171,25 +172,6 @@ namespace Waffle {
 
 		CameraComponent() = default;
 		CameraComponent(const CameraComponent&) = default;
-	};
-
-	// TODO: consider removing native scripting (unused); forward declaration.
-	class ScriptableEntity;
-
-	struct NativeScriptComponent
-	{
-		ScriptableEntity* Instance = nullptr;
-
-		// Null by default: unbound components previously called through garbage function pointers.
-		ScriptableEntity* (*InstanciateScript)() = nullptr;
-		void (*DestroyScript)(NativeScriptComponent*) = nullptr;
-
-		template<typename T>
-		void Bind()
-		{
-			InstanciateScript = []() { return static_cast<ScriptableEntity*>(new T()); };
-			DestroyScript = [](NativeScriptComponent* nsc) { delete nsc->Instance; nsc->Instance = nullptr; };
-		}
 	};
 
 	// Physics
@@ -797,4 +779,153 @@ namespace Waffle {
 		TilemapColliderComponent() = default;
 		TilemapColliderComponent(const TilemapColliderComponent&) = default;
 	};
+
+	// CPU particle emitter: spawns simple world-space particles that fade/scale over life and are
+	// drawn as quads in the sorted 2D pass at the system's sort slot. Simulation is data-only here;
+	// Scene drives Update() alongside the animator pre-pass (advances in the editor preview too).
+	struct ParticleSystemComponent
+	{
+		// Emission
+		bool Emitting = true;                 // script-controlled on/off (SpawnRate preserved)
+		float SpawnRate = 24.0f;              // particles per second (0 pauses spawning)
+		float LifetimeMin = 0.5f;
+		float LifetimeMax = 1.5f;
+		float SpeedMin = 2.0f;
+		float SpeedMax = 5.0f;
+		float DirectionAngleDeg = 90.0f;      // base emission direction (world degrees, +Y at 90)
+		float DirectionSpreadDeg = 360.0f;    // cone width around the base direction
+		float EmissionRadius = 0.0f;          // spawn circle around the entity position
+
+		// Simulation
+		float GravityY = -9.8f;               // per-particle gravity
+
+		// Appearance
+		glm::vec4 ColorStart = glm::vec4(1.0f);
+		glm::vec4 ColorEnd = glm::vec4(1.0f, 1.0f, 1.0f, 0.0f);
+		float SizeStart = 0.35f;
+		float SizeEnd = 0.0f;
+		int MaxParticles = 512;
+		int SortingLayer = 0;
+		int SortingOrder = 0;
+
+		// Rendering (optional texture; untextured quads use the color only)
+		Ref<Texture2D> Texture;
+		std::string TexturePath;
+		TextureFilter FilterMode = TextureFilter::Linear;
+
+		// Runtime - not serialized.
+		struct Particle
+		{
+			glm::vec2 Position;
+			glm::vec2 Velocity;
+			float Life = 0.0f;
+			float MaxLife = 1.0f;
+		};
+		std::vector<Particle> Particles;
+		float SpawnAccumulator = 0.0f;
+		std::mt19937 Random = std::mt19937(1337);
+
+		ParticleSystemComponent() = default;
+		ParticleSystemComponent(const ParticleSystemComponent& other)
+			: Emitting(other.Emitting), SpawnRate(other.SpawnRate), LifetimeMin(other.LifetimeMin), LifetimeMax(other.LifetimeMax),
+			SpeedMin(other.SpeedMin), SpeedMax(other.SpeedMax), DirectionAngleDeg(other.DirectionAngleDeg),
+			DirectionSpreadDeg(other.DirectionSpreadDeg), EmissionRadius(other.EmissionRadius),
+			GravityY(other.GravityY), ColorStart(other.ColorStart), ColorEnd(other.ColorEnd),
+			SizeStart(other.SizeStart), SizeEnd(other.SizeEnd), MaxParticles(other.MaxParticles),
+			SortingLayer(other.SortingLayer), SortingOrder(other.SortingOrder),
+			Texture(other.Texture), TexturePath(other.TexturePath), FilterMode(other.FilterMode)
+		{
+			// Copies start with an empty pool - never share live particle state (play-mode copy, duplicate).
+		}
+
+		float RandomRange(float lo, float hi)
+		{
+			return lo + (hi - lo) * (std::uniform_real_distribution<float>(0.0f, 1.0f)(Random));
+		}
+
+		void SpawnOne(const glm::vec3& origin)
+		{
+			float angle = glm::radians(DirectionAngleDeg)
+				+ glm::radians(DirectionSpreadDeg) * (RandomRange(-0.5f, 0.5f));
+			float speed = RandomRange(SpeedMin, SpeedMax);
+			float spawnAngle = RandomRange(0.0f, glm::two_pi<float>());
+			float spawnR = EmissionRadius * RandomRange(0.0f, 1.0f);
+			Particles.push_back({
+				glm::vec2(origin.x, origin.y) + glm::vec2(glm::cos(spawnAngle), glm::sin(spawnAngle)) * spawnR,
+				glm::vec2(glm::cos(angle), glm::sin(angle)) * speed,
+				0.0f,
+				RandomRange(LifetimeMin, LifetimeMax) });
+		}
+
+		void Update(float dt, const glm::vec3& origin)
+		{
+			// Spawn (accumulator keeps sub-frame rates stable); Emitting is the script-side switch.
+			if (Emitting && SpawnRate > 0.0f)
+			{
+				SpawnAccumulator += SpawnRate * dt;
+				while (SpawnAccumulator >= 1.0f)
+				{
+					SpawnAccumulator -= 1.0f;
+					if ((int)Particles.size() >= MaxParticles)
+					{
+						SpawnAccumulator = 0.0f;
+						break;
+					}
+					SpawnOne(origin);
+				}
+			}
+			else
+				SpawnAccumulator = 0.0f;
+
+			// Integrate + cull (swap-remove keeps it O(1) per death).
+			for (size_t i = 0; i < Particles.size(); )
+			{
+				Particle& p = Particles[i];
+				p.Life += dt;
+				if (p.Life >= p.MaxLife)
+				{
+					Particles[i] = Particles.back();
+					Particles.pop_back();
+					continue;
+				}
+				p.Velocity.y += GravityY * dt;
+				p.Position += p.Velocity * dt;
+				i++;
+			}
+		}
+
+		// One-shot emission burst (scripts, impacts).
+		void Burst(int count, const glm::vec3& origin)
+		{
+			int n = std::min(count, MaxParticles - (int)Particles.size());
+			for (int i = 0; i < n; i++)
+				SpawnOne(origin);
+		}
+	};
+
+	// The one list of copyable/serializable gameplay components - new components must be added here
+	// (plus their reader/writer in SceneSerializer and inspector UI). DisabledComponent is excluded:
+	// it is an empty tag handled specially by the copy/hidden paths.
+#define WF_FOREACH_COMPONENT(X) \
+	X(RelationshipComponent) \
+	X(ScriptComponent) \
+	X(LifetimeComponent) \
+	X(TransformComponent) \
+	X(SpriteRendererComponent) \
+	X(CircleRendererComponent) \
+	X(CameraComponent) \
+	X(Rigidbody2DComponent) \
+	X(BoxCollider2DComponent) \
+	X(CircleCollider2DComponent) \
+	X(PolygonCollider2DComponent) \
+	X(AnimatorComponent) \
+	X(ParticleSystemComponent) \
+	X(UICanvasComponent) \
+	X(RectTransformComponent) \
+	X(UIImageComponent) \
+	X(UITextComponent) \
+	X(UIButtonComponent) \
+	X(UIProgressBarComponent) \
+	X(TilemapComponent) \
+	X(TilemapColliderComponent)
 }

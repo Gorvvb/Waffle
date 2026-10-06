@@ -204,3 +204,23 @@ public readonly unsafe struct UIProgress
         set => NativeApi.SetUIProgress(_entity.Id, value);
     }
 }
+
+/// <summary>Particle emitter view. Missing when the entity has no ParticleSystemComponent.</summary>
+public readonly unsafe struct ParticleSystem
+{
+    private readonly Entity _entity;
+    internal ParticleSystem(Entity entity) => _entity = entity;
+
+    /// <summary>Live particle count this frame.</summary>
+    public int AliveCount => NativeApi.ParticleAliveCount(_entity.Id);
+
+    /// <summary>Spawning on/off (the configured spawn rate is preserved while off).</summary>
+    public bool Emitting
+    {
+        get => NativeApi.ParticleIsEmitting(_entity.Id) != 0;
+        set => NativeApi.ParticleSetEmitting(_entity.Id, value ? 1 : 0);
+    }
+
+    /// <summary>One-shot emission burst (impacts, explosions) - capped by the component's MaxParticles.</summary>
+    public void Burst(int count) => NativeApi.ParticleBurst(_entity.Id, count);
+}

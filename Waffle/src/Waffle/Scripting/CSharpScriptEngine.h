@@ -67,8 +67,28 @@ namespace Waffle {
 		static bool GetInstanceFieldValue(int handle, const ScriptField& field, ScriptField& outValue);
 		static bool SetInstanceFieldValue(int handle, const ScriptField& field);
 
+		// Live AI debug: true + state name + seconds-in-state when the entity has a running StateMachine.
+		static bool GetAIStateName(uint32_t entity, std::string& outName, float& outTime);
+
+		// One AI debugger row (kept ABI-stable with the managed writer in AIRegistry.BuildReport).
+		struct AIDebugRow
+		{
+			uint32_t EntityId;
+			float TimeInState;
+			char State[64];
+		};
+
+		// Fills rows for every entity with a running StateMachine; false when scripting is down.
+		static bool GetAIReport(AIDebugRow* outRows, int maxRows, int& outCount);
+
 		// Compiles Assets/Scripts/**/*.cs -> Assets/cache/Scripting/GameScripts.dll via the managed compiler; true when a compiled assembly is available.
 		static bool CompileProjectScripts();
+
+		// Background variant for the editor: runs the same compile on a JobSystem worker.
+		// Kick returns false when scripting is down (nothing to wait for); poll the status afterwards.
+		static bool CompileProjectScriptsAsync();
+		// -1 = still compiling, otherwise the same bool result as CompileProjectScripts.
+		static int PollAsyncCompile();
 
 		// Calls handlerName on every scripted instance that defines it, passing the button's entity id; no-op outside runtime or with an empty name.
 		static void CallUIHandler(const std::string& handlerName, uint32_t buttonEntityID);
@@ -184,6 +204,8 @@ namespace Waffle {
 		using wf_compile_scripts_fn = int (*)(const char* sourcesDirUtf8, const char* outputDllUtf8);
 		using wf_set_script_assembly_fn = void (*)(const char* assemblyPathUtf8);
 		using wf_last_error_fn = int (*)(char* buffer, int bufferLen);
+		using wf_get_ai_state_fn = int (*)(uint32_t entityId, char* nameBuf, int nameBufLen, float* timeInState);
+		using wf_get_ai_report_fn = int (*)(uint8_t* rowsOut, int maxRows, int rowStride);
 
 		inline static bool s_Initialized = false;
 		inline static bool s_InitAttempted = false;
@@ -211,6 +233,8 @@ namespace Waffle {
 		static wf_compile_scripts_fn        s_ManagedCompileScripts;
 		static wf_set_script_assembly_fn    s_ManagedSetScriptAssemblyPath;
 		static wf_last_error_fn             s_ManagedLastError;
+		static wf_get_ai_state_fn           s_ManagedGetAIState;
+		static wf_get_ai_report_fn          s_ManagedGetAIReport;
 	};
 
 } // namespace Waffle

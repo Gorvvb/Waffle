@@ -22,7 +22,9 @@ namespace Waffle {
 	static void FailGracefully(const char* title, const char* message)
 	{
 		WF_CORE_CRITICAL("{0}: {1}", title, message);
-		MessageBoxA(nullptr, message, title, MB_OK | MB_ICONERROR);
+		#ifndef WF_DEBUG
+			MessageBoxA(nullptr, message, title, MB_OK | MB_ICONERROR);
+		#endif
 		::ExitProcess(1);
 	}
 

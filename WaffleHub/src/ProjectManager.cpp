@@ -1,6 +1,7 @@
 #include "wfpch.h"
 #include "ProjectManager.h"
 #include "Waffle/Core/Log.h"
+#include "Waffle/Project/RuntimeProjectConfig.h"
 
 #include <yaml-cpp/yaml.h>
 #include <fstream>
@@ -274,15 +275,11 @@ namespace Waffle {
 				<< "      BackgroundColor: [0.18, 0.18, 0.19, 1]\n";
 		}
 
-		// Write Assets/project.wfp which is the file that the RUNTIME (and the editor's project settings) actually read.
-		std::filesystem::path projWfp = targetDir / "Assets" / "project.wfp";
-		YAML::Emitter out;
-		out << YAML::BeginMap;
-		out << YAML::Key << "Project" << YAML::Value << YAML::BeginMap;
-		out << YAML::Key << "Name" << YAML::Value << projectName;
-		out << YAML::Key << "StartScene" << YAML::Value << "Assets/Scenes/SampleScene.waffle";
-		out << YAML::Key << "Gravity" << YAML::Value << -9.81f;
-		out << YAML::Key << "Scenes" << YAML::Value << YAML::BeginSeq;
+		// Write Assets/project.wproj which is the file that the RUNTIME (and the editor's project settings) actually read.
+		RuntimeProjectConfig config;
+		config.Name = projectName;
+		config.StartScene = "Assets/Scenes/SampleScene.waffle";
+		config.GravityY = -9.81f;
 
 		// Scene paths relative to the project root (not absolute, not machine-specific), sorted for deterministic ChangeScene indices.
 		std::vector<std::string> sceneRelPaths;
@@ -303,14 +300,8 @@ namespace Waffle {
 			}
 		}
 		std::sort(sceneRelPaths.begin(), sceneRelPaths.end());
-		for (const auto& relStr : sceneRelPaths)
-			out << relStr;
-		out << YAML::EndSeq;
-		out << YAML::EndMap;
-		out << YAML::EndMap;
-
-		std::ofstream fout(projWfp);
-		fout << out.c_str();
+		config.Scenes = sceneRelPaths;
+		WriteRuntimeProjectConfig(targetDir / "Assets", config);
 
 		AddOrUpdateProject(projectName, outCreatedPath.string());
 		return true;
@@ -373,19 +364,19 @@ namespace Waffle {
 
 		std::vector<std::filesystem::path> candidates = {
 			// Same-config sibling (Dist Hub -> Dist Editor).
-			hubDir / "../Waffle-Editor/Waffle-Editor.exe",
-			hubDir / "Waffle-Editor.exe",
-			hubDir / "../../bin/Dist-windows-x86_64/Waffle-Editor/Waffle-Editor.exe",
-			hubDir / "../../bin/Release-windows-x86_64/Waffle-Editor/Waffle-Editor.exe",
-			hubDir / "../../bin/Debug-windows-x86_64/Waffle-Editor/Waffle-Editor.exe",
+			hubDir / "../WaffleEditor/WaffleEditor.exe",
+			hubDir / "WaffleEditor.exe",
+			hubDir / "../../bin/Dist-windows-x86_64/WaffleEditor/WaffleEditor.exe",
+			hubDir / "../../bin/Release-windows-x86_64/WaffleEditor/WaffleEditor.exe",
+			hubDir / "../../bin/Debug-windows-x86_64/WaffleEditor/WaffleEditor.exe",
 			// Working-directory relatives (kept for compatibility).
-			"../Waffle-Editor/Waffle-Editor.exe",
-			"Waffle-Editor/Waffle-Editor.exe",
-			"bin/Dist-windows-x86_64/Waffle-Editor/Waffle-Editor.exe",
-			"bin/Release-windows-x86_64/Waffle-Editor/Waffle-Editor.exe",
-			"bin/Debug-windows-x86_64/Waffle-Editor/Waffle-Editor.exe",
-			"../bin/Debug-windows-x86_64/Waffle-Editor/Waffle-Editor.exe",
-			"Waffle-Editor.exe"
+			"../WaffleEditor/WaffleEditor.exe",
+			"WaffleEditor/WaffleEditor.exe",
+			"bin/Dist-windows-x86_64/WaffleEditor/WaffleEditor.exe",
+			"bin/Release-windows-x86_64/WaffleEditor/WaffleEditor.exe",
+			"bin/Debug-windows-x86_64/WaffleEditor/WaffleEditor.exe",
+			"../bin/Debug-windows-x86_64/WaffleEditor/WaffleEditor.exe",
+			"WaffleEditor.exe"
 		};
 
 		for (const auto& path : candidates)

@@ -19,6 +19,14 @@ internal static unsafe class WaffleNative
     public static void Frame(float dt) => ScriptRuntime.Frame(dt);
 
     [UnmanagedCallersOnly]
+    public static unsafe int GetAIState(uint entityId, byte* nameBuf, int nameBufLen, float* timeInState)
+        => ScriptRuntime.GetAIState(entityId, nameBuf, nameBufLen, timeInState);
+
+    [UnmanagedCallersOnly]
+    public static unsafe int GetAIReport(byte* rowsOut, int maxRows, int rowStride)
+        => AIRegistry.BuildReport(rowsOut, maxRows, rowStride);
+
+    [UnmanagedCallersOnly]
     public static void RuntimeStart() => ScriptRuntime.RuntimeStart();
 
     [UnmanagedCallersOnly]

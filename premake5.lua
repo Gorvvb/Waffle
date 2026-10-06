@@ -38,5 +38,6 @@ group ""
 
 include "Waffle"
 include "WaffleHub"
-include "Waffle-Editor"
-include "Waffle-Runtime"
+include "WaffleEditor"
+include "WafflePlayer"
+include "Tests"

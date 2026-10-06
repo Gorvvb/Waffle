@@ -1,0 +1,210 @@
+Scene: EngineTests
+Entities:
+  - Entity: 9000000000000001
+    TagComponent:
+      Tag: Test Camera
+    TransformComponent:
+      Translation: [0, 0, 0]
+      Rotation: [0, 0, 0]
+      Scale: [1, 1, 1]
+    CameraComponent:
+      Camera:
+        ProjectionType: 1
+        PerspectiveFov: 0.7853982
+        PerspectiveNear: 0.01
+        PerspectiveFar: 1000
+        OrthographicSize: 10
+        OrthographicNear: -1
+        OrthographicFar: 1
+      Primary: true
+      FixedAspectRatio: false
+      BackgroundColor: [0.1, 0.1, 0.15, 1]
+      BackgroundImagePath: ""
+      BackgroundTilingFactor: [1, 1]
+      BackgroundFilterMode: 1
+      PostProcessing:
+        EnablePostProcessing: true
+        EnableBloom: true
+        BloomThreshold: 0.8
+        BloomIntensity: 1
+        BloomColor: [1, 1, 1]
+        EnableVignette: true
+        VignetteIntensity: 0.5
+        VignetteSmoothness: 0.2
+        VignetteColor: [0, 0, 0]
+        EnableTonemapping: false
+        Exposure: 1
+        Contrast: 1
+        Saturation: 1
+        ColorGradingTint: [1, 1, 1]
+  - Entity: 9000000000000002
+    TagComponent:
+      Tag: Test Sprite
+    TransformComponent:
+      Translation: [0, 0, 0]
+      Rotation: [0, 0, 0]
+      Scale: [1, 1, 1]
+    SpriteRendererComponent:
+      Color: [1, 1, 1, 1]
+      TexturePath: Textures/Knight.png
+      FilterMode: 1
+      TilingFactor: [1, 1]
+      SortingLayer: 0
+      SortingOrder: 0
+      AspectMode: 0
+  - Entity: 9000000000000003
+    TagComponent:
+      Tag: Test Circle
+    TransformComponent:
+      Translation: [2, 1, 0]
+      Rotation: [0, 0, 0]
+      Scale: [1, 1, 1]
+    CircleRendererComponent:
+      Color: [0.2, 0.8, 0.4, 1]
+      Thickness: 1
+      Fade: 0.005
+      SortingLayer: 0
+      SortingOrder: 1
+  - Entity: 9000000000000004
+    TagComponent:
+      Tag: Particle Emitter
+    TransformComponent:
+      Translation: [-2, 1, 0]
+      Rotation: [0, 0, 0]
+      Scale: [1, 1, 1]
+    ParticleSystemComponent:
+      Emitting: true
+      SpawnRate: 40
+      LifetimeMin: 0.5
+      LifetimeMax: 1.5
+      SpeedMin: 1
+      SpeedMax: 3
+      DirectionAngleDeg: 90
+      DirectionSpreadDeg: 360
+      EmissionRadius: 0.25
+      GravityY: -2
+      ColorStart: [1, 0.8, 0.2, 1]
+      ColorEnd: [1, 0.2, 0.1, 0]
+      SizeStart: 0.25
+      SizeEnd: 0.02
+      MaxParticles: 256
+      SortingLayer: 0
+      SortingOrder: 2
+      FilterMode: 1
+  - Entity: 9000000000000005
+    TagComponent:
+      Tag: Physics Box
+    TransformComponent:
+      Translation: [0, 3, 0]
+      Rotation: [0, 0, 0]
+      Scale: [0.5, 0.5, 1]
+    SpriteRendererComponent:
+      Color: [0.9, 0.4, 0.1, 1]
+      FilterMode: 1
+      TilingFactor: [1, 1]
+      SortingLayer: 0
+      SortingOrder: 3
+      AspectMode: 0
+    Rigidbody2DComponent:
+      BodyType: Dynamic
+      FixedRotation: false
+      Mass: 1
+    BoxCollider2DComponent:
+      Offset: [0, 0]
+      Size: [0.5, 0.5]
+      Density: 1
+      Friction: 0.4
+      Restitution: 0.2
+      RestitutionThreshold: 0.5
+      IsTrigger: false
+  - Entity: 9000000000000006
+    TagComponent:
+      Tag: Test Tilemap
+    TransformComponent:
+      Translation: [-4, -2, 0]
+      Rotation: [0, 0, 0]
+      Scale: [1, 1, 1]
+    TilemapComponent:
+      TexturePath: Textures/textures.png
+      TileSize: 16
+      Tint: [1, 1, 1, 1]
+      SortingLayer: 0
+      SortingOrder: -1
+      FilterMode: 1
+      Tiles:
+        - [0, 0, 0]
+        - [1, 0, 1]
+        - [2, 0, 2]
+  - Entity: 9000000000000010
+    TagComponent:
+      Tag: Test UI Canvas
+    TransformComponent:
+      Translation: [0, 0, 0]
+      Rotation: [0, 0, 0]
+      Scale: [1, 1, 1]
+    UICanvasComponent:
+      ReferenceResolution: [1920, 1080]
+      ScaleWithScreen: true
+    RelationshipComponent:
+      Parent: 0
+      Children:
+        - 9000000000000011
+        - 9000000000000012
+  - Entity: 9000000000000011
+    TagComponent:
+      Tag: Test Text
+    TransformComponent:
+      Translation: [0, 0, 0]
+      Rotation: [0, 0, 0]
+      Scale: [300, 60, 1]
+    RectTransformComponent:
+      Anchor: 4
+      Pivot: [0.5, 0.5]
+      Order: 0
+    UITextComponent:
+      Text: ENGINE TESTS RUNNING
+      FontPath: ""
+      FontSize: 28
+      Color: [1, 1, 1, 1]
+      Alignment: 0
+    RelationshipComponent:
+      Parent: 9000000000000010
+      Children:
+        []
+  - Entity: 9000000000000012
+    TagComponent:
+      Tag: Test Button
+    TransformComponent:
+      Translation: [0, -100, 0]
+      Rotation: [0, 0, 0]
+      Scale: [200, 50, 1]
+    RectTransformComponent:
+      Anchor: 4
+      Pivot: [0.5, 0.5]
+      Order: 1
+    UIButtonComponent:
+      Color: [0.16, 0.17, 0.2, 1]
+      HoverColor: [0.22, 0.23, 0.27, 1]
+      PressedColor: [0.11, 0.12, 0.14, 1]
+      NormalTexturePath: ""
+      HoverTexturePath: ""
+      PressedTexturePath: ""
+      Label: Click Me
+      LabelSize: 22
+      LabelColor: [1, 1, 1, 1]
+      OnClick: ""
+    RelationshipComponent:
+      Parent: 9000000000000010
+      Children:
+        []
+  - Entity: 9000000000000099
+    TagComponent:
+      Tag: Test Runner
+    TransformComponent:
+      Translation: [0, 0, 0]
+      Rotation: [0, 0, 0]
+      Scale: [1, 1, 1]
+    ScriptComponent:
+      ClassName: ""
+      ScriptPaths:
+        - Scripts/EngineTests.cs

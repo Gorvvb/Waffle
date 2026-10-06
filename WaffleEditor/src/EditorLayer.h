@@ -1,0 +1,182 @@
+#pragma once
+
+#include "Waffle.h"
+#include "Panels/SceneHierarchyPanel.h"
+#include "Panels/ContentBrowserPanel.h"
+#include "Panels/ConsolePanel.h"
+#include "Panels/AnimationEditorPanel.h"
+#include "Panels/SpritesheetEditorPanel.h"
+
+#include "Waffle/Renderer/EditorCamera.h"
+#include "Waffle/Renderer/PostProcessing.h"
+#include "Waffle/Core/UUID.h"
+
+namespace Waffle {
+
+	class EditorLayer : public Layer
+	{
+	public:
+		EditorLayer();
+		virtual ~EditorLayer() = default;
+		virtual void OnAttach() override;
+		virtual void OnDetach() override;
+
+		void OnUpdate(Timestep dt) override;
+		virtual void OnImGuiRender() override;
+		void OnEvent(Event& e) override;
+	private:
+		bool OnkeyPressed(KeyPressedEvent& e);
+		bool OnMouseButtonPressed(MouseButtonPressedEvent& e);
+		bool OnWindowDrop(WindowDropEvent& e);
+
+		void OnOverlayRender();
+
+		void NewScene();
+		void OpenScene();
+		void OpenScene(const std::filesystem::path& path);
+		void SaveScene();
+		void SaveSceneAs();
+
+		void SaveProjectSettings();
+		void SaveEditorConfig();
+		void LoadEditorConfig();
+		void SetCurrentProjectAsDefaultTemplate();
+
+		void NewProject();
+		void OpenProject();
+		void CreateProject(const std::string& projectName);
+		void OpenProjectAtPath(const std::filesystem::path& projectPath);
+		static std::filesystem::path FindDefaultProjectPath();
+
+		void RebuildSceneList();
+		void PrepareExport();
+
+		void SerializeScene(Ref<Scene> scene, const std::filesystem::path& path);
+
+		void OnScenePlay();
+		void StartPlay();
+		void OnSceneStop();
+		void OnScenePause();
+		void OnDuplicateEntity();
+
+		// Prefab edit mode: a .prefab opens as a temporary scene; Back saves it back to the file and returns to the real scene.
+		void OpenPrefabForEditing(const std::filesystem::path& prefabPath);
+		void ClosePrefabEditor(bool save);
+		bool IsInPrefabEditMode() const { return m_InPrefabEditMode; }
+
+		// Collider edit mode (Unity-style): the gizmo manipulates the selected entity's collider (Translate = offset, Scale = size).
+		void SetColliderEditMode(bool active, int target);
+		bool IsEditingCollider(int target) const { return m_ColliderEditMode && m_ColliderEditTarget == (ColliderEditTarget)target; }
+		void ExitColliderEditMode() { m_ColliderEditMode = false; }
+
+		void UI_Toolbar();
+		void UI_AIDebugger();
+		void SwitchRenderBackend(const std::string& backend);
+		void UI_GizmoToolbar();
+		void UI_TilePalette();
+		void UI_ProjectSettings();
+		void UI_SettingsPanel();
+		void UI_ExportModal();
+
+		void UpdateWindowTitle();
+
+		// Tile painting state: 0 = off, 1 = paint, 2 = erase.
+		int m_TilePaintMode = 0;
+		int m_TilePaletteIndex = -1;
+		bool m_ShowTilePalette = true;
+
+	private:
+
+		Ref<Framebuffer> m_Framebuffer;
+
+		Entity m_HoveredEntity;
+
+		Ref<Scene> m_ActiveScene;
+		Ref<Scene> m_EditorScene;
+
+		std::filesystem::path m_EditorScenePath;
+
+		// Prefab edit mode state (empty scene = not editing a prefab).
+		bool m_InPrefabEditMode = false;
+		Ref<Scene> m_PrefabScene;
+		std::filesystem::path m_PrefabEditPath;
+		UUID m_PrefabRootUUID = 0;
+		// Released next frame, not mid-frame (Back fires during ImGui): the recording command buffer still references its textures.
+		Ref<Scene> m_PrefabScenePendingRelease;
+
+		// Primary camera's post-processing settings, applied to the viewport preview in OnImGuiRender.
+		PostProcessingSettings m_ViewportPostSettings;
+
+		// Collider edit mode state.
+		bool m_ColliderEditMode = false;
+		ColliderEditTarget m_ColliderEditTarget = ColliderEditTarget::Box;
+
+		EditorCamera m_EditorCamera;
+
+		bool m_ViewportFocused = false, m_ViewportHovered = false;
+		glm::vec2 m_ViewportSize = { 0, 0 };
+		glm::vec2 m_ViewportBounds[2];
+
+		int m_GizmoType = -1;
+
+		bool m_ShowSelectionOutline = true;
+		bool m_UseComponentSelectionColor = true;
+		glm::vec4 m_SelectionOutlineColor = glm::vec4(0.95f, 0.55f, 0.15f, 1.0f);
+		float m_SelectionFillAlpha = 0.10f;
+		float m_SelectionCornerRadius = 0.03f;
+		float m_SelectionPadding = 0.005f;
+
+		enum class SceneState
+		{
+			Edit = 0, Play = 1
+		};
+		SceneState m_SceneState = SceneState::Edit;
+
+		// Play is deferred until the background script compile finishes.
+		bool m_PendingPlayAfterCompile = false;
+		// Gizmo undo staging (true between grab and release of a manipulator).
+		bool m_UndoGizmoActive = false;
+
+		// Scene list (ordered - index 0 is always the start scene)
+		std::vector<std::filesystem::path> m_SceneList;
+
+		// Project settings
+		float       m_ProjectGravity = -9.8f;
+		bool        m_ShowProjectTab = false;
+		std::string m_ProjectName;
+		std::filesystem::path m_ProjectPath;
+		char        m_ProjectNameBuffer[128] = "NewProject";
+		char        m_ExportAppNameBuffer[128] = "";
+		char        m_ExportIconPathBuffer[256] = "";
+
+		// Icon preview
+		Ref<Texture2D> m_ProjectIconPreviewTexture = nullptr;
+		std::string    m_ProjectIconPreviewPath;
+
+		// Export modal
+		bool        m_ShowNewProjectModal = false;
+		bool        m_ShowExportModal = false;
+		bool        m_ExportSuccess = false;
+		std::string m_ExportStatusMessage;
+
+		SceneHierarchyPanel m_SceneHierarchyPanel;
+		ContentBrowserPanel m_ContentBrowserPanel;
+		ConsolePanel        m_ConsolePanel;
+		AnimationEditorPanel m_AnimationEditorPanel;
+		SpritesheetEditorPanel m_SpritesheetEditorPanel;
+		bool                m_ShowAIDebugger = false;
+		bool                m_ShowAnimationEditor = true;
+		bool                m_ShowSpritesheetEditor = true;
+		bool                m_ShowSettingsPanel = true;
+
+		float m_fps = 0.0f;
+
+		// Toolbar icons
+		Ref<Texture2D> m_IconPlay, m_IconStop, m_IconPause, m_IconStep;
+		Ref<Texture2D> m_IconPauseInactive, m_IconStepInactive;
+
+		// Gizmo icons
+		Ref<Texture2D> m_IconNoGizmo, m_IconTransformGizmo, m_IconRotationGizmo, m_IconScaleGizmo;
+		Ref<Texture2D> m_IconNoGizmoActive, m_IconTransformGizmoActive, m_IconRotationGizmoActive, m_IconScaleGizmoActive;
+	};
+}

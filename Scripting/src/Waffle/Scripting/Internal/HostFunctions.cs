@@ -112,6 +112,16 @@ internal unsafe struct HostFunctions
     public IntPtr GizmoDrawRay;
     public IntPtr GizmoDrawLine;
     public IntPtr GizmoDrawWireCircle;
+
+    // particles (append-only ABI: never reorder or remove - only add)
+    public IntPtr ParticleBurst;
+    public IntPtr ParticleSetEmitting;
+    public IntPtr ParticleIsEmitting;
+    public IntPtr ParticleAliveCount;
+
+    // render backend (append-only ABI: never reorder or remove - only add)
+    public IntPtr GetRenderBackend;
+    public IntPtr SetRenderBackend;
 }
 
 /// <summary>Mirror of CSharpScriptHost::ScriptFieldKind.</summary>

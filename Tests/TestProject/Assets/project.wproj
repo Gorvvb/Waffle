@@ -1,0 +1,7 @@
+Project:
+  Name: WaffleEngineTests
+  StartScene: Assets/Scenes/EngineTests.waffle
+  IconPath: ""
+  Gravity: -9.8
+  Scenes:
+    - Assets/Scenes/EngineTests.waffle

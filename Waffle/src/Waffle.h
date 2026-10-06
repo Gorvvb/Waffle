@@ -13,13 +13,11 @@
 #include "Waffle/Core/Input.h"
 #include "Waffle/Core/KeyCodes.h"
 #include "Waffle/Core/MouseCodes.h"
-#include "Waffle/Renderer/OrthographicCameraController.h"
 
 #include "Waffle/ImGui/ImGuiLayer.h"
 
 #include "Waffle/Scene/Scene.h"
 #include "Waffle/Scene/Entity.h"
-#include "Waffle/Scene/ScriptableEntity.h"
 #include "Waffle/Scene/Components.h"
 
 #include "Waffle/Project/Project.h"
@@ -34,5 +32,3 @@
 #include "Waffle/Renderer/Framebuffer.h"
 #include "Waffle/Renderer/Texture.h"
 #include "Waffle/Renderer/VertexArray.h"
-
-#include "Waffle/Renderer/OrthographicCamera.h"

@@ -7,12 +7,12 @@ if not "%1"=="" (
     call :CopyAssets "%1"
 ) else (
     for %%D in (
-        "bin\Debug-windows-x86_64\Waffle-Editor"
-        "bin\Release-windows-x86_64\Waffle-Editor"
-        "bin\Dist-windows-x86_64\Waffle-Editor"
-        "bin\Debug-windows-x86_64\Waffle-Runtime"
-        "bin\Release-windows-x86_64\Waffle-Runtime"
-        "bin\Dist-windows-x86_64\Waffle-Runtime"
+        "bin\Debug-windows-x86_64\WaffleEditor"
+        "bin\Release-windows-x86_64\WaffleEditor"
+        "bin\Dist-windows-x86_64\WaffleEditor"
+        "bin\Debug-windows-x86_64\WafflePlayer"
+        "bin\Release-windows-x86_64\WafflePlayer"
+        "bin\Dist-windows-x86_64\WafflePlayer"
         "bin\Debug-windows-x86_64\WaffleHub"
         "bin\Release-windows-x86_64\WaffleHub"
         "bin\Dist-windows-x86_64\WaffleHub"
@@ -32,25 +32,25 @@ set DIR=%~1
 echo Deploying to %DIR%...
 if not exist "%DIR%" mkdir "%DIR%"
 
-if exist "Waffle-Editor\Assets" (
-    xcopy /E /I /Y "Waffle-Editor\Assets" "%DIR%\Assets" >nul
+if exist "WaffleEditor\Assets" (
+    xcopy /E /I /Y "WaffleEditor\Assets" "%DIR%\Assets" >nul
 )
 if exist "Assets" (
     xcopy /E /I /Y "Assets" "%DIR%\Assets" >nul
 )
 
-if exist "Waffle-Editor\Projects" (
-    xcopy /E /I /Y "Waffle-Editor\Projects" "%DIR%\Projects" >nul
+if exist "WaffleEditor\Projects" (
+    xcopy /E /I /Y "WaffleEditor\Projects" "%DIR%\Projects" >nul
 )
 if exist "Projects" (
     xcopy /E /I /Y "Projects" "%DIR%\Projects" >nul
 )
 
-if exist "Waffle-Editor\Resources" (
-    xcopy /E /I /Y "Waffle-Editor\Resources" "%DIR%\Resources" >nul
+if exist "WaffleEditor\Resources" (
+    xcopy /E /I /Y "WaffleEditor\Resources" "%DIR%\Resources" >nul
 )
 
-if exist "Waffle-Editor\imgui.ini" (
-    copy /Y "Waffle-Editor\imgui.ini" "%DIR%\imgui.ini" >nul
+if exist "WaffleEditor\imgui.ini" (
+    copy /Y "WaffleEditor\imgui.ini" "%DIR%\imgui.ini" >nul
 )
 goto :eof

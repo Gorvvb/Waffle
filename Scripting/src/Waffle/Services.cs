@@ -373,6 +373,34 @@ public static unsafe class Application
     }
 }
 
+/// <summary>Render backend queries and switching. GetBackend returns the running backend; SetBackend persists the choice next to the executable and it applies on the NEXT launch (industry-standard restart-to-apply).</summary>
+public static class Renderer
+{
+    /// <summary>The running render backend: "Vulkan" or "OpenGL".</summary>
+    public static string GetBackend()
+    {
+        byte[] buffer = new byte[32];
+        unsafe
+        {
+            fixed (byte* p = buffer)
+                NativeApi.GetRenderBackend(p, buffer.Length);
+        }
+        int end = Array.IndexOf(buffer, (byte)0);
+        return System.Text.Encoding.UTF8.GetString(buffer, 0, end < 0 ? 0 : end);
+    }
+
+    /// <summary>Requests a backend for the next launch ("Vulkan" or "OpenGL"). The current frame keeps rendering on the running backend.</summary>
+    public static void SetBackend(string backend)
+    {
+        byte[] utf8 = System.Text.Encoding.UTF8.GetBytes(backend ?? "");
+        unsafe
+        {
+            fixed (byte* p = utf8)
+                NativeApi.SetRenderBackend(p);
+        }
+    }
+}
+
 /// <summary>Key/value store that survives scene changes AND script hot reloads - the replacement for the Lua engine's persistent Global table.</summary>
 public static class PersistentData
 {

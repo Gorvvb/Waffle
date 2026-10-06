@@ -11,7 +11,7 @@ project "WaffleHub"
 	{
 		"src/**.h",
 		"src/**.cpp",
-		"../Waffle-Editor/Resources/Icon.rc"
+		"../WaffleEditor/Resources/Icon.rc"
 	}
 
 	defines
@@ -39,8 +39,8 @@ project "WaffleHub"
 
 	postbuildcommands
 	{
-		"{COPYDIR} \"../Waffle-Editor/Resources\" \"%{cfg.targetdir}/Resources\"",
-		"{COPYDIR} \"../Waffle-Editor/Assets\" \"%{cfg.targetdir}/Assets\""
+		"{COPYDIR} \"../WaffleEditor/Resources\" \"%{cfg.targetdir}/Resources\"",
+		"{COPYDIR} \"../WaffleEditor/Assets\" \"%{cfg.targetdir}/Assets\""
 	}
 	
 	-- The exe loads shaderc_shared.dll through the engine's shader compilation;

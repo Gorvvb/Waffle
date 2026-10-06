@@ -115,6 +115,9 @@ namespace YAML {
 	};
 }
 
+// Bump when the scene/prefab format changes; readers fall back to 1 when the field is absent (pre-versioning files).
+constexpr int WF_SCENE_FORMAT_VERSION = 2;
+
 namespace Waffle {
 
 	YAML::Emitter& operator<<(YAML::Emitter& out, const glm::uvec2& v)
@@ -191,6 +194,44 @@ namespace Waffle {
 		if (node["Contrast"])             pp.Contrast = node["Contrast"].as<float>(1.0f);
 		if (node["Saturation"])           pp.Saturation = node["Saturation"].as<float>(1.0f);
 		if (node["ColorGradingTint"])     pp.ColorGradingTint = node["ColorGradingTint"].as<glm::vec3>();
+	}
+
+	struct ScriptScanCache
+	{
+		std::unordered_map<std::string, std::filesystem::path> Paths;
+		bool Done = false;
+	};
+
+	// Fallback for script paths that moved: scan Assets recursively for .cs files by filename.
+	static std::filesystem::path FindScriptAnywhere(ScriptScanCache& cache, const std::string& scriptName)
+	{
+		if (!cache.Done)
+		{
+			cache.Done = true;
+			std::error_code ec;
+			for (auto& entry : std::filesystem::recursive_directory_iterator("Assets", ec))
+			{
+				if (entry.is_regular_file(ec))
+				{
+					std::string fn = entry.path().filename().string();
+					if (fn.size() >= 3 && fn.compare(fn.size() - 3, 3, ".cs") == 0)
+						cache.Paths[fn] = entry.path();
+				}
+			}
+		}
+		auto it = cache.Paths.find(scriptName);
+		return (it != cache.Paths.end()) ? it->second : std::filesystem::path();
+	}
+
+	static void DeserializeEntityComponents(Scene* scene, Entity& deserializedEntity,
+		const YAML::Node& entityNode, bool isPrefab, ScriptScanCache& scanCache);
+
+	// Thin wrapper kept for the two prefab call sites: prefab instances pass isPrefab=true.
+
+	static void DeserializePrefabComponents(Scene* scene, Entity& deserializedEntity, const YAML::Node& entityNode)
+	{
+		ScriptScanCache scanCache;
+		DeserializeEntityComponents(scene, deserializedEntity, entityNode, true, scanCache);
 	}
 
 	static void SerializeEntity(YAML::Emitter& out, Entity entity)
@@ -589,6 +630,34 @@ namespace Waffle {
 			out << YAML::EndMap; // AnimatorComponent
 		}
 
+		if (entity.HasComponent<ParticleSystemComponent>())
+		{
+			out << YAML::Key << "ParticleSystemComponent";
+			out << YAML::BeginMap;
+			auto& ps = entity.GetComponent<ParticleSystemComponent>();
+			out << YAML::Key << "Emitting" << YAML::Value << ps.Emitting;
+			out << YAML::Key << "SpawnRate" << YAML::Value << ps.SpawnRate;
+			out << YAML::Key << "LifetimeMin" << YAML::Value << ps.LifetimeMin;
+			out << YAML::Key << "LifetimeMax" << YAML::Value << ps.LifetimeMax;
+			out << YAML::Key << "SpeedMin" << YAML::Value << ps.SpeedMin;
+			out << YAML::Key << "SpeedMax" << YAML::Value << ps.SpeedMax;
+			out << YAML::Key << "DirectionAngleDeg" << YAML::Value << ps.DirectionAngleDeg;
+			out << YAML::Key << "DirectionSpreadDeg" << YAML::Value << ps.DirectionSpreadDeg;
+			out << YAML::Key << "EmissionRadius" << YAML::Value << ps.EmissionRadius;
+			out << YAML::Key << "GravityY" << YAML::Value << ps.GravityY;
+			out << YAML::Key << "ColorStart" << YAML::Value << ps.ColorStart;
+			out << YAML::Key << "ColorEnd" << YAML::Value << ps.ColorEnd;
+			out << YAML::Key << "SizeStart" << YAML::Value << ps.SizeStart;
+			out << YAML::Key << "SizeEnd" << YAML::Value << ps.SizeEnd;
+			out << YAML::Key << "MaxParticles" << YAML::Value << ps.MaxParticles;
+			out << YAML::Key << "SortingLayer" << YAML::Value << ps.SortingLayer;
+			out << YAML::Key << "SortingOrder" << YAML::Value << ps.SortingOrder;
+			if (ps.Texture)
+				out << YAML::Key << "TexturePath" << YAML::Value << GetNormalizedAssetPath(ps.TexturePath);
+			out << YAML::Key << "FilterMode" << YAML::Value << (int)ps.FilterMode;
+			out << YAML::EndMap;
+		}
+
 		if (entity.HasComponent<PolygonCollider2DComponent>())
 		{
 			out << YAML::Key << "PolygonCollider2DComponent";
@@ -614,6 +683,7 @@ namespace Waffle {
 	{
 		YAML::Emitter out;
 		out << YAML::BeginMap; // Scene
+		out << YAML::Key << "Version" << YAML::Value << WF_SCENE_FORMAT_VERSION;
 		out << YAML::Key << "Scene" << YAML::Value << m_Scene->GetName();
 		out << YAML::Key << "Entities" << YAML::Value << YAML::BeginSeq;
 
@@ -652,12 +722,6 @@ namespace Waffle {
 		return true;
 	}
 
-	void SceneSerializer::SerializeRuntime(const std::string& filepath)
-	{
-		// Not implemented yet
-		WF_CORE_ASSERT(false);
-	}
-
 	bool SceneSerializer::Deserialize(const std::string& filepath)
 	{
 		YAML::Node data;
@@ -683,6 +747,9 @@ namespace Waffle {
 		if (!data["Scene"])
 			return false;
 
+		int formatVersion = data["Version"] ? data["Version"].as<int>(1) : 1;
+		WF_CORE_TRACE("Scene format version {0}", formatVersion);
+
 		std::string sceneName;
 		try { sceneName = data["Scene"].as<std::string>(); }
 		catch (const YAML::Exception&) { sceneName = "Scene"; }
@@ -692,28 +759,8 @@ namespace Waffle {
 		auto entities = data["Entities"];
 		if (entities)
 		{
-			// The recursive fallback scan walks the whole asset tree - cache it once per deserialize.
-			std::unordered_map<std::string, std::filesystem::path> scriptScanCache;
-			bool scriptScanDone = false;
-			auto findScriptAnywhere = [&](const std::string& scriptPath) -> std::filesystem::path
-			{
-				if (!scriptScanDone)
-				{
-					scriptScanDone = true;
-					std::error_code ec;
-					for (auto& entry : std::filesystem::recursive_directory_iterator("Assets", ec))
-					{
-						if (entry.is_regular_file(ec))
-						{
-							std::string fn = entry.path().filename().string();
-							if (fn.size() >= 4 && fn.compare(fn.size() - 4, 4, ".lua") == 0)
-								scriptScanCache[fn] = entry.path();
-						}
-					}
-				}
-				auto it = scriptScanCache.find(scriptPath);
-				return (it != scriptScanCache.end()) ? it->second : std::filesystem::path();
-			};
+			// Shared per-load cache for the recursive script lookup (see FindScriptAnywhere).
+			ScriptScanCache scriptScan;
 
 			for (auto entity : entities)
 			{
@@ -732,466 +779,7 @@ namespace Waffle {
 				if (entity["Disabled"] && entity["Disabled"].as<bool>(false))
 					m_Scene->SetEntityHidden(deserializedEntity, true);
 
-				auto relationshipComponent = entity["RelationshipComponent"];
-				if (relationshipComponent)
-				{
-					auto& rc = deserializedEntity.AddComponent<RelationshipComponent>();
-					rc.Parent = relationshipComponent["Parent"].as<uint64_t>();
-					auto children = relationshipComponent["Children"];
-					if (children)
-					{
-						for (auto child : children)
-							rc.Children.push_back(child.as<uint64_t>());
-					}
-				}
-
-				auto scriptComponent = entity["ScriptComponent"];
-				if (scriptComponent)
-				{
-					auto& sc = deserializedEntity.AddComponent<ScriptComponent>();
-					if (scriptComponent["ClassName"])
-						sc.ClassName = scriptComponent["ClassName"].as<std::string>();
-
-					auto scriptPaths = scriptComponent["ScriptPaths"];
-					if (scriptPaths)
-					{
-						for (auto pathNode : scriptPaths)
-							sc.ScriptPaths.push_back(pathNode.as<std::string>());
-					}
-					if (sc.ScriptPaths.empty() && !sc.ClassName.empty())
-						sc.ScriptPaths.push_back(sc.ClassName);
-
-					auto publicFields = scriptComponent["PublicFields"];
-					if (publicFields)
-					{
-						for (auto fieldNode : publicFields)
-						{
-							ScriptField field;
-							std::string scriptPath = fieldNode["Script"].as<std::string>();
-							field.Name = fieldNode["Name"].as<std::string>();
-							field.Type = (ScriptFieldType)fieldNode["Type"].as<int>();
-							field.UserModified = fieldNode["UserModified"] ? fieldNode["UserModified"].as<bool>() : false;
-							switch (field.Type)
-							{
-							case ScriptFieldType::Float:  field.FloatVal = fieldNode["Value"].as<float>();       break;
-							case ScriptFieldType::Int:    field.IntVal = fieldNode["Value"].as<int>();         break;
-							case ScriptFieldType::Bool:   field.BoolVal = fieldNode["Value"].as<bool>();        break;
-							case ScriptFieldType::String: field.StringVal = fieldNode["Value"].as<std::string>(); break;
-							case ScriptFieldType::Vec2:   field.FloatVal = fieldNode["Value"].as<float>(); field.FloatVal2 = fieldNode["Value2"].as<float>(); break;
-							}
-							sc.Fields[scriptPath].push_back(field);
-						}
-					}
-
-					// Scrape any scripts that had no saved fields yet, or pick up new fields added to the script
-						for (const auto& scriptPath : sc.ScriptPaths)
-						{
-							if (scriptPath.empty()) continue;
-
-							std::filesystem::path fullPath = scriptPath;
-							if (!std::filesystem::exists(fullPath))
-								fullPath = std::filesystem::path("Assets") / scriptPath;
-							if (!std::filesystem::exists(fullPath) && std::filesystem::exists("Assets"))
-							{
-								std::string searchName = std::filesystem::path(scriptPath).filename().string();
-								if (searchName.find(".lua") == std::string::npos)
-									searchName += ".lua";
-								std::filesystem::path found = findScriptAnywhere(searchName);
-								if (!found.empty())
-									fullPath = found;
-							}
-
-							if (std::filesystem::exists(fullPath))
-								CSharpScriptEngine::ScrapeFieldsFromScript(fullPath, scriptPath, sc);
-						}
-				}
-
-				auto lifetimeComponent = entity["LifetimeComponent"];
-				if (lifetimeComponent)
-				{
-					auto& lc = deserializedEntity.AddComponent<LifetimeComponent>();
-					lc.Lifetime = lifetimeComponent["Lifetime"].as<float>();
-					lc.RemainingTime = lc.Lifetime;
-				}
-
-				auto transformComponent = entity["TransformComponent"];
-				if (transformComponent)
-				{
-					auto& tc = deserializedEntity.GetComponent<TransformComponent>();
-					tc.Translation = transformComponent["Translation"].as<glm::vec3>();
-					tc.Rotation = transformComponent["Rotation"].as<glm::vec3>();
-					tc.Scale = transformComponent["Scale"].as<glm::vec3>();
-				}
-
-				auto cameraComponent = entity["CameraComponent"];
-				if (cameraComponent && cameraComponent.IsMap()) {
-					auto& cc = deserializedEntity.AddComponent<CameraComponent>();
-
-					const auto& cameraProps = cameraComponent["Camera"];
-					if (cameraProps)
-					{
-						if (cameraProps["ProjectionType"])
-							cc.Camera.SetProjectionType(static_cast<SceneCamera::ProjectionType>(cameraProps["ProjectionType"].as<int>(1)));
-
-						if (cameraProps["PerspectiveFov"])
-							cc.Camera.SetPerspectiveVerticalFOV(cameraProps["PerspectiveFov"].as<float>(45.0f));
-						if (cameraProps["PerspectiveNear"])
-							cc.Camera.SetPerspectiveNearClip(cameraProps["PerspectiveNear"].as<float>(0.01f));
-						if (cameraProps["PerspectiveFar"])
-							cc.Camera.SetPerspectiveFarClip(cameraProps["PerspectiveFar"].as<float>(1000.0f));
-
-						if (cameraProps["OrthographicSize"])
-							cc.Camera.SetOrthographicSize(cameraProps["OrthographicSize"].as<float>(10.0f));
-						if (cameraProps["OrthographicNear"])
-							cc.Camera.SetOrthographicNearClip(cameraProps["OrthographicNear"].as<float>(-1.0f));
-						if (cameraProps["OrthographicFar"])
-							cc.Camera.SetOrthographicFarClip(cameraProps["OrthographicFar"].as<float>(1.0f));
-					}
-
-					if (cameraComponent["Primary"])
-						cc.Primary = cameraComponent["Primary"].as<bool>(true);
-					if (cameraComponent["FixedAspectRatio"])
-						cc.FixedAspectRatio = cameraComponent["FixedAspectRatio"].as<bool>(false);
-
-					// Restore saved aspect (16:9 fallback for old files) - else the projection is degenerate.
-					if (cc.FixedAspectRatio)
-					{
-						float aspect = cameraComponent["AspectRatio"]
-							? cameraComponent["AspectRatio"].as<float>(16.0f / 9.0f)
-							: 16.0f / 9.0f;
-						if (aspect > 0.0f)
-							cc.Camera.SetAspectRatio(aspect);
-					}
-
-					if (cameraComponent["BackgroundColor"])
-						cc.BackgroundColor = cameraComponent["BackgroundColor"].as<glm::vec4>();
-
-					if (cameraComponent["BackgroundTilingFactor"])
-						cc.BackgroundTilingFactor = cameraComponent["BackgroundTilingFactor"].as<glm::vec2>();
-
-					if (cameraComponent["BackgroundFilterMode"])
-						cc.BackgroundFilterMode = static_cast<TextureFilter>(cameraComponent["BackgroundFilterMode"].as<int>());
-
-					if (cameraComponent["BackgroundImagePath"])
-					{
-						cc.BackgroundImagePath = cameraComponent["BackgroundImagePath"].as<std::string>();
-						if (!cc.BackgroundImagePath.empty())
-						{
-							std::filesystem::path resolved = ResolveTexturePath(cc.BackgroundImagePath);
-							if (std::filesystem::exists(resolved))
-							{
-								cc.BackgroundImage = Texture2D::Create(resolved.string(), cc.BackgroundFilterMode);
-							}
-						}
-					}
-
-					if (cameraComponent["PostProcessing"])
-						DeserializePostProcessing(cameraComponent["PostProcessing"], cc.PostProcessing);
-				}
-
-				auto spriteRendererComponent = entity["SpriteRendererComponent"];
-				if (spriteRendererComponent)
-				{
-					auto& src = deserializedEntity.AddComponent<SpriteRendererComponent>();
-					src.Color = spriteRendererComponent["Color"].as<glm::vec4>();
-
-					if (spriteRendererComponent["TexturePath"])
-					{
-						std::string texturePath = spriteRendererComponent["TexturePath"].as<std::string>();
-						std::filesystem::path p(texturePath);
-						std::string ext = p.extension().string();
-						std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
-						// stbi and the editor accept all of these - a narrower whitelist silently dropped paths on resave.
-						if (ext == ".png" || ext == ".jpg" || ext == ".jpeg" || ext == ".bmp" || ext == ".tga")
-					    {
-							std::filesystem::path resolved = ResolveTexturePath(texturePath);
-							src.Texture = Texture2D::Create(resolved.string(), src.FilterMode);
-						}
-					}
-
-					if (spriteRendererComponent["ShaderPath"])
-						src.CustomShaderPath = spriteRendererComponent["ShaderPath"].as<std::string>();
-
-					if (spriteRendererComponent["FilterMode"])
-					{
-						int filterModeValue = spriteRendererComponent["FilterMode"].as<int>();
-						src.FilterMode = static_cast<Waffle::TextureFilter>(filterModeValue);
-
-						if (src.Texture)
-						{
-							std::string currentTexturePath = src.Texture->GetPath();
-							src.Texture = Texture2D::Create(currentTexturePath, src.FilterMode);
-						}
-					}
-
-					if (spriteRendererComponent["TilingFactor"])
-						src.TilingFactor = spriteRendererComponent["TilingFactor"].as<glm::vec2>();
-					if (spriteRendererComponent["SortingLayer"])
-						src.SortingLayer = spriteRendererComponent["SortingLayer"].as<int>(0);
-					if (spriteRendererComponent["SortingOrder"])
-						src.SortingOrder = spriteRendererComponent["SortingOrder"].as<int>(0);
-					if (spriteRendererComponent["AspectMode"])
-						src.AspectMode = static_cast<SpriteAspectMode>(spriteRendererComponent["AspectMode"].as<int>(0));
-				}
-
-				auto circleRendererComponent = entity["CircleRendererComponent"];
-				if (circleRendererComponent)
-				{
-					auto& crc = deserializedEntity.AddComponent<CircleRendererComponent>();
-					crc.Color = circleRendererComponent["Color"].as<glm::vec4>();
-					crc.Thickness = circleRendererComponent["Thickness"].as<float>();
-					crc.Fade = circleRendererComponent["Fade"].as<float>();
-					if (circleRendererComponent["SortingLayer"])
-						crc.SortingLayer = circleRendererComponent["SortingLayer"].as<int>(0);
-					if (circleRendererComponent["SortingOrder"])
-						crc.SortingOrder = circleRendererComponent["SortingOrder"].as<int>(0);
-				}
-
-				auto canvasNode = entity["UICanvasComponent"];
-				if (canvasNode)
-				{
-					auto& canvas = deserializedEntity.AddComponent<UICanvasComponent>();
-					canvas.ReferenceResolution = canvasNode["ReferenceResolution"].as<glm::vec2>(glm::vec2(1920.0f, 1080.0f));
-					canvas.ScaleWithScreen = canvasNode["ScaleWithScreen"].as<bool>(true);
-				}
-
-				auto rtNode = entity["RectTransformComponent"];
-				if (rtNode)
-				{
-					auto& rt = deserializedEntity.AddComponent<RectTransformComponent>();
-					rt.Pivot = rtNode["Pivot"].as<glm::vec2>(glm::vec2(0.5f, 0.5f));
-					rt.Anchor = (UIAnchor)rtNode["Anchor"].as<int>((int)UIAnchor::MiddleCenter);
-					rt.Order = rtNode["Order"].as<int>(0);
-				}
-
-				auto uiImageNode = entity["UIImageComponent"];
-				if (uiImageNode)
-				{
-					auto& uiImage = deserializedEntity.AddComponent<UIImageComponent>();
-					uiImage.Color = uiImageNode["Color"].as<glm::vec4>(glm::vec4(1.0f));
-					if (uiImageNode["TexturePath"])
-					{
-						std::string p = uiImageNode["TexturePath"].as<std::string>();
-						std::filesystem::path r = ResolveTexturePath(p);
-						if (!r.empty() && (std::filesystem::exists(r) || VFS::Exists(r)))
-							uiImage.Texture = Texture2D::Create(r.string(), TextureFilter::Linear);
-						uiImage.TexturePath = p;
-					}
-					if (uiImageNode["FilterMode"])
-						uiImage.FilterMode = (TextureFilter)uiImageNode["FilterMode"].as<int>(0);
-				}
-
-				auto uiTextNode = entity["UITextComponent"];
-				if (uiTextNode)
-				{
-					auto& uiText = deserializedEntity.AddComponent<UITextComponent>();
-					uiText.Text = uiTextNode["Text"].as<std::string>("Text");
-					if (uiTextNode["FontPath"])
-						uiText.FontPath = uiTextNode["FontPath"].as<std::string>("");
-					uiText.FontSize = uiTextNode["FontSize"].as<float>(28.0f);
-					uiText.Color = uiTextNode["Color"].as<glm::vec4>(glm::vec4(1.0f));
-					uiText.Alignment = (UITextAlignment)uiTextNode["Alignment"].as<int>(0);
-				}
-
-				auto uiButtonNode = entity["UIButtonComponent"];
-				if (uiButtonNode)
-				{
-					auto& uiButton = deserializedEntity.AddComponent<UIButtonComponent>();
-					uiButton.Color = uiButtonNode["Color"].as<glm::vec4>(glm::vec4(0.16f, 0.17f, 0.20f, 1.0f));
-					uiButton.HoverColor = uiButtonNode["HoverColor"].as<glm::vec4>(glm::vec4(0.22f, 0.23f, 0.27f, 1.0f));
-					uiButton.PressedColor = uiButtonNode["PressedColor"].as<glm::vec4>(glm::vec4(0.11f, 0.12f, 0.14f, 1.0f));
-					if (uiButtonNode["NormalTexturePath"])
-					{
-						std::string p = uiButtonNode["NormalTexturePath"].as<std::string>();
-						std::filesystem::path r = ResolveTexturePath(p);
-						if (!r.empty() && (std::filesystem::exists(r) || VFS::Exists(r)))
-							uiButton.NormalTexture = Texture2D::Create(r.string(), TextureFilter::Linear);
-						uiButton.NormalTexturePath = p;
-					}
-					if (uiButtonNode["HoverTexturePath"])
-					{
-						std::string p = uiButtonNode["HoverTexturePath"].as<std::string>();
-						std::filesystem::path r = ResolveTexturePath(p);
-						if (!r.empty() && (std::filesystem::exists(r) || VFS::Exists(r)))
-							uiButton.HoverTexture = Texture2D::Create(r.string(), TextureFilter::Linear);
-						uiButton.HoverTexturePath = p;
-					}
-					if (uiButtonNode["PressedTexturePath"])
-					{
-						std::string p = uiButtonNode["PressedTexturePath"].as<std::string>();
-						std::filesystem::path r = ResolveTexturePath(p);
-						if (!r.empty() && (std::filesystem::exists(r) || VFS::Exists(r)))
-							uiButton.PressedTexture = Texture2D::Create(r.string(), TextureFilter::Linear);
-						uiButton.PressedTexturePath = p;
-					}
-					uiButton.Label = uiButtonNode["Label"].as<std::string>("Button");
-					uiButton.LabelSize = uiButtonNode["LabelSize"].as<float>(22.0f);
-					uiButton.LabelColor = uiButtonNode["LabelColor"].as<glm::vec4>(glm::vec4(1.0f));
-					if (uiButtonNode["OnClick"])
-						uiButton.OnClick = uiButtonNode["OnClick"].as<std::string>("");
-				}
-
-				auto uiBarNode = entity["UIProgressBarComponent"];
-				if (uiBarNode)
-				{
-					auto& uiBar = deserializedEntity.AddComponent<UIProgressBarComponent>();
-					uiBar.Value = uiBarNode["Value"].as<float>(1.0f);
-					uiBar.BackgroundColor = uiBarNode["BackgroundColor"].as<glm::vec4>(glm::vec4(0.08f, 0.09f, 0.11f, 0.85f));
-					uiBar.FillColor = uiBarNode["FillColor"].as<glm::vec4>(glm::vec4(0.914f, 0.608f, 0.176f, 1.0f));
-					uiBar.Padding = uiBarNode["Padding"].as<float>(2.0f);
-				}
-
-				auto tmNode = entity["TilemapComponent"];
-				if (tmNode)
-				{
-					auto& tm = deserializedEntity.AddComponent<TilemapComponent>();
-					tm.TexturePath = tmNode["TexturePath"].as<std::string>("");
-					tm.TileSize = tmNode["TileSize"].as<int>(16);
-						tm.Tint = tmNode["Tint"].as<glm::vec4>(glm::vec4(1.0f));
-					if (tmNode["SortingLayer"])
-						tm.SortingLayer = tmNode["SortingLayer"].as<int>(0);
-					if (tmNode["SortingOrder"])
-						tm.SortingOrder = tmNode["SortingOrder"].as<int>(0);
-					if (tmNode["FilterMode"])
-						tm.FilterMode = (TextureFilter)tmNode["FilterMode"].as<int>(0);
-
-					if (!tm.TexturePath.empty())
-					{
-						std::filesystem::path resolved = ResolveTexturePath(tm.TexturePath);
-						if (!resolved.empty() && (std::filesystem::exists(resolved) || VFS::Exists(resolved)))
-						{
-							tm.TilesetTexture = Texture2D::Create(resolved.string(), tm.FilterMode);
-							tm.TexturePath = GetNormalizedAssetPath(resolved.string());
-						}
-					}
-
-					if (tmNode["Tiles"])
-					{
-						for (auto cellNode : tmNode["Tiles"])
-						{
-							if (cellNode.IsSequence() && cellNode.size() == 3)
-							{
-								int x = cellNode[0].as<int>(0);
-								int y = cellNode[1].as<int>(0);
-								int idx = cellNode[2].as<int>(0);
-								tm.Tiles[{ x, y }] = idx;
-							}
-						}
-					}
-				}
-
-				auto tmcNode = entity["TilemapColliderComponent"];
-				if (tmcNode)
-				{
-					auto& tmc = deserializedEntity.AddComponent<TilemapColliderComponent>();
-					if (tmcNode["SolidTiles"])
-						for (auto idxNode : tmcNode["SolidTiles"])
-							tmc.SolidTileIndices.push_back(idxNode.as<int>(0));
-					if (tmcNode["Friction"])
-						tmc.Friction = tmcNode["Friction"].as<float>(0.6f);
-					if (tmcNode["Restitution"])
-						tmc.Restitution = tmcNode["Restitution"].as<float>(0.0f);
-				}
-
-				auto rigidbody2DComponent = entity["Rigidbody2DComponent"];
-				if (rigidbody2DComponent)
-				{
-					auto& rb2d = deserializedEntity.AddComponent<Rigidbody2DComponent>();
-					rb2d.Type = Rigidbody2DBodyTypeFromString(rigidbody2DComponent["BodyType"].as<std::string>());
-					rb2d.FixedRotation = rigidbody2DComponent["FixedRotation"].as<bool>();
-
-					if (rigidbody2DComponent["Mass"])
-						rb2d.Mass = rigidbody2DComponent["Mass"].as<float>();
-				}
-
-				auto boxCollider2DComponent = entity["BoxCollider2DComponent"];
-				if (!boxCollider2DComponent)
-					boxCollider2DComponent = entity["RectCollider2DComponent"]; // Backwards compatibility
-
-				if (boxCollider2DComponent)
-				{
-					auto& bc2d = deserializedEntity.AddComponent<BoxCollider2DComponent>();
-					bc2d.Offset = boxCollider2DComponent["Offset"].as<glm::vec2>();
-					bc2d.Size = boxCollider2DComponent["Size"].as<glm::vec2>();
-					bc2d.Density = boxCollider2DComponent["Density"].as<float>();
-					bc2d.Friction = boxCollider2DComponent["Friction"].as<float>();
-					bc2d.Restitution = boxCollider2DComponent["Restitution"].as<float>();
-					bc2d.RestitutionThreshold = boxCollider2DComponent["RestitutionThreshold"].as<float>();
-					bc2d.IsTrigger = boxCollider2DComponent["IsTrigger"] ? boxCollider2DComponent["IsTrigger"].as<bool>() : false;
-				}
-
-				auto circleCollider2DComponent = entity["CircleCollider2DComponent"];
-				if (circleCollider2DComponent)
-				{
-					auto& cc2d = deserializedEntity.AddComponent<CircleCollider2DComponent>();
-					cc2d.Offset = circleCollider2DComponent["Offset"].as<glm::vec2>();
-					cc2d.Radius = circleCollider2DComponent["Radius"].as<float>();
-					cc2d.Density = circleCollider2DComponent["Density"].as<float>();
-					cc2d.Friction = circleCollider2DComponent["Friction"].as<float>();
-					cc2d.Restitution = circleCollider2DComponent["Restitution"].as<float>();
-					cc2d.RestitutionThreshold = circleCollider2DComponent["RestitutionThreshold"].as<float>();
-					cc2d.IsTrigger = circleCollider2DComponent["IsTrigger"] ? circleCollider2DComponent["IsTrigger"].as<bool>() : false;
-				}
-
-				auto polygonCollider2DComponent = entity["PolygonCollider2DComponent"];
-				if (polygonCollider2DComponent)
-				{
-					auto& pc2d = deserializedEntity.AddComponent<PolygonCollider2DComponent>();
-					pc2d.Offset = polygonCollider2DComponent["Offset"].as<glm::vec2>();
-					pc2d.Density = polygonCollider2DComponent["Density"].as<float>();
-					pc2d.Friction = polygonCollider2DComponent["Friction"].as<float>();
-					pc2d.Restitution = polygonCollider2DComponent["Restitution"].as<float>();
-					pc2d.RestitutionThreshold = polygonCollider2DComponent["RestitutionThreshold"].as<float>();
-					pc2d.IsTrigger = polygonCollider2DComponent["IsTrigger"] ? polygonCollider2DComponent["IsTrigger"].as<bool>() : false;
-					auto vertices = polygonCollider2DComponent["Vertices"];
-					if (vertices)
-					{
-						for (auto v : vertices)
-							pc2d.Vertices.push_back(v.as<glm::vec2>());
-					}
-				}
-
-				auto animatorComponent = entity["AnimatorComponent"];
-				if (animatorComponent)
-				{
-					auto& animator = deserializedEntity.AddComponent<AnimatorComponent>();
-					animator.CurrentClip = animatorComponent["CurrentClip"].as<std::string>("");
-					if (animatorComponent["FramePivot"])
-						animator.FramePivot = animatorComponent["FramePivot"].as<glm::vec2>(glm::vec2(0.5f, 0.0f));
-
-					auto clips = animatorComponent["Clips"];
-					if (clips)
-					{
-						for (auto clipNode : clips)
-						{
-							AnimationClip clip;
-							clip.Name = clipNode["Name"].as<std::string>("Default");
-							clip.TexturePath = clipNode["TexturePath"].as<std::string>("");
-							clip.Columns = clipNode["Columns"].as<int>(1);
-							clip.Rows = clipNode["Rows"].as<int>(1);
-							clip.StartFrame = clipNode["StartFrame"].as<int>(0);
-							clip.EndFrame = clipNode["EndFrame"].as<int>(0);
-							clip.FPS = clipNode["FPS"].as<float>(12.0f);
-							clip.Loop = clipNode["Loop"].as<bool>(true);
-
-							auto kfPaths = clipNode["KeyframeImagePaths"];
-							if (kfPaths)
-							{
-								for (auto kf : kfPaths)
-									clip.KeyframeImagePaths.push_back(kf.as<std::string>());
-							}
-
-							if (!clip.TexturePath.empty())
-							{
-								std::filesystem::path resolved = ResolveTexturePath(clip.TexturePath);
-								if (std::filesystem::exists(resolved))
-									clip.Texture = Texture2D::Create(resolved.string());
-							}
-							clip.RefreshSubTextures();
-							animator.Clips[clip.Name] = clip;
-						}
-					}
-				}
+				DeserializeEntityComponents(m_Scene.get(), deserializedEntity, entity, /*isPrefab=*/false, scriptScan);
 			}
 			catch (const YAML::Exception& e)
 			{
@@ -1209,12 +797,6 @@ namespace Waffle {
 		return true;
 	}
 
-	bool SceneSerializer::DeserializeRuntime(const std::string& filepath)
-	{
-		// Not implemented yet
-		WF_CORE_ASSERT(false);
-		return false;
-	}
 
 	bool SceneSerializer::SerializeEntityToPrefab(Entity entity, const std::string& filepath)
 	{
@@ -1245,6 +827,7 @@ namespace Waffle {
 
 		YAML::Emitter out;
 		out << YAML::BeginMap;
+		out << YAML::Key << "Version" << YAML::Value << WF_SCENE_FORMAT_VERSION;
 		out << YAML::Key << "Prefab" << YAML::Value << entity.GetComponent<TagComponent>().Tag;
 		out << YAML::Key << "Entity" << YAML::Value;
 		SerializeEntity(out, entity);
@@ -1270,10 +853,31 @@ namespace Waffle {
 	}
 
 	// Shared by prefab root and children; RelationshipComponent is rebuilt later from serialized UUIDs.
-	static void DeserializePrefabComponents(Scene* scene, Entity& deserializedEntity, const YAML::Node& entityNode)
+	// Per-load cache for the recursive script lookup below.
+	static void DeserializeEntityComponents(Scene* scene, Entity& deserializedEntity, const YAML::Node& entityNode,
+		bool isPrefab, ScriptScanCache& scanCache)
 	{
+		// ONE reader for scenes and prefab instances (they used to be hand-copied and had drifted:
+		// prefabs silently dropped Tilemaps and FramePivot). Differences are gated on isPrefab.
 		if (entityNode["Disabled"] && entityNode["Disabled"].as<bool>(false))
 			scene->SetEntityHidden(deserializedEntity, true);
+
+		// Prefab hierarchies are rebuilt by the caller through ParentEntity - a copied Relationship would dangle.
+		if (!isPrefab)
+		{
+			auto relationshipComponent = entityNode["RelationshipComponent"];
+			if (relationshipComponent)
+			{
+				auto& rc = deserializedEntity.AddComponent<RelationshipComponent>();
+				rc.Parent = relationshipComponent["Parent"].as<uint64_t>();
+				auto children = relationshipComponent["Children"];
+				if (children)
+				{
+					for (auto child : children)
+						rc.Children.push_back(child.as<uint64_t>());
+				}
+			}
+		}
 
 		auto transformComponent = entityNode["TransformComponent"];
 		if (transformComponent)
@@ -1491,6 +1095,58 @@ namespace Waffle {
 			uiBar.Padding = uiBarNode["Padding"].as<float>(2.0f);
 		}
 
+		auto tmNode = entityNode["TilemapComponent"];
+		if (tmNode)
+		{
+			auto& tm = deserializedEntity.AddComponent<TilemapComponent>();
+			tm.TexturePath = tmNode["TexturePath"].as<std::string>("");
+			tm.TileSize = tmNode["TileSize"].as<int>(16);
+			tm.Tint = tmNode["Tint"].as<glm::vec4>(glm::vec4(1.0f));
+			if (tmNode["SortingLayer"])
+				tm.SortingLayer = tmNode["SortingLayer"].as<int>(0);
+			if (tmNode["SortingOrder"])
+				tm.SortingOrder = tmNode["SortingOrder"].as<int>(0);
+			if (tmNode["FilterMode"])
+				tm.FilterMode = (TextureFilter)tmNode["FilterMode"].as<int>(0);
+
+			if (!tm.TexturePath.empty())
+			{
+				std::filesystem::path resolved = ResolveTexturePath(tm.TexturePath);
+				if (!resolved.empty() && (std::filesystem::exists(resolved) || VFS::Exists(resolved)))
+				{
+					tm.TilesetTexture = Texture2D::Create(resolved.string(), tm.FilterMode);
+					tm.TexturePath = GetNormalizedAssetPath(resolved.string());
+				}
+			}
+
+			if (tmNode["Tiles"])
+			{
+				for (auto cellNode : tmNode["Tiles"])
+				{
+					if (cellNode.IsSequence() && cellNode.size() == 3)
+					{
+						int x = cellNode[0].as<int>(0);
+						int y = cellNode[1].as<int>(0);
+						int idx = cellNode[2].as<int>(0);
+						tm.Tiles[{ x, y }] = idx;
+					}
+				}
+			}
+		}
+
+		auto tmcNode = entityNode["TilemapColliderComponent"];
+		if (tmcNode)
+		{
+			auto& tmc = deserializedEntity.AddComponent<TilemapColliderComponent>();
+			if (tmcNode["SolidTiles"])
+				for (auto idxNode : tmcNode["SolidTiles"])
+					tmc.SolidTileIndices.push_back(idxNode.as<int>(0));
+			if (tmcNode["Friction"])
+				tmc.Friction = tmcNode["Friction"].as<float>(0.6f);
+			if (tmcNode["Restitution"])
+				tmc.Restitution = tmcNode["Restitution"].as<float>(0.0f);
+		}
+
 		auto rigidbody2DComponent = entityNode["Rigidbody2DComponent"];
 		if (rigidbody2DComponent)
 		{
@@ -1501,20 +1157,23 @@ namespace Waffle {
 				rb2d.Mass = rigidbody2DComponent["Mass"].as<float>();
 		}
 
-		auto boxCollider2DComponent = entityNode["BoxCollider2DComponent"];
-		if (!boxCollider2DComponent)
-			boxCollider2DComponent = entityNode["RectCollider2DComponent"]; // Backwards compatibility
+		// This yaml-cpp fork: indexing a CONST node for a missing key returns a "zombie" whose
+		// operator= throws InvalidNode - so never reassign into a lookup result. Select instead.
+		YAML::Node boxCollider2DComponent = entityNode["BoxCollider2DComponent"];
+		YAML::Node rectCollider2DComponent = entityNode["RectCollider2DComponent"]; // legacy alias
+		const YAML::Node* boxColliderNode = boxCollider2DComponent ? &boxCollider2DComponent
+			: (rectCollider2DComponent ? &rectCollider2DComponent : nullptr);
 
-		if (boxCollider2DComponent)
+		if (boxColliderNode)
 		{
 			auto& bc2d = deserializedEntity.AddComponent<BoxCollider2DComponent>();
-			bc2d.Offset = boxCollider2DComponent["Offset"].as<glm::vec2>();
-			bc2d.Size = boxCollider2DComponent["Size"].as<glm::vec2>();
-			bc2d.Density = boxCollider2DComponent["Density"].as<float>();
-			bc2d.Friction = boxCollider2DComponent["Friction"].as<float>();
-			bc2d.Restitution = boxCollider2DComponent["Restitution"].as<float>();
-			bc2d.RestitutionThreshold = boxCollider2DComponent["RestitutionThreshold"].as<float>();
-			bc2d.IsTrigger = boxCollider2DComponent["IsTrigger"] ? boxCollider2DComponent["IsTrigger"].as<bool>() : false;
+			bc2d.Offset = (*boxColliderNode)["Offset"].as<glm::vec2>();
+			bc2d.Size = (*boxColliderNode)["Size"].as<glm::vec2>();
+			bc2d.Density = (*boxColliderNode)["Density"].as<float>();
+			bc2d.Friction = (*boxColliderNode)["Friction"].as<float>();
+			bc2d.Restitution = (*boxColliderNode)["Restitution"].as<float>();
+			bc2d.RestitutionThreshold = (*boxColliderNode)["RestitutionThreshold"].as<float>();
+			bc2d.IsTrigger = (*boxColliderNode)["IsTrigger"] ? (*boxColliderNode)["IsTrigger"].as<bool>() : false;
 		}
 
 		auto circleCollider2DComponent = entityNode["CircleCollider2DComponent"];
@@ -1561,6 +1220,8 @@ namespace Waffle {
 		{
 			auto& animator = deserializedEntity.AddComponent<AnimatorComponent>();
 			animator.CurrentClip = animatorComponent["CurrentClip"].as<std::string>("");
+			if (animatorComponent["FramePivot"])
+				animator.FramePivot = animatorComponent["FramePivot"].as<glm::vec2>(glm::vec2(0.5f, 0.0f));
 
 			auto clips = animatorComponent["Clips"];
 			if (clips)
@@ -1592,6 +1253,41 @@ namespace Waffle {
 					}
 					clip.RefreshSubTextures();
 					animator.Clips[clip.Name] = clip;
+				}
+			}
+		}
+
+		auto particleNode = entityNode["ParticleSystemComponent"];
+		if (particleNode)
+		{
+			auto& ps = deserializedEntity.AddComponent<ParticleSystemComponent>();
+			ps.Emitting = particleNode["Emitting"] ? particleNode["Emitting"].as<bool>(true) : true;
+			ps.SpawnRate = particleNode["SpawnRate"].as<float>(24.0f);
+			ps.LifetimeMin = particleNode["LifetimeMin"].as<float>(0.5f);
+			ps.LifetimeMax = particleNode["LifetimeMax"].as<float>(1.5f);
+			ps.SpeedMin = particleNode["SpeedMin"].as<float>(2.0f);
+			ps.SpeedMax = particleNode["SpeedMax"].as<float>(5.0f);
+			ps.DirectionAngleDeg = particleNode["DirectionAngleDeg"].as<float>(90.0f);
+			ps.DirectionSpreadDeg = particleNode["DirectionSpreadDeg"].as<float>(360.0f);
+			ps.EmissionRadius = particleNode["EmissionRadius"].as<float>(0.0f);
+			ps.GravityY = particleNode["GravityY"].as<float>(-9.8f);
+			ps.ColorStart = particleNode["ColorStart"].as<glm::vec4>(glm::vec4(1.0f));
+			ps.ColorEnd = particleNode["ColorEnd"].as<glm::vec4>(glm::vec4(1.0f, 1.0f, 1.0f, 0.0f));
+			ps.SizeStart = particleNode["SizeStart"].as<float>(0.35f);
+			ps.SizeEnd = particleNode["SizeEnd"].as<float>(0.0f);
+			ps.MaxParticles = particleNode["MaxParticles"].as<int>(512);
+			ps.SortingLayer = particleNode["SortingLayer"].as<int>(0);
+			ps.SortingOrder = particleNode["SortingOrder"].as<int>(0);
+			if (particleNode["FilterMode"])
+				ps.FilterMode = (TextureFilter)particleNode["FilterMode"].as<int>(1);
+			if (particleNode["TexturePath"])
+			{
+				ps.TexturePath = particleNode["TexturePath"].as<std::string>("");
+				if (!ps.TexturePath.empty())
+				{
+					std::filesystem::path resolved = ResolveTexturePath(ps.TexturePath);
+					if (!resolved.empty() && (std::filesystem::exists(resolved) || VFS::Exists(resolved)))
+						ps.Texture = Texture2D::Create(resolved.string(), ps.FilterMode);
 				}
 			}
 		}
@@ -1634,7 +1330,98 @@ namespace Waffle {
 					sc.Fields[scriptPath].push_back(field);
 				}
 			}
+
+		// Scene loads scrape script fields so the inspector picks up new or changed script fields;
+		// prefab instances scrape through the engine's script load path instead.
+		if (!isPrefab)
+		{
+			for (const auto& scriptPath : sc.ScriptPaths)
+			{
+				if (scriptPath.empty()) continue;
+
+				std::filesystem::path fullPath = scriptPath;
+				if (!std::filesystem::exists(fullPath))
+					fullPath = std::filesystem::path("Assets") / scriptPath;
+				if (!std::filesystem::exists(fullPath) && std::filesystem::exists("Assets"))
+				{
+					std::string searchName = std::filesystem::path(scriptPath).filename().string();
+					if (searchName.find(".cs") == std::string::npos)
+						searchName += ".cs";
+					std::filesystem::path found = FindScriptAnywhere(scanCache, searchName);
+					if (!found.empty())
+						fullPath = found;
+				}
+
+				if (std::filesystem::exists(fullPath))
+					CSharpScriptEngine::ScrapeFieldsFromScript(fullPath, scriptPath, sc);
+			}
 		}
+		}
+	}
+
+	std::string SceneSerializer::SerializeEntityToString(Entity entity)
+	{
+		if (!entity)
+			return {};
+
+		// SerializeEntity emits its own top-level map ("Entity: <uuid>" + components) - do NOT
+		// wrap it again: RestoreEntityFromSnapshot reads the id from the ROOT "Entity" key.
+		YAML::Emitter out;
+		SerializeEntity(out, entity);
+		return std::string(out.c_str());
+	}
+
+	Entity SceneSerializer::RestoreEntityFromSnapshot(Scene* scene, const std::string& yaml)
+	{
+		if (!scene || yaml.empty())
+			return {};
+
+		YAML::Node node;
+		try
+		{
+			node = YAML::Load(yaml);
+		}
+		catch (const YAML::Exception& e)
+		{
+			WF_CORE_ERROR("RestoreEntityFromSnapshot: bad snapshot: {0}", e.what());
+			return {};
+		}
+		if (!node["Entity"])
+			return {};
+
+		uint64_t uuid = node["Entity"].as<uint64_t>(0);
+		if (!uuid)
+			return {};
+
+		// Replace-in-place: kill the current incarnation, recreate with the same UUID.
+		if (Entity existing = scene->GetEntityByUUID(uuid))
+			scene->DestroyEntity(existing);
+
+		std::string name = "Entity";
+		if (auto tag = node["TagComponent"])
+			name = tag["Tag"].as<std::string>("Entity");
+
+		Entity restored = scene->CreateEntityWithUUID(uuid, name);
+		ScriptScanCache scanCache;
+		DeserializeEntityComponents(scene, restored, node, /*isPrefab=*/false, scanCache);
+
+		// DestroyEntity removed this UUID from the parent's Children - re-link so the
+		// restored entity shows (and serializes) at its old hierarchy position.
+		if (restored.HasComponent<RelationshipComponent>())
+		{
+			uint64_t parentUUID = restored.GetComponent<RelationshipComponent>().Parent;
+			if (parentUUID)
+			{
+				Entity parent = scene->GetEntityByUUID(parentUUID);
+				if (parent && parent.HasComponent<RelationshipComponent>())
+				{
+					auto& children = parent.GetComponent<RelationshipComponent>().Children;
+					if (std::find(children.begin(), children.end(), uuid) == children.end())
+						children.push_back(uuid);
+				}
+			}
+		}
+		return restored;
 	}
 
 	Entity SceneSerializer::DeserializePrefabToEntity(Scene* scene, const std::string& filepath, float x, float y)

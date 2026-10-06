@@ -18,7 +18,11 @@
 
 #include "Waffle/Core/Base.h"
 #include "Waffle/Core/Log.h"
-#include "Waffle/Debug/Instrumentor.h"
+// Profiling is permanently off (the tracer was removed) - keep the macros as no-ops:
+#define WF_PROFILE_BEGIN_SESSION(name, filepath)
+#define WF_PROFILE_END_SESSION()
+#define WF_PROFILE_SCOPE(name)
+#define WF_PROFILE_FUNCTION()
 
 #ifdef WF_PLATFORM_WINDOWS
 #include <Windows.h>

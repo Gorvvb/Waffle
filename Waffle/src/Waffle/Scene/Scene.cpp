@@ -2,7 +2,6 @@
 #include "Scene.h"
 
 #include "Components.h"
-#include "ScriptableEntity.h"
 #include "Waffle/Scripting/CSharpScriptEngine.h"
 #include "Waffle/Audio/AudioEngine.h"
 #include "Waffle/Renderer/Renderer2D.h"
@@ -24,6 +23,20 @@
 #include "box2d/b2_circle_shape.h"
 
 namespace Waffle {
+
+	// One drawable produced by the 2D render gather: sprite, circle or tilemap with its sort keys.
+	struct RenderItem
+	{
+		enum class ItemType { Sprite, Circle, Tilemap, Particles };
+		ItemType Type;
+		entt::entity EntityID;
+		int SortingLayer = 0;
+		int SortingOrder = 0;
+		float Z = 0.0f;
+		glm::mat4 WorldTransform;
+		// Persistent tie-breaker: entt iterates in reverse creation order, draws would flip on save/load.
+		uint64_t UUID = 0;
+	};
 
 	// Resolves a sprite's optional CustomShaderPath (asset-relative, hot-reloaded via ShaderLibrary).
 	static Ref<Shader> ResolveCustomShader(const SpriteRendererComponent& src)
@@ -127,28 +140,10 @@ namespace Waffle {
 			enttMap[uuid] = (entt::entity)newEntity;
 		}
 
-		// Copy components (except IDComponent and TagComponent)
-		CopyComponent<RelationshipComponent>(dstSceneRegistry, srcSceneRegistry, enttMap);
-		CopyComponent<ScriptComponent>(dstSceneRegistry, srcSceneRegistry, enttMap);
-		CopyComponent<LifetimeComponent>(dstSceneRegistry, srcSceneRegistry, enttMap);
-		CopyComponent<TransformComponent>(dstSceneRegistry, srcSceneRegistry, enttMap);
-		CopyComponent<SpriteRendererComponent>(dstSceneRegistry, srcSceneRegistry, enttMap);
-		CopyComponent<CircleRendererComponent>(dstSceneRegistry, srcSceneRegistry, enttMap);
-		CopyComponent<CameraComponent>(dstSceneRegistry, srcSceneRegistry, enttMap);
-		CopyComponent<NativeScriptComponent>(dstSceneRegistry, srcSceneRegistry, enttMap);
-		CopyComponent<Rigidbody2DComponent>(dstSceneRegistry, srcSceneRegistry, enttMap);
-		CopyComponent<BoxCollider2DComponent>(dstSceneRegistry, srcSceneRegistry, enttMap);
-		CopyComponent<CircleCollider2DComponent>(dstSceneRegistry, srcSceneRegistry, enttMap);
-		CopyComponent<PolygonCollider2DComponent>(dstSceneRegistry, srcSceneRegistry, enttMap);
-		CopyComponent<AnimatorComponent>(dstSceneRegistry, srcSceneRegistry, enttMap);
-		CopyComponent<UICanvasComponent>(dstSceneRegistry, srcSceneRegistry, enttMap);
-		CopyComponent<RectTransformComponent>(dstSceneRegistry, srcSceneRegistry, enttMap);
-		CopyComponent<UIImageComponent>(dstSceneRegistry, srcSceneRegistry, enttMap);
-		CopyComponent<UITextComponent>(dstSceneRegistry, srcSceneRegistry, enttMap);
-		CopyComponent<UIButtonComponent>(dstSceneRegistry, srcSceneRegistry, enttMap);
-		CopyComponent<UIProgressBarComponent>(dstSceneRegistry, srcSceneRegistry, enttMap);
-		CopyComponent<TilemapComponent>(dstSceneRegistry, srcSceneRegistry, enttMap);
-		CopyComponent<TilemapColliderComponent>(dstSceneRegistry, srcSceneRegistry, enttMap);
+		// Copy components (except IDComponent and TagComponent) - the list lives in Components.h.
+#define X(COMP) CopyComponent<COMP>(dstSceneRegistry, srcSceneRegistry, enttMap);
+		WF_FOREACH_COMPONENT(X)
+#undef X
 
 		// Preserve disabled state in the play-mode copy - dropping it re-enables entities mid-play.
 		{
@@ -161,13 +156,6 @@ namespace Waffle {
 			}
 		}
 
-		// Never carry live native-script instances across scenes - the pointer belongs to the source.
-		{
-			auto nscView = dstSceneRegistry.view<NativeScriptComponent>();
-			for (auto e : nscView)
-				dstSceneRegistry.get<NativeScriptComponent>(e).Instance = nullptr;
-		}
-
 		return newScene;
 	}
 
@@ -178,15 +166,29 @@ namespace Waffle {
 
 	Entity Scene::CreateEntityWithUUID(UUID uuid, const std::string& name)
 	{
+		// 0 is the reserved "no id" value - a caller passing it gets a generated one.
+		if ((uint64_t)uuid == 0)
+			uuid = UUID();
+
+		// A second entity claiming a LIVE UUID gets a fresh one instead of shadowing the first
+		// (corrupt/hand-edited scene files must not orphan the original entity; relationships in
+		// the file that reference the id keep resolving to its legitimate owner).
+		auto existing = m_EntityMap.find(uuid);
+		if (existing != m_EntityMap.end() && m_Registry.valid(existing->second))
+		{
+			UUID replacement = UUID();
+			while (m_EntityMap.find(replacement) != m_EntityMap.end())
+				replacement = UUID();
+			WF_CORE_WARN("Scene: duplicate UUID {0} for entity '{1}' - assigned fresh id {2}",
+				(uint64_t)uuid, name.empty() ? "Empty Entity" : name, (uint64_t)replacement);
+			uuid = replacement;
+		}
+
 		Entity entity = { m_Registry.create(), this };
 		entity.AddComponent<IDComponent>(uuid);
 		entity.AddComponent<TransformComponent>();
 		auto& tag = entity.AddComponent<TagComponent>();
 		tag.Tag = name.empty() ? "Empty Entity" : name;
-		// Duplicate UUIDs orphan the earlier entity - its relationships re-point at the new one.
-		auto existing = m_EntityMap.find(uuid);
-		if (existing != m_EntityMap.end() && m_Registry.valid(existing->second))
-			WF_CORE_WARN("Scene: duplicate UUID {0} (entity '{1}') - previous entity becomes unreachable by UUID", (uint64_t)uuid, tag.Tag);
 		m_EntityMap[uuid] = (entt::entity)entity;
 		return entity;
 	}
@@ -548,21 +550,6 @@ namespace Waffle {
 	{
 		m_IsRunning = false;
 
-		// Fire OnDestroy and release native script instances - otherwise every NSC leaks on stop.
-		m_Registry.view<NativeScriptComponent>().each([](auto entity, auto& nsc)
-		{
-			if (nsc.Instance)
-			{
-				nsc.Instance->OnDestroy();
-				if (nsc.DestroyScript)
-					nsc.DestroyScript(&nsc);
-				else
-				{
-					delete nsc.Instance;
-					nsc.Instance = nullptr;
-				}
-			}
-		});
 
 		CSharpScriptEngine::OnRuntimeStop(this);
 		AudioEngine::StopAllSounds();
@@ -593,7 +580,6 @@ namespace Waffle {
 		{
 			if (isStepFrame)
 			{
-				WF_CORE_INFO("[AudioPauseLog] Step frame starting. Resuming audio for 1 frame.");
 				AudioEngine::ResumeAllSounds();
 			}
 
@@ -604,33 +590,12 @@ namespace Waffle {
 				{
 					CSharpScriptEngine::OnRuntimeUpdate(this, ts);
 
-					// Snapshot: OnCreate can create/destroy entities and reallocate the pool mid-iteration.
-					std::vector<entt::entity> nativeScripted;
-					for (auto e : m_Registry.view<NativeScriptComponent>())
-						nativeScripted.push_back(e);
-
-					for (auto entity : nativeScripted)
-					{
-						if (!m_Registry.valid(entity))
-							continue;
-						auto& nsc = m_Registry.get<NativeScriptComponent>(entity);
-						// Unbound components (no Bind()) have null pointers - calling them is UB.
-						if (!nsc.InstanciateScript)
-							continue;
-						if (!nsc.Instance)
-						{
-							nsc.Instance = nsc.InstanciateScript();
-							nsc.Instance->m_Entity = Entity{ entity, this };
-							nsc.Instance->OnCreate();
-						}
-						if (nsc.Instance)
-							nsc.Instance->OnUpdate(ts);
-					}
 				}
 
 			// Lifetime - collect first, then destroy, so the view isn't invalidated mid-iteration.
 			{
-				std::vector<Entity> expired;
+				static std::vector<Entity> expired; // reused scratch (main thread only)
+				expired.clear();
 				auto lifetimeView = m_Registry.view<LifetimeComponent>();
 				for (auto e : lifetimeView)
 				{
@@ -739,15 +704,22 @@ namespace Waffle {
 					}
 				}
 
-			// Advance ALL animators here, not in the render loop - the render pass runs even while paused.
-			{
-				auto animatorView = m_Registry.view<AnimatorComponent>(entt::exclude<DisabledComponent>);
-				for (auto e : animatorView)
-					animatorView.get<AnimatorComponent>(e).Update(ts);
-			}
+				// Advance ALL animators here, not in the render loop - the render pass runs even while paused.
+				{
+					auto animatorView = m_Registry.view<AnimatorComponent>(entt::exclude<DisabledComponent>);
+					for (auto e : animatorView)
+						animatorView.get<AnimatorComponent>(e).Update(ts);
+				}
 
-			// Button hover/click bookkeeping runs with gameplay, not while paused.
-			UIRenderer::UpdateUIInteraction(this);
+				// Particle systems advance with gameplay (paused = frozen effects).
+				{
+					auto psView = m_Registry.view<TransformComponent, ParticleSystemComponent>(entt::exclude<DisabledComponent>);
+					for (auto e : psView)
+						psView.get<ParticleSystemComponent>(e).Update(ts, glm::vec3(GetWorldTransform(Entity{ e, this })[3]));
+				}
+
+				// Button hover/click bookkeeping runs with gameplay, not while paused.
+				UIRenderer::UpdateUIInteraction(this);
 		}
 
 		// Render 2D - always runs regardless of pause state
@@ -774,124 +746,10 @@ namespace Waffle {
 		{
 			Renderer2D::BeginScene(*mainCamera, cameraTransform);
 
-			if (mainCameraComp && mainCameraComp->BackgroundImage)
-			{
-				float orthoSize = mainCameraComp->Camera.GetOrthographicSize();
-				float aspectRatio = mainCameraComp->Camera.GetAspectRatio();
-				glm::vec3 camPos = cameraTransform[3];
-				glm::mat4 bgTransform = glm::translate(glm::mat4(1.0f), glm::vec3(camPos.x, camPos.y, -0.9f))
-					* glm::scale(glm::mat4(1.0f), glm::vec3(orthoSize * aspectRatio * 2.0f, orthoSize * 2.0f, 1.0f));
-				Renderer2D::DrawQuad(bgTransform, mainCameraComp->BackgroundImage, mainCameraComp->BackgroundTilingFactor);
-			}
+			if (mainCameraComp)
+				DrawCameraBackground(*mainCameraComp, cameraTransform);
 
-			struct RenderItem
-			{
-				enum class ItemType { Sprite, Circle, Tilemap };
-				ItemType Type;
-				entt::entity EntityID;
-				int SortingLayer = 0;
-				int SortingOrder = 0;
-				float Z = 0.0f;
-				glm::mat4 WorldTransform;
-				// Persistent tie-breaker: entt iterates in reverse creation order, draws would flip on save/load.
-				uint64_t UUID = 0;
-			};
-
-			std::vector<RenderItem> renderItems;
-
-			// Gather sprites - skip disabled or off-screen entities
-			auto spriteGroup = m_Registry.group<TransformComponent>(entt::get<SpriteRendererComponent>, entt::exclude<DisabledComponent>);
-			for (auto entity : spriteGroup)
-			{
-				auto [transform, sprite] = spriteGroup.get<TransformComponent, SpriteRendererComponent>(entity);
-				glm::mat4 worldTransform = GetWorldTransform(Entity{ entity, this });
-
-				glm::vec3 pos = glm::vec3(worldTransform[3]);
-				glm::vec2 scale = glm::vec2(glm::length(worldTransform[0]), glm::length(worldTransform[1]));
-				if (!Renderer2D::IsVisibleInFrustum(pos, scale))
-				{
-					Renderer2D::GetStats().CulledQuadCount++;
-					continue;
-				}
-
-				renderItems.push_back({ RenderItem::ItemType::Sprite, entity, sprite.SortingLayer, sprite.SortingOrder, worldTransform[3].z, worldTransform });
-				renderItems.back().UUID = (uint64_t)m_Registry.get<IDComponent>(entity).ID;
-			}
-
-			// Gather circles - skip disabled or off-screen entities
-			auto circleView = m_Registry.view<TransformComponent, CircleRendererComponent>(entt::exclude<DisabledComponent>);
-			for (auto entity : circleView)
-			{
-				auto [transform, circle] = circleView.get<TransformComponent, CircleRendererComponent>(entity);
-				glm::mat4 worldTransform = GetWorldTransform(Entity{ entity, this });
-
-				glm::vec3 pos = glm::vec3(worldTransform[3]);
-				glm::vec2 scale = glm::vec2(glm::length(worldTransform[0]), glm::length(worldTransform[1]));
-				if (!Renderer2D::IsVisibleInFrustum(pos, scale))
-				{
-					Renderer2D::GetStats().CulledQuadCount++;
-					continue;
-				}
-
-				renderItems.push_back({ RenderItem::ItemType::Circle, entity, circle.SortingLayer, circle.SortingOrder, worldTransform[3].z, worldTransform });
-				renderItems.back().UUID = (uint64_t)m_Registry.get<IDComponent>(entity).ID;
-			}
-
-			// Gather tilemaps - each renders all its tiles at its sort slot (mixes with sprites).
-			{
-				auto tmView = m_Registry.view<TilemapComponent>(entt::exclude<DisabledComponent>);
-				for (auto e : tmView)
-				{
-					auto& tm = tmView.get<TilemapComponent>(e);
-					glm::mat4 worldTransform = GetWorldTransform(Entity{ e, this });
-					renderItems.push_back({ RenderItem::ItemType::Tilemap, e, tm.SortingLayer, tm.SortingOrder, worldTransform[3].z, worldTransform });
-					renderItems.back().UUID = (uint64_t)m_Registry.get<IDComponent>(e).ID;
-				}
-			}
-
-			// Back-to-front sorting by Layer -> Order -> Z -> UUID
-			std::stable_sort(renderItems.begin(), renderItems.end(), [](const RenderItem& a, const RenderItem& b) {
-				if (a.SortingLayer != b.SortingLayer)
-					return a.SortingLayer < b.SortingLayer;
-				if (a.SortingOrder != b.SortingOrder)
-					return a.SortingOrder < b.SortingOrder;
-				if (a.Z != b.Z)
-					return a.Z < b.Z;
-				return a.UUID < b.UUID;
-			});
-
-			// Draw all sorted items; animators were advanced in the pre-pass (would run while paused here).
-			for (const auto& item : renderItems)
-			{
-				if (item.Type == RenderItem::ItemType::Sprite)
-				{
-					auto& sprite = m_Registry.get<SpriteRendererComponent>(item.EntityID);
-					auto* animator = m_Registry.try_get<AnimatorComponent>(item.EntityID);
-					if (animator)
-					{
-						Ref<SubTexture2D> subTexture = animator->GetCurrentSubTexture();
-						if (subTexture)
-						{
-						glm::vec4 contentFrac = animator->GetCurrentFrameContentFrac();
-						Renderer2D::DrawQuad(item.WorldTransform, subTexture, sprite.TilingFactor, sprite.Color, (int)item.EntityID, sprite.AspectMode,
-							animator->GetCurrentFramePivot(), animator->GetMaxContentPixelSize(),
-							(contentFrac.x >= 0.0f) ? &contentFrac : nullptr);
-						continue;
-						}
-					}
-					Renderer2D::DrawSprite(item.WorldTransform, sprite, (int)item.EntityID, ResolveCustomShader(sprite));
-				}
-				else if (item.Type == RenderItem::ItemType::Tilemap)
-				{
-					DrawTilemapTiles(Entity{ item.EntityID, this }, item.WorldTransform);
-				}
-
-				else if (item.Type == RenderItem::ItemType::Circle)
-				{
-					auto& circle = m_Registry.get<CircleRendererComponent>(item.EntityID);
-					Renderer2D::DrawCircle(item.WorldTransform, circle.Color, circle.Thickness, circle.Fade, (int)item.EntityID);
-				}
-			}
+			GatherAndDrawRenderItems();
 
 			Renderer2D::EndScene();
 		}
@@ -901,7 +759,6 @@ namespace Waffle {
 
 		if (isStepFrame && m_StepFrames == 0 && m_IsPaused)
 		{
-			WF_CORE_INFO("[AudioPauseLog] Step frame completed. Pausing audio back.");
 			AudioEngine::PauseAllSounds();
 		}
 
@@ -910,6 +767,28 @@ namespace Waffle {
 		if (pending != -1)
 			CSharpScriptEngine::ClearPendingSceneChange();
 		return pending;
+	}
+
+	// Particles are world-space quads with life-driven color/size (t = 0 fresh -> 1 dead).
+	void Scene::DrawParticles(entt::entity entity, const glm::mat4& worldTransform)
+	{
+		auto& ps = m_Registry.get<ParticleSystemComponent>(entity);
+		glm::vec3 origin(worldTransform[3]);
+		for (const auto& p : ps.Particles)
+		{
+			float t = p.Life / p.MaxLife;
+			glm::vec4 color = glm::mix(ps.ColorStart, ps.ColorEnd, t);
+			float size = glm::mix(ps.SizeStart, ps.SizeEnd, t);
+			if (size <= 0.0f)
+				continue;
+			glm::mat4 transform = glm::translate(glm::mat4(1.0f),
+				glm::vec3(origin.x + p.Position.x, origin.y + p.Position.y, origin.z))
+				* glm::scale(glm::mat4(1.0f), glm::vec3(size, size, 1.0f));
+			if (ps.Texture)
+				Renderer2D::DrawQuad(transform, ps.Texture, glm::vec2(1.0f), color);
+			else
+				Renderer2D::DrawQuad(transform, color);
+		}
 	}
 
 	void Scene::DrawTilemapTiles(Entity entity, const glm::mat4& worldTransform)
@@ -940,7 +819,6 @@ namespace Waffle {
 		if (m_IsPaused != paused)
 		{
 			m_IsPaused = paused;
-			WF_CORE_INFO("[AudioPauseLog] Scene::SetPaused({0}) - Calling AudioEngine::{1}AllSounds()", m_IsPaused ? "true" : "false", m_IsPaused ? "Pause" : "Resume");
 			if (m_IsPaused)
 			{
 				AudioEngine::PauseAllSounds();
@@ -955,7 +833,6 @@ namespace Waffle {
 	void Scene::Step(int frames)
 	{
 		m_StepFrames += frames;
-		WF_CORE_INFO("[AudioPauseLog] Scene::Step({0}) - m_StepFrames is now {1}", frames, m_StepFrames);
 	}
 
 	void Scene::OnUpdateEditor(Timestep ts, EditorCamera& camera)
@@ -969,37 +846,51 @@ namespace Waffle {
 				animatorView.get<AnimatorComponent>(e).Update(ts);
 		}
 
+		// Editor preview of particle systems.
+		{
+			auto psView = m_Registry.view<TransformComponent, ParticleSystemComponent>(entt::exclude<DisabledComponent>);
+			for (auto e : psView)
+				psView.get<ParticleSystemComponent>(e).Update(ts, glm::vec3(GetWorldTransform(Entity{ e, this })[3]));
+		}
+
 		Entity primaryCamEntity = GetPrimaryCameraEntity();
 		if (primaryCamEntity && primaryCamEntity.HasComponent<CameraComponent>())
 		{
 			auto& camComp = primaryCamEntity.GetComponent<CameraComponent>();
-			if (camComp.BackgroundImage)
-			{
-				glm::vec3 camWorldPos = glm::vec3(GetWorldTransform(primaryCamEntity)[3]);
-				float orthoSize = camComp.Camera.GetOrthographicSize();
-				float aspectRatio = camComp.Camera.GetAspectRatio();
-				glm::mat4 bgTransform = glm::translate(glm::mat4(1.0f), glm::vec3(camWorldPos.x, camWorldPos.y, -0.9f))
-					* glm::scale(glm::mat4(1.0f), glm::vec3(orthoSize * aspectRatio * 2.0f, orthoSize * 2.0f, 1.0f));
-				Renderer2D::DrawQuad(bgTransform, camComp.BackgroundImage, camComp.BackgroundTilingFactor);
-			}
+			DrawCameraBackground(camComp, GetWorldTransform(primaryCamEntity));
 		}
 
-		struct RenderItem
-		{
-			enum class ItemType { Sprite, Circle, Tilemap };
-			ItemType Type;
-			entt::entity EntityID;
-			int SortingLayer = 0;
-			int SortingOrder = 0;
-			float Z = 0.0f;
-			glm::mat4 WorldTransform;
-			// Persistent tie-breaker: entt iterates in reverse creation order, draws would flip on save/load.
-			uint64_t UUID = 0;
-		};
+		GatherAndDrawRenderItems();
 
-		std::vector<RenderItem> renderItems;
+		Renderer2D::EndScene();
 
-		// Editor path matches runtime: exclude DisabledComponent.
+		// Editor preview of the screen-space game UI.
+		UIRenderer::RenderUI(this);
+	}
+
+	// Camera background image stretched over the camera plane at z=-0.9 (behind all default content).
+	void Scene::DrawCameraBackground(const CameraComponent& camComp, const glm::mat4& cameraTransform)
+	{
+		if (!camComp.BackgroundImage)
+			return;
+
+		float orthoSize = camComp.Camera.GetOrthographicSize();
+		float aspectRatio = camComp.Camera.GetAspectRatio();
+		glm::vec3 camPos = glm::vec3(cameraTransform[3]);
+		glm::mat4 bgTransform = glm::translate(glm::mat4(1.0f), glm::vec3(camPos.x, camPos.y, -0.9f))
+			* glm::scale(glm::mat4(1.0f), glm::vec3(orthoSize * aspectRatio * 2.0f, orthoSize * 2.0f, 1.0f));
+		Renderer2D::DrawQuad(bgTransform, camComp.BackgroundImage, camComp.BackgroundTilingFactor);
+	}
+
+	// The one 2D render pass, shared by the runtime and the editor viewport: gather visible sprites,
+	// circles and tilemaps, sort back-to-front (Layer -> Order -> Z -> UUID) and draw. The caller owns
+	// the camera, BeginScene/EndScene and any animator pre-pass.
+	void Scene::GatherAndDrawRenderItems()
+	{
+		static std::vector<RenderItem> renderItems; // reused scratch (main thread only)
+		renderItems.clear();
+
+		// Gather sprites - skip disabled or off-screen entities
 		auto spriteGroup = m_Registry.group<TransformComponent>(entt::get<SpriteRendererComponent>, entt::exclude<DisabledComponent>);
 		for (auto entity : spriteGroup)
 		{
@@ -1015,9 +906,10 @@ namespace Waffle {
 			}
 
 			renderItems.push_back({ RenderItem::ItemType::Sprite, entity, sprite.SortingLayer, sprite.SortingOrder, worldTransform[3].z, worldTransform });
+			renderItems.back().UUID = (uint64_t)m_Registry.get<IDComponent>(entity).ID;
 		}
 
-		// Editor path matches runtime: exclude DisabledComponent.
+		// Gather circles - skip disabled or off-screen entities
 		auto circleView = m_Registry.view<TransformComponent, CircleRendererComponent>(entt::exclude<DisabledComponent>);
 		for (auto entity : circleView)
 		{
@@ -1048,7 +940,19 @@ namespace Waffle {
 			}
 		}
 
-		// Back-to-front sorting by Layer -> Order -> Z
+		// Gather particle systems - drawn at their own sort slot (world-space quads).
+		{
+			auto psView = m_Registry.view<ParticleSystemComponent>(entt::exclude<DisabledComponent>);
+			for (auto e : psView)
+			{
+				auto& ps = psView.get<ParticleSystemComponent>(e);
+				glm::mat4 worldTransform = GetWorldTransform(Entity{ e, this });
+				renderItems.push_back({ RenderItem::ItemType::Particles, e, ps.SortingLayer, ps.SortingOrder, worldTransform[3].z, worldTransform });
+				renderItems.back().UUID = (uint64_t)m_Registry.get<IDComponent>(e).ID;
+			}
+		}
+
+		// Back-to-front sorting by Layer -> Order -> Z -> UUID
 		std::stable_sort(renderItems.begin(), renderItems.end(), [](const RenderItem& a, const RenderItem& b) {
 			if (a.SortingLayer != b.SortingLayer)
 				return a.SortingLayer < b.SortingLayer;
@@ -1059,7 +963,7 @@ namespace Waffle {
 			return a.UUID < b.UUID;
 		});
 
-		// Draw all sorted items; the animator pre-pass keeps off-screen animations advancing.
+		// Draw all sorted items; the caller's animator pre-pass keeps off-screen animations advancing.
 		for (const auto& item : renderItems)
 		{
 			if (item.Type == RenderItem::ItemType::Sprite)
@@ -1084,6 +988,10 @@ namespace Waffle {
 			{
 				DrawTilemapTiles(Entity{ item.EntityID, this }, item.WorldTransform);
 			}
+			else if (item.Type == RenderItem::ItemType::Particles)
+			{
+				DrawParticles(item.EntityID, item.WorldTransform);
+			}
 
 			else if (item.Type == RenderItem::ItemType::Circle)
 			{
@@ -1091,11 +999,6 @@ namespace Waffle {
 				Renderer2D::DrawCircle(item.WorldTransform, circle.Color, circle.Thickness, circle.Fade, (int)item.EntityID);
 			}
 		}
-
-		Renderer2D::EndScene();
-
-		// Editor preview of the screen-space game UI.
-		UIRenderer::RenderUI(this);
 	}
 
 	void Scene::OnViewportResize(uint32_t width, uint32_t height)
@@ -1129,34 +1032,13 @@ namespace Waffle {
 		Entity newEntity = CreateEntity(name);
 
 		// Copy everything except RelationshipComponent - verbatim copy would corrupt the hierarchy.
-		CopyComponentIfExists<ScriptComponent>(newEntity, entity);
-		CopyComponentIfExists<LifetimeComponent>(newEntity, entity);
-		CopyComponentIfExists<TransformComponent>(newEntity, entity);
-		CopyComponentIfExists<SpriteRendererComponent>(newEntity, entity);
-		CopyComponentIfExists<CircleRendererComponent>(newEntity, entity);
-		CopyComponentIfExists<CameraComponent>(newEntity, entity);
-		CopyComponentIfExists<NativeScriptComponent>(newEntity, entity);
-		CopyComponentIfExists<Rigidbody2DComponent>(newEntity, entity);
-		CopyComponentIfExists<BoxCollider2DComponent>(newEntity, entity);
-		CopyComponentIfExists<CircleCollider2DComponent>(newEntity, entity);
-		CopyComponentIfExists<PolygonCollider2DComponent>(newEntity, entity);
-		CopyComponentIfExists<AnimatorComponent>(newEntity, entity);
-		CopyComponentIfExists<UICanvasComponent>(newEntity, entity);
-		CopyComponentIfExists<RectTransformComponent>(newEntity, entity);
-		CopyComponentIfExists<UIImageComponent>(newEntity, entity);
-		CopyComponentIfExists<UITextComponent>(newEntity, entity);
-		CopyComponentIfExists<UIButtonComponent>(newEntity, entity);
-		CopyComponentIfExists<UIProgressBarComponent>(newEntity, entity);
-		CopyComponentIfExists<TilemapComponent>(newEntity, entity);
-		CopyComponentIfExists<TilemapColliderComponent>(newEntity, entity);
+#define X(COMP) CopyComponentIfExists<COMP>(newEntity, entity);
+		WF_FOREACH_COMPONENT(X)
+#undef X
 
 		// Preserve Lua-disabled state in duplicates too (tag component via direct registry emplace).
 		if (entity.HasComponent<DisabledComponent>())
 			m_Registry.emplace_or_replace<DisabledComponent>((entt::entity)newEntity);
-
-		// A duplicated native script must not share the original's instance - it points at the original.
-		if (newEntity.HasComponent<NativeScriptComponent>())
-			newEntity.GetComponent<NativeScriptComponent>().Instance = nullptr;
 
 		// Copies must not share the original's Box2D body/fixture pointers - corrupts the simulation.
 		if (newEntity.HasComponent<Rigidbody2DComponent>())
@@ -1241,6 +1123,9 @@ namespace Waffle {
 	void Scene::OnComponentAdded<AnimatorComponent>(Entity entity, AnimatorComponent& component) {}
 
 	template<>
+	void Scene::OnComponentAdded<ParticleSystemComponent>(Entity entity, ParticleSystemComponent& component) {}
+
+	template<>
 	void Scene::OnComponentAdded<CircleRendererComponent>(Entity entity, CircleRendererComponent& component) {}
 
 	template<>
@@ -1253,8 +1138,6 @@ namespace Waffle {
 	template<>
 	void Scene::OnComponentAdded<TagComponent>(Entity entity, TagComponent& component) {}
 
-	template<>
-	void Scene::OnComponentAdded<NativeScriptComponent>(Entity entity, NativeScriptComponent& component) {}
 
 	template<>
 	void Scene::OnComponentAdded<Rigidbody2DComponent>(Entity entity, Rigidbody2DComponent& component) {}

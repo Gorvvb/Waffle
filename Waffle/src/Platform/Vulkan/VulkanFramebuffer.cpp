@@ -40,6 +40,11 @@ namespace Waffle {
 	VulkanFramebuffer::~VulkanFramebuffer()
 	{
 		CleanupAttachments();
+
+		auto* ctx = VulkanContext::Get();
+		if (m_PixelStaging != VK_NULL_HANDLE && ctx)
+			vmaDestroyBuffer(ctx->GetVmaAllocator(), m_PixelStaging, m_PixelStagingAllocation);
+		m_PixelStaging = VK_NULL_HANDLE;
 	}
 
 	void VulkanFramebuffer::Invalidate()
@@ -321,14 +326,19 @@ namespace Waffle {
 			m_ColorCurrentLayouts[attachmentIndex] = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
 		}
 
-		VkBuffer      staging;
-		VmaAllocation stagingAllocation;
-		VulkanUtils::CreateBuffer(allocator,
-			sizeof(int32_t),
-			VK_BUFFER_USAGE_TRANSFER_DST_BIT,
-			VMA_MEMORY_USAGE_AUTO,
-			staging, stagingAllocation,
-			VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT);
+		// Created once and reused: ReadPixel runs per frame while the mouse hovers the viewport,
+			// so a per-call VMA create/destroy is pure overhead.
+		if (m_PixelStaging == VK_NULL_HANDLE)
+		{
+			VulkanUtils::CreateBuffer(allocator,
+				sizeof(int32_t),
+				VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+				VMA_MEMORY_USAGE_AUTO,
+				m_PixelStaging, m_PixelStagingAllocation,
+				VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT);
+		}
+		VkBuffer staging = m_PixelStaging;
+		VmaAllocation stagingAllocation = m_PixelStagingAllocation;
 
 		int actualY = y;
 
@@ -442,8 +452,6 @@ namespace Waffle {
 		VmaAllocationInfo allocInfo{};
 		vmaGetAllocationInfo(allocator, stagingAllocation, &allocInfo);
 		int result = *reinterpret_cast<int32_t*>(allocInfo.pMappedData);
-
-		vmaDestroyBuffer(allocator, staging, stagingAllocation);
 
 		return result;
 	}

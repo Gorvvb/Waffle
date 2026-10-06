@@ -88,6 +88,19 @@ namespace Waffle {
 			m_BoundTextures[slot] = { imageView, sampler };
 		}
 
+		// Drops registrations at/above `slot` (keeps 0, the fallback). BindTextures uses this: a batch
+		// redefines its whole slot window, so stale entries above it (e.g. last frame's post-chain
+		// framebuffer attachment, still in COLOR_ATTACHMENT layout) must not linger in fresh sets.
+		void ClearTextureSlotsFrom(uint32_t slot) {
+			for (auto it = m_BoundTextures.begin(); it != m_BoundTextures.end(); )
+			{
+				if (it->first >= slot && it->first != 0)
+					it = m_BoundTextures.erase(it);
+				else
+					++it;
+			}
+		}
+
 		// Unregister on destruction to prevent use-after-free at draw time.
 		void UnregisterUniformBuffer(uint32_t binding) {
 			m_BoundUniformBuffers.erase(binding);

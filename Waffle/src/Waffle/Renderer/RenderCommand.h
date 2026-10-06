@@ -6,17 +6,15 @@
 
 namespace Waffle {
 
+	class VulkanRendererAPI;
+	class OpenGLRendererAPI;
+
 	class RenderCommand
 	{
 	private:
 		static RendererAPI* s_RendererAPI;
 	public:
-		static void Init()
-		{
-			WF_PROFILE_FUNCTION();
-
-			s_RendererAPI->Init();
-		}
+		static void Init();
 
 		static void SetViewPort(uint32_t x, uint32_t y, uint32_t width, uint32_t height)
 		{

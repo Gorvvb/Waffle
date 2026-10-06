@@ -12,6 +12,8 @@
 #include "Waffle/Scene/SceneSerializer.h"
 #include "Waffle/Audio/AudioEngine.h"
 #include "Waffle/Renderer/Texture.h"
+#include "Waffle/Renderer/Renderer.h"
+#include "Waffle/Renderer/RendererAPI.h"
 
 #include <box2d/b2_body.h>
 #include <box2d/b2_fixture.h>
@@ -22,6 +24,12 @@
 
 #include <cctype>
 #include <cstring>
+#include <filesystem>
+#include <fstream>
+
+#ifdef WF_PLATFORM_WINDOWS
+#include <windows.h>
+#endif
 
 namespace Waffle {
 
@@ -1165,6 +1173,57 @@ namespace Waffle {
 
 		// Animation
 
+		void WF_GetRenderBackend(char* buffer, int bufferSize)
+		{
+			if (!buffer || bufferSize <= 0)
+				return;
+			const char* name = Renderer::GetAPI() == RendererAPI::API::OpenGL ? "OpenGL" : "Vulkan";
+			int copy = std::min((int)std::strlen(name), bufferSize - 1);
+			std::memcpy(buffer, name, copy);
+			buffer[copy] = 0;
+		}
+
+		void WF_SetRenderBackend(const char* backendUtf8)
+		{
+			if (!backendUtf8)
+				return;
+			// Persists next to the exe; the player picks it up on its next launch.
+			char exeBuffer[MAX_PATH] = {};
+			GetModuleFileNameA(NULL, exeBuffer, MAX_PATH);
+			std::filesystem::path sidecar = std::filesystem::path(exeBuffer).parent_path() / "waffle_backend.txt";
+			std::ofstream out(sidecar, std::ios::trunc);
+			if (out)
+				out << backendUtf8;
+		}
+
+		void WF_ParticleBurst(uint32_t entityId, int32_t count)
+		{
+			Entity entity = GetEntity(entityId);
+			if (entity && entity.HasComponent<ParticleSystemComponent>())
+				entity.GetComponent<ParticleSystemComponent>().Burst(count, entity.GetScene()->GetWorldTransform(entity)[3]);
+		}
+
+		void WF_ParticleSetEmitting(uint32_t entityId, int32_t emitting)
+		{
+			Entity entity = GetEntity(entityId);
+			if (entity && entity.HasComponent<ParticleSystemComponent>())
+				entity.GetComponent<ParticleSystemComponent>().Emitting = emitting != 0;
+		}
+
+		int32_t WF_ParticleIsEmitting(uint32_t entityId)
+		{
+			Entity entity = GetEntity(entityId);
+			return (entity && entity.HasComponent<ParticleSystemComponent>())
+				? entity.GetComponent<ParticleSystemComponent>().Emitting ? 1 : 0 : 0;
+		}
+
+		int32_t WF_ParticleAliveCount(uint32_t entityId)
+		{
+			Entity entity = GetEntity(entityId);
+			return (entity && entity.HasComponent<ParticleSystemComponent>())
+				? (int32_t)entity.GetComponent<ParticleSystemComponent>().Particles.size() : 0;
+		}
+
 		void WF_PlayAnimation(uint32_t entityId, const char* clipUtf8)
 		{
 			if (!clipUtf8)
@@ -1344,6 +1403,12 @@ namespace Waffle {
 
 		// animation
 		fns.PlayAnimation = &WF_PlayAnimation;
+		fns.ParticleBurst = &WF_ParticleBurst;
+		fns.ParticleSetEmitting = &WF_ParticleSetEmitting;
+		fns.ParticleIsEmitting = &WF_ParticleIsEmitting;
+		fns.ParticleAliveCount = &WF_ParticleAliveCount;
+		fns.GetRenderBackend = &WF_GetRenderBackend;
+		fns.SetRenderBackend = &WF_SetRenderBackend;
 		fns.StopAnimation = &WF_StopAnimation;
 		fns.PauseAnimation = &WF_PauseAnimation;
 		fns.SetAnimationFrame = &WF_SetAnimationFrame;

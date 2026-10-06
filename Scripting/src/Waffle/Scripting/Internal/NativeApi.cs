@@ -96,6 +96,12 @@ internal static unsafe class NativeApi
     internal static delegate* unmanaged<uint, byte*, void> SetUIImage;
 
     // animation
+    internal static delegate* unmanaged<uint, int, void> ParticleBurst;
+    internal static delegate* unmanaged<uint, int, void> ParticleSetEmitting;
+    internal static delegate* unmanaged<uint, int> ParticleIsEmitting;
+    internal static delegate* unmanaged<uint, int> ParticleAliveCount;
+    internal static delegate* unmanaged<byte*, int, void> GetRenderBackend;
+    internal static delegate* unmanaged<byte*, void> SetRenderBackend;
     internal static delegate* unmanaged<uint, byte*, void> PlayAnimation;
     internal static delegate* unmanaged<uint, void> StopAnimation;
     internal static delegate* unmanaged<uint, void> PauseAnimation;
@@ -196,6 +202,12 @@ internal static unsafe class NativeApi
         SetUIImage = (delegate* unmanaged<uint, byte*, void>)fns->SetUIImage;
 
         PlayAnimation = (delegate* unmanaged<uint, byte*, void>)fns->PlayAnimation;
+        ParticleBurst = (delegate* unmanaged<uint, int, void>)fns->ParticleBurst;
+        ParticleSetEmitting = (delegate* unmanaged<uint, int, void>)fns->ParticleSetEmitting;
+        ParticleIsEmitting = (delegate* unmanaged<uint, int>)fns->ParticleIsEmitting;
+        ParticleAliveCount = (delegate* unmanaged<uint, int>)fns->ParticleAliveCount;
+        GetRenderBackend = (delegate* unmanaged<byte*, int, void>)fns->GetRenderBackend;
+        SetRenderBackend = (delegate* unmanaged<byte*, void>)fns->SetRenderBackend;
         StopAnimation = (delegate* unmanaged<uint, void>)fns->StopAnimation;
         PauseAnimation = (delegate* unmanaged<uint, void>)fns->PauseAnimation;
         SetAnimationFrame = (delegate* unmanaged<uint, int, void>)fns->SetAnimationFrame;

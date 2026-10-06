@@ -223,6 +223,10 @@ internal static unsafe class ScriptRuntime
         // Host already fired OnDestroy per instance. Drop play + gizmo instances; PersistentData deliberately survives (Global table semantics).
         ClearPlayInstances();
         ClearGizmoInstances();
+        // Timers, AI machines and coroutines hold delegates into instances that are about to be unloaded - firing them after this would touch dead objects.
+        TimerSystem.Clear();
+        AIRegistry.Clear();
+        CoroutineSystem.Clear();
         UnloadAssembly();
     }
 
@@ -364,7 +368,12 @@ internal static unsafe class ScriptRuntime
         {
             list.RemoveAll(i => i.Handle == handle);
             if (list.Count == 0)
+            {
                 _playByEntity.Remove(entry.EntityId);
+                // No scripts left on the entity - its AI machines and coroutines stop too.
+                AIRegistry.UnregisterEntity(entry.EntityId);
+                CoroutineSystem.StopAllForEntity(entry.EntityId);
+            }
         }
         _gizmoInstances.Remove((entry.EntityId, entry.Info.Name ?? ""));
 
@@ -623,6 +632,24 @@ internal static unsafe class ScriptRuntime
     public static void Frame(float dt)
     {
         Time.Pump(dt);
+        // AI machines tick after all script OnUpdates, so states see this frame's script decisions.
+        AIRegistry.Pump(dt);
+        CoroutineSystem.Pump(dt);
+    }
+
+    // Editor debug query: the entity's first running StateMachine, or 0 when it has none.
+    public static unsafe int GetAIState(uint entityId, byte* nameBuf, int nameBufLen, float* timeInState)
+    {
+        if (!AIRegistry.TryGetDebugState(entityId, out string state, out float time) || nameBufLen <= 0)
+            return 0;
+        byte[] bytes = NativeApi.Utf8(state);
+        int copy = Math.Min(bytes.Length, nameBufLen - 1);
+        fixed (byte* p = bytes)
+            Buffer.MemoryCopy(p, nameBuf, nameBufLen, copy);
+        nameBuf[copy] = 0;
+        NativeApi.Release(bytes);
+        *timeInState = time;
+        return 1;
     }
 
     // Helpers

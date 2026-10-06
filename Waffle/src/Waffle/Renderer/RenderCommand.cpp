@@ -6,15 +6,26 @@
 
 namespace Waffle {
 
-	// Backend selection: the API enum in RendererAPI.cpp controls which backend Renderer::GetAPI() reports; this factory instantiates the matching RendererAPI at startup.
-	RendererAPI* RenderCommand::s_RendererAPI = []() -> RendererAPI*
+	// The backend instance is created LAZILY in Init(), never at static-init time: reading
+	// RendererAPI::GetAPI() from a static initializer is a static-init-order lottery (the
+	// renderer-api static may not be initialized yet), which crashed relaunches that
+	// switched backends.
+	RendererAPI* RenderCommand::s_RendererAPI = nullptr;
+
+	void RenderCommand::Init()
 	{
-		// Read the desired API from the static member at startup
-		switch (RendererAPI::GetAPI())
+		WF_PROFILE_FUNCTION();
+
+		// Created here (runtime), never at static-init time - see note above.
+		if (!s_RendererAPI)
 		{
-		case RendererAPI::API::Vulkan:  return new VulkanRendererAPI;
-		case RendererAPI::API::OpenGL:  return new OpenGLRendererAPI;
-		default:                        return new OpenGLRendererAPI;
+			switch (RendererAPI::GetAPI())
+			{
+			case RendererAPI::API::Vulkan:  s_RendererAPI = new VulkanRendererAPI; break;
+			case RendererAPI::API::OpenGL:  s_RendererAPI = new OpenGLRendererAPI; break;
+			default:                        s_RendererAPI = new OpenGLRendererAPI; break;
+			}
 		}
-	}();
+		s_RendererAPI->Init();
+	}
 }

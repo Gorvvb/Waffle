@@ -5,6 +5,12 @@
 
 namespace Waffle {
 
+	// Persistent entity identity: a random 64-bit value, serialized with every entity and stable
+	// across save/load. Full-width mt19937_64 keeps accidental collisions negligible (~5 billion
+	// entities for 1-in-a-million odds), and Scene::CreateEntityWithUUID additionally verifies
+	// uniqueness against the live registry, so a corrupt file can never shadow an existing entity.
+	// Note: this is NOT the runtime entity handle - entt slot handles (with generation bits) are
+	// recycled at runtime and never serialized.
 	class UUID
 	{
 	private:
@@ -17,17 +23,6 @@ namespace Waffle {
 		operator uint64_t() const { return m_UUID; }
 	};
 
-	class UUID32
-	{
-	private:
-		uint32_t m_UUID;
-	public:
-		UUID32();
-		UUID32(uint32_t uuid);
-		UUID32(const UUID32&) = default;
-
-		operator uint32_t() const { return m_UUID; }
-	};
 }
 
 namespace std {
@@ -41,12 +36,4 @@ namespace std {
 		}
 	};
 
-	template<>
-	struct hash<Waffle::UUID32>
-	{
-		std::size_t operator()(const Waffle::UUID32& uuid) const
-		{
-			return (uint32_t)uuid;
-		}
-	};
 }

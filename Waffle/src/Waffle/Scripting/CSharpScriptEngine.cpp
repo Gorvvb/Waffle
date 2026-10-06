@@ -2,6 +2,7 @@
 #include "CSharpScriptEngine.h"
 
 #include "Waffle/Core/Log.h"
+#include "Waffle/Core/JobSystem.h"
 #include "Waffle/Core/VFS.h"
 #include "Waffle/Core/Input.h"
 
@@ -187,25 +188,28 @@ namespace Waffle {
 			return true;
 		}
 
-		// ScriptingRuntime dir (contract dll, runtimeconfig, GameScripts.dll): env override, exe dir, repo, cwd.
-		std::filesystem::path FindScriptingRuntimeDir()
+		// DotnetRuntime dir (contract dll, runtimeconfig, GameScripts.dll): env override, exe dir, repo, cwd.
+		std::filesystem::path FindDotnetRuntimeDir()
 		{
 			std::vector<std::filesystem::path> candidates;
 
-			if (const char* env = std::getenv("WAFFLE_SCRIPT_RUNTIME"); env && *env)
+			if (const char* env = std::getenv("WAFFLE_DOTNET_RUNTIME"); env && *env)
 				candidates.push_back(env);
+			// Legacy variable name, kept as a fallback for existing setups.
+			else if (const char* legacyEnv = std::getenv("WAFFLE_SCRIPT_RUNTIME"); legacyEnv && *legacyEnv)
+				candidates.push_back(legacyEnv);
 
 			std::filesystem::path exePath = ExecutablePath();
 			if (!exePath.empty())
 			{
 				std::filesystem::path exeDir = exePath.parent_path();
-				candidates.push_back(exeDir / "ScriptingRuntime");
-				// <repo>/bin/<cfg>-Windows-x64/<app>/exe -> <repo>/bin/ScriptingRuntime
-				candidates.push_back(exeDir / ".." / ".." / "ScriptingRuntime");
+				candidates.push_back(exeDir / "DotnetRuntime");
+				// <repo>/bin/<cfg>-Windows-x64/<app>/exe -> <repo>/bin/DotnetRuntime
+				candidates.push_back(exeDir / ".." / ".." / "DotnetRuntime");
 			}
 
 			std::error_code ec;
-			candidates.push_back(std::filesystem::current_path() / "ScriptingRuntime");
+			candidates.push_back(std::filesystem::current_path() / "DotnetRuntime");
 
 			for (const auto& candidate : candidates)
 			{
@@ -215,7 +219,7 @@ namespace Waffle {
 					return dir;
 			}
 
-			WF_CORE_INFO("CSharpScriptEngine: no ScriptingRuntime folder with Waffle.Scripting.runtimeconfig.json found (set WAFFLE_SCRIPT_RUNTIME to override) - C# scripting disabled");
+			WF_CORE_INFO("CSharpScriptEngine: no DotnetRuntime folder with Waffle.Scripting.runtimeconfig.json found (set WAFFLE_DOTNET_RUNTIME to override) - C# scripting disabled");
 			return {};
 		}
 
@@ -240,14 +244,14 @@ namespace Waffle {
 		bool LoadHostFxrAndContract();
 
 		// Contract assembly + staged GameScripts.dll location; found once at Init, reused by packed-export fallback.
-		std::filesystem::path s_ScriptingRuntimeDir;
+		std::filesystem::path s_DotnetRuntimeDir;
 
 		bool LoadHostFxrAndContract()
 		{
 			if (!LoadHostFxr())
 				return false;
 
-			std::filesystem::path runtimeDir = FindScriptingRuntimeDir();
+			std::filesystem::path runtimeDir = FindDotnetRuntimeDir();
 			if (runtimeDir.empty())
 				return false;
 
@@ -273,7 +277,7 @@ namespace Waffle {
 			}
 
 			s_ContractDll = contractDll;
-			s_ScriptingRuntimeDir = runtimeDir;
+			s_DotnetRuntimeDir = runtimeDir;
 			return true;
 		}
 
@@ -364,6 +368,8 @@ namespace Waffle {
 	CSharpScriptEngine::wf_compile_scripts_fn        CSharpScriptEngine::s_ManagedCompileScripts = nullptr;
 	CSharpScriptEngine::wf_set_script_assembly_fn    CSharpScriptEngine::s_ManagedSetScriptAssemblyPath = nullptr;
 	CSharpScriptEngine::wf_last_error_fn             CSharpScriptEngine::s_ManagedLastError = nullptr;
+	CSharpScriptEngine::wf_get_ai_state_fn           CSharpScriptEngine::s_ManagedGetAIState = nullptr;
+	CSharpScriptEngine::wf_get_ai_report_fn          CSharpScriptEngine::s_ManagedGetAIReport = nullptr;
 
 	// Reads the managed runtime's last error text (via the LastError entry).
 	std::string CSharpScriptEngine::LastManagedError()
@@ -372,6 +378,33 @@ namespace Waffle {
 		if (s_ManagedLastError && s_ManagedLastError(buffer, sizeof(buffer)) > 0)
 			return buffer;
 		return "unknown error";
+	}
+
+	// Editor debug: the entity's first running StateMachine (name + seconds in state).
+	bool CSharpScriptEngine::GetAIStateName(uint32_t entity, std::string& outName, float& outTime)
+	{
+		outName.clear();
+		outTime = 0.0f;
+		if (!s_Initialized || !s_ManagedGetAIState)
+			return false;
+		char buffer[128] = {};
+		if (s_ManagedGetAIState(entity, buffer, (int)sizeof(buffer), &outTime) == 1)
+		{
+			outName.assign(buffer);
+			return true;
+		}
+		return false;
+	}
+
+	// AI debugger rows: every entity with a running StateMachine.
+	bool CSharpScriptEngine::GetAIReport(AIDebugRow* outRows, int maxRows, int& outCount)
+	{
+		outCount = 0;
+		if (!s_Initialized || !s_ManagedGetAIReport)
+			return false;
+		static_assert(sizeof(AIDebugRow) == 72, "ABI: managed writer packs id@0, time@4, name@8");
+		outCount = s_ManagedGetAIReport(reinterpret_cast<uint8_t*>(outRows), maxRows, (int)sizeof(AIDebugRow));
+		return outCount > 0;
 	}
 
 	// Contact listener
@@ -485,6 +518,8 @@ namespace Waffle {
 			{ "CompileScripts",       reinterpret_cast<void**>(&s_ManagedCompileScripts) },
 			{ "SetScriptAssemblyPath", reinterpret_cast<void**>(&s_ManagedSetScriptAssemblyPath) },
 			{ "LastError",            reinterpret_cast<void**>(&s_ManagedLastError) },
+			{ "GetAIState",           reinterpret_cast<void**>(&s_ManagedGetAIState) },
+			{ "GetAIReport",          reinterpret_cast<void**>(&s_ManagedGetAIReport) },
 		};
 		for (const auto& entry : entries)
 		{
@@ -534,6 +569,8 @@ namespace Waffle {
 		s_ManagedCompileScripts = nullptr;
 		s_ManagedSetScriptAssemblyPath = nullptr;
 		s_ManagedLastError = nullptr;
+		s_ManagedGetAIState = nullptr;
+		s_ManagedGetAIReport = nullptr;
 		s_LoadAndGetFn = nullptr;
 
 		// Closing the context frees hostfxr bookkeeping; CoreCLR stays loaded (unload unsupported).
@@ -557,8 +594,8 @@ namespace Waffle {
 		{
 			// Packed export: no Assets/Scripts folder to compile - point the runtime at the prebuilt assembly.
 			for (const std::filesystem::path& candidate : {
-				s_ScriptingRuntimeDir / "GameScripts" / "GameScripts.dll",
-				s_ScriptingRuntimeDir / "GameScripts.dll" })
+				s_DotnetRuntimeDir / "GameScripts" / "GameScripts.dll",
+				s_DotnetRuntimeDir / "GameScripts.dll" })
 			{
 				if (std::filesystem::exists(candidate))
 				{
@@ -585,6 +622,44 @@ namespace Waffle {
 
 		WF_CORE_ERROR("CSharpScriptEngine: script compilation failed: {0}", LastManagedError());
 		return std::filesystem::exists(outputDll);
+	}
+
+	namespace
+	{
+		std::atomic<bool> s_AsyncCompileRunning{ false };
+		std::atomic<bool> s_AsyncCompileDone{ false };
+		int s_AsyncCompileResult = false;
+	}
+
+	bool CSharpScriptEngine::CompileProjectScriptsAsync()
+	{
+		if (!s_Initialized)
+			return false;
+
+		bool expected = false;
+		if (!s_AsyncCompileRunning.compare_exchange_strong(expected, true))
+			return true; // one at a time; the pending poll will pick it up
+
+		s_AsyncCompileDone = false;
+		JobSystem::Execute([]()
+		{
+			// Same compile as the synchronous path - the managed side is thread-safe (it only
+			// spawns the csc subprocess and writes the output dll + last-error string).
+			s_AsyncCompileResult = CompileProjectScripts() ? 1 : 0;
+			s_AsyncCompileDone = true;
+			// s_AsyncCompileRunning stays true until the result is consumed by PollAsyncCompile.
+		});
+		return true;
+	}
+
+	int CSharpScriptEngine::PollAsyncCompile()
+	{
+		if (!s_AsyncCompileDone)
+			return -1;
+		int result = s_AsyncCompileResult;
+		s_AsyncCompileRunning = false;
+		s_AsyncCompileDone = false;
+		return result;
 	}
 
 	// Scene lifecycle
@@ -666,7 +741,8 @@ namespace Waffle {
 		s_ManagedRuntimeStart();
 
 		// Snapshot BEFORE scripts: OnStart can CreateEntity, reallocating the pool under a live view (UB).
-		std::vector<entt::entity> scriptedEntities;
+		static std::vector<entt::entity> scriptedEntities; // reused scratch (main thread only)
+		scriptedEntities.clear();
 		{
 			auto view = scene->m_Registry.view<ScriptComponent>();
 			for (auto entityID : view)
@@ -710,7 +786,8 @@ namespace Waffle {
 		}
 
 		// Snapshot BEFORE scripts: OnDestroy can Create/DestroyEntity under a live view (UB).
-		std::vector<entt::entity> scriptedEntities;
+		static std::vector<entt::entity> scriptedEntities; // reused scratch (main thread only)
+		scriptedEntities.clear();
 		{
 			auto view = scene->m_Registry.view<ScriptComponent>();
 			for (auto entityID : view)
@@ -771,7 +848,8 @@ namespace Waffle {
 		s_DebugCircles.clear();
 
 		// Script update (skips disabled) - snapshot BEFORE: OnUpdate can CreateEntity/prefabs (UB under a live view).
-		std::vector<entt::entity> scriptedEntities;
+		static std::vector<entt::entity> scriptedEntities; // reused scratch (main thread only)
+		scriptedEntities.clear();
 		{
 			auto view = scene->m_Registry.view<ScriptComponent>();
 			for (auto entityID : view)
@@ -839,22 +917,30 @@ namespace Waffle {
 		s_DebugCircles.clear();
 
 		// Recompile + drop cached gizmo instances when a script changed on disk (mirrors the Lua hot reload).
+		// Throttled: the check walks Scripts/ with a stat per file, so it runs at most every 250 ms
+		// instead of every frame - a changed script is picked up within that window.
 		{
+			static std::chrono::steady_clock::time_point s_LastStalenessScan{};
+			bool scanNow = std::chrono::steady_clock::now() - s_LastStalenessScan > std::chrono::milliseconds(250);
+			s_LastStalenessScan = std::chrono::steady_clock::now();
 			bool stale = false;
-			std::error_code ec;
-			std::filesystem::path assemblyDll = s_AssetPath / "cache" / "Scripting" / "GameScripts.dll";
-			std::filesystem::file_time_type assemblyTime = std::filesystem::exists(assemblyDll, ec)
-				? std::filesystem::last_write_time(assemblyDll, ec) : std::filesystem::file_time_type{};
-			if (std::filesystem::exists(s_AssetPath / "Scripts", ec))
+			if (scanNow)
 			{
-				for (auto& entry : std::filesystem::recursive_directory_iterator(s_AssetPath / "Scripts", ec))
+			std::error_code ec;
+				std::filesystem::path assemblyDll = s_AssetPath / "cache" / "Scripting" / "GameScripts.dll";
+				std::filesystem::file_time_type assemblyTime = std::filesystem::exists(assemblyDll, ec)
+					? std::filesystem::last_write_time(assemblyDll, ec) : std::filesystem::file_time_type{};
+				if (std::filesystem::exists(s_AssetPath / "Scripts", ec))
 				{
-					if (!entry.is_regular_file(ec) || entry.path().extension() != ".cs")
-						continue;
-					if (assemblyTime < std::filesystem::last_write_time(entry.path(), ec))
+					for (auto& entry : std::filesystem::recursive_directory_iterator(s_AssetPath / "Scripts", ec))
 					{
-						stale = true;
-						break;
+						if (!entry.is_regular_file(ec) || entry.path().extension() != ".cs")
+							continue;
+						if (assemblyTime < std::filesystem::last_write_time(entry.path(), ec))
+						{
+							stale = true;
+							break;
+						}
 					}
 				}
 			}

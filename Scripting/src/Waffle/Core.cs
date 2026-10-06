@@ -108,6 +108,3 @@ public sealed class TooltipAttribute : Attribute
     public string Text { get; }
     public TooltipAttribute(string text) { Text = text; }
 }
-
-[AttributeUsage(AttributeTargets.Field)]
-public sealed class InspectorHiddenAttribute : Attribute;

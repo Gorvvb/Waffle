@@ -43,6 +43,7 @@ public readonly struct Entity : IEquatable<Entity>
         if (typeof(T) == typeof(SpriteRenderer)) return (T)(object)new SpriteRenderer(this);
         if (typeof(T) == typeof(Animator2D)) return (T)(object)new Animator2D(this);
         if (typeof(T) == typeof(UIText)) return (T)(object)new UIText(this);
+        if (typeof(T) == typeof(ParticleSystem)) return (T)(object)new ParticleSystem(this);
         throw new InvalidOperationException($"No component view for {typeof(T).Name}");
     }
 

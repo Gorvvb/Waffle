@@ -16,6 +16,7 @@ class b2Body;
 namespace Waffle {
 
 	class Entity;
+	struct CameraComponent;
 
 	class Scene : public RefCounted
 	{
@@ -108,6 +109,14 @@ namespace Waffle {
 
 		// Draws one tilemap's tiles (inside the sorted render pass, at its own sort slot).
 		void DrawTilemapTiles(Entity entity, const glm::mat4& worldTransform);
+		// Draws one particle system's live particles (inside the sorted render pass).
+		void DrawParticles(entt::entity entity, const glm::mat4& worldTransform);
+
+		// The single 2D render pass shared by the runtime and the editor viewport: gather, sort and draw.
+		// Caller owns the camera, BeginScene/EndScene and any animator pre-pass.
+		void GatherAndDrawRenderItems();
+		// Draws the camera's background image (if it has one) stretched over the camera plane.
+		void DrawCameraBackground(const CameraComponent& camComp, const glm::mat4& cameraTransform);
 
 		template<typename T>
 		void OnComponentAdded(Entity entity, T& component);

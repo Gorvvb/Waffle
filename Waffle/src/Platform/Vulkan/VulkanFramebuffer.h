@@ -72,6 +72,10 @@ namespace Waffle {
 		// Depth attachment
 		VkImage       m_DepthImage      = VK_NULL_HANDLE;
 		VmaAllocation m_DepthAllocation = VK_NULL_HANDLE;
+
+		// Persistent 4-byte staging buffer for ReadPixel (created on first use, reused every call).
+		VkBuffer m_PixelStaging = VK_NULL_HANDLE;
+		VmaAllocation m_PixelStagingAllocation = VK_NULL_HANDLE;
 		VkImageView   m_DepthView       = VK_NULL_HANDLE;
 
 			VkFormat m_ColorFormat = VK_FORMAT_R8G8B8A8_UNORM;

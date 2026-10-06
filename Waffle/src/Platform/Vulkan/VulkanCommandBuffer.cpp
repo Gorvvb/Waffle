@@ -145,6 +145,10 @@ namespace Waffle {
 			if (textures[i])
 				textures[i]->Bind(firstSlot + i);
 		}
+		// A batch-style bind from slot 0 redefines the whole window - stale slots above the range
+		// fall back to slot 0 instead of validating dead images (e.g. the post chain's attachments).
+		if (firstSlot == 0 && count > 0)
+			VulkanContext::Get()->ClearTextureSlotsFrom(count);
 	}
 
 	void VulkanCommandBuffer::BindFramebufferAttachment(uint32_t slot, const Ref<Framebuffer>& target, uint32_t attachmentIndex)

@@ -7,7 +7,6 @@
 #include "Waffle/Core/Input.h"
 #include "Waffle/Core/JobSystem.h"
 #include "Waffle/Core/Subsystem.h"
-#include "Waffle/Core/EventQueue.h"
 #include "Waffle/Renderer/Renderer.h"
 #include "Waffle/Core/Log.h"
 #include "Waffle/Scripting/CSharpScriptEngine.h"
@@ -42,7 +41,6 @@ namespace Waffle {
 
 		// Core engine services initialization
 		JobSystem::Init();
-		EventQueue::Init();
 		SubsystemManager::Init();
 
 		m_Window = Window::Create(WindowProps(m_Specification.Name, 1600, 900, m_Specification.IconPath));
@@ -70,7 +68,6 @@ namespace Waffle {
 		Renderer::Shutdown();
 
 		SubsystemManager::Shutdown();
-		EventQueue::Shutdown();
 		JobSystem::Shutdown();
 	}
 
@@ -120,9 +117,6 @@ namespace Waffle {
 
 			// Advance input edge-detection (keyboard/mouse/gamepad Pressed/Released transitions) for this frame.
 			Input::Update();
-
-			// Dispatch queued deferred events from background threads / systems
-			EventQueue::DispatchPendingEvents(WF_BIND_EVENT_FN(Application::OnEvent));
 
 			if (!m_Minimized)
 			{

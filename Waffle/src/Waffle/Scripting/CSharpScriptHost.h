@@ -149,6 +149,16 @@ namespace Waffle::CSharpScriptHost {
 		void  (*GizmoDrawRay)(float x, float y, float dx, float dy, float distance, float r, float g, float b, float a);
 		void  (*GizmoDrawLine)(float x1, float y1, float x2, float y2, float r, float g, float b, float a);
 		void  (*GizmoDrawWireCircle)(float x, float y, float radius, float r, float g, float b, float a);
+
+		// Particles (append-only ABI: never reorder or remove - only add)
+		void  (*ParticleBurst)(uint32_t entityId, int32_t count);
+		void  (*ParticleSetEmitting)(uint32_t entityId, int32_t emitting);
+		int32_t (*ParticleIsEmitting)(uint32_t entityId);
+		int32_t (*ParticleAliveCount)(uint32_t entityId);
+
+		// Render backend (append-only ABI: never reorder or remove - only add)
+		void  (*GetRenderBackend)(char* buffer, int bufferSize);
+		void  (*SetRenderBackend)(const char* backendUtf8);
 	};
 
 } // namespace Waffle::CSharpScriptHost

@@ -9,7 +9,10 @@
 
 #ifdef WF_DEBUG
 	#if defined(WF_PLATFORM_WINDOWS)
-		#define WF_DEBUGBREAK() __debugbreak()
+		#ifndef WF_DEBUGBREAK
+			// Tests override this to a no-op so engine asserts log instead of breaking the run.
+			#define WF_DEBUGBREAK() __debugbreak()
+		#endif
 	#elif defined(WF_PLATFORM_LINUX)
 		#error "Linux isn't supported yet!'"
 	#else

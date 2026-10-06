@@ -34,7 +34,6 @@ namespace Waffle {
 		GLFWwindow* m_Window;
 		GraphicsContext* m_Context;
 
-
 		struct WindowData
 		{
 			std::string Title;

@@ -9,8 +9,6 @@ namespace Waffle {
 
 	void Renderer::Init()
 	{
-		RenderCommand::Init();
-
 		// The command buffer must exist before anything records (Renderer2D pipelines, first BeginScene).
 		s_CommandBuffer = CommandBuffer::Create();
 

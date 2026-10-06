@@ -7,7 +7,7 @@ SDK on PATH:
 
     dotnet <sdk>/Roslyn/bincore/csc.dll -target:library ...
 
-Outputs to bin/ScriptingRuntime/:
+Outputs to bin/DotnetRuntime/:
   Waffle.Scripting.dll              - engine contract assembly ("using Waffle;")
   Waffle.Scripting.runtimeconfig.json
   GameScripts/GameScripts.dll       - spike/test scripts (later: editor compiles
@@ -24,16 +24,14 @@ import sys
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
-OUT = REPO / "bin" / "ScriptingRuntime"
+OUT = REPO / "bin" / "DotnetRuntime"
 
 CONTRACT_SOURCES_DIR = REPO / "Scripting" / "src"
 TEST_SOURCES_DIR = REPO / "Scripting" / "TestScripts"
 
-
 def die(message: str) -> None:
     print(f"BuildScripting: ERROR: {message}", file=sys.stderr)
     sys.exit(1)
-
 
 def find_dotnet() -> str:
     import shutil
@@ -41,7 +39,6 @@ def find_dotnet() -> str:
     if not dotnet:
         die(".NET SDK not found on PATH (need 'dotnet'). Install from https://dotnet.microsoft.com")
     return dotnet
-
 
 def find_sdk(dotnet: str) -> tuple[Path, str]:
     """Returns (sdk_root, version) for the highest installed SDK."""
@@ -64,7 +61,6 @@ def find_sdk(dotnet: str) -> tuple[Path, str]:
         die("dotnet --list-sdks returned nothing usable")
     return chosen
 
-
 def find_runtime_dir(dotnet: str) -> Path:
     """Highest-versioned Microsoft.NETCore.App shared runtime next to the SDK."""
     dotnet_root = find_sdk(dotnet)[0].parent  # <dotnet root>/sdk -> <dotnet root>
@@ -73,7 +69,6 @@ def find_runtime_dir(dotnet: str) -> Path:
     if not candidates:
         die(f"no Microsoft.NETCore.App runtime found under {shared}")
     return max(candidates, key=lambda d: [int(p) if p.isdigit() else 0 for p in d.name.split(".")])
-
 
 def compile_library(dotnet: str, refs: list[Path], out_dll: Path, sources: list[Path],
                     extra_refs: list[Path] = ()) -> None:
@@ -105,7 +100,6 @@ def compile_library(dotnet: str, refs: list[Path], out_dll: Path, sources: list[
         print(result.stderr, file=sys.stderr)
         die(f"csc failed for {out_dll.name}")
 
-
 def write_runtimeconfig() -> None:
     # rollForward lets this resolve any installed 10.x runtime - no pinning.
     config = {
@@ -120,7 +114,6 @@ def write_runtimeconfig() -> None:
     }
     (OUT / "Waffle.Scripting.runtimeconfig.json").write_text(
         json.dumps(config, indent=2), encoding="utf-8")
-
 
 def is_managed_dll(path: Path) -> bool:
     """True when the PE has a non-zero CLR header (data directory 14)."""
@@ -146,7 +139,6 @@ def is_managed_dll(path: Path) -> bool:
     except OSError:
         return False
 
-
 def find_framework_refs(runtime_dir: Path) -> list[Path]:
     """Compile-time references: System.Private.CoreLib plus every managed
     assembly in the shared runtime (native dlls like coreclr/hostpolicy are
@@ -158,7 +150,6 @@ def find_framework_refs(runtime_dir: Path) -> list[Path]:
         p for p in runtime_dir.glob("*.dll")
         if p.name != "System.Private.CoreLib.dll" and is_managed_dll(p))
     return [corelib] + managed
-
 
 def main() -> None:
     dotnet = find_dotnet()
@@ -186,7 +177,6 @@ def main() -> None:
         print(f"Built {test_dll}")
 
     print("BuildScripting: done.")
-
 
 if __name__ == "__main__":
     main()

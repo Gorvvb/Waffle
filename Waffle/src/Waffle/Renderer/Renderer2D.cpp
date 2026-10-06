@@ -386,18 +386,7 @@ namespace Waffle {
 		ShaderLibrary::Get().Clear();
 	}
 
-	void Renderer2D::BeginScene(const OrthographicCamera& camera)
-	{
-		WF_PROFILE_FUNCTION();
-		InitShaders();
-
-		s_Data.CameraBuffer.ViewProjection = camera.GetViewProjectionMatrix();
-		Renderer::GetCommandBuffer()->UpdateUniformBuffer(s_Data.CameraUniformBuffer,
-			&s_Data.CameraBuffer, sizeof(Renderer2DData::CameraData), 0);
-		s_Data.ActiveFrustum = Frustum2D::FromProjectionAndView(camera.GetProjectionMatrix(), camera.GetViewMatrix());
-
-		StartBatch();
-	}
+	
 
 	void Renderer2D::BeginScene(const Camera& camera, const glm::mat4& transform)
 	{

@@ -19,8 +19,6 @@ namespace Waffle {
 		static void Shutdown();
 
 		static void Execute(const std::function<void()>& job);
-		static void Wait();
-		static bool IsBusy();
 
 		static uint32_t GetWorkerThreadCount() { return s_ThreadCount; }
 
@@ -32,8 +30,7 @@ namespace Waffle {
 		static std::queue<std::function<void()>> s_JobQueue;
 		static std::mutex s_QueueMutex;
 		static std::condition_variable s_Condition;
-		static std::condition_variable s_WaitCondition;
-		static std::atomic<uint32_t> s_ActiveJobs;
+			static std::atomic<uint32_t> s_ActiveJobs;
 		static std::atomic<bool> s_Shutdown;
 		static uint32_t s_ThreadCount;
 	};

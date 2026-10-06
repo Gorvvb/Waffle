@@ -2,7 +2,6 @@
 
 #include "Waffle/Renderer/GraphicsContext.h"
 
-
 struct GLFWwindow;
 
 namespace Waffle {
